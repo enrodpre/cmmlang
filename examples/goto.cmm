@@ -1,0 +1,6 @@
+int main() {
+  goto good;
+  return 1;
+good:
+  return 255;
+}

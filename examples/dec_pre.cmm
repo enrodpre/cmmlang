@@ -1,0 +1,5 @@
+int main()
+{
+  int x = 256;
+  return --x;
+}

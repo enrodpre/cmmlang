@@ -1,0 +1,9 @@
+int fn()
+{
+  return 255;
+}
+
+int main()
+{
+  return fn();
+}

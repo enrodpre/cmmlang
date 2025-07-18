@@ -1,0 +1,8 @@
+int main()
+{
+  int ex = 12;
+  for (int i = 250; i < 256; ++i) {
+    ex = i;
+  }
+  return ex;
+}

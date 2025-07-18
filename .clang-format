@@ -1,0 +1,39 @@
+---
+AlignAfterOpenBracket: Align
+AlignArrayOfStructures: Left
+AlignConsecutiveAssignments: AcrossEmptyLines
+AlignConsecutiveMacros:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
+AlignEscapedNewlines: DontAlign
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortBlocksOnASingleLine: Empty
+AllowShortFunctionsOnASingleLine: Inline
+AlwaysBreakTemplateDeclarations: Yes
+BasedOnStyle: LLVM
+BinPackArguments: false
+BinPackParameters: false
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+BreakConstructorInitializers: BeforeColon
+BreakTemplateDeclarations: Leave
+ColumnLimit: 80
+IndentCaseBlocks: true
+IndentCaseLabels: true
+IndentPPDirectives: BeforeHash
+IndentRequiresClause:  true
+IndentWidth: 2
+NamespaceIndentation: Inner
+PackConstructorInitializers: Never
+PenaltyIndentedWhitespace: 0
+PenaltyReturnTypeOnItsOwnLine: 200
+PointerAlignment: Left
+ReferenceAlignment: Left
+RequiresClausePosition: OwnLine
+SpaceBeforeParens: ControlStatements
+Standard: Latest
+# WhitespaceSensitiveMacros: [PASTE,PASTE2, ENUM_INNER_TYPE]
