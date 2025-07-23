@@ -6,7 +6,7 @@
 namespace cmm::ast {
 
 // struct validation_visitor : public const_visitor<NODE_TYPES> {
-//   void visit(const declaration::specifiers& specs) override {
+//   void visit(const decl::specifiers& specs) override {
 //     REGISTER_INFO("validating specifiers");
 //     bool typed = false;
 //     for (const term::specifier* spec : specs) {

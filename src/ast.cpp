@@ -22,9 +22,9 @@ FORMAT_IMPL(expr::binary_operator,
             operator_,
             ""); // right);
 /* FORMAT_IMPL(compound, "Compound({}):\n  {}", size(), *this); */
-FORMAT_IMPL(declaration::label, "LabelDecl({})", term);
-FORMAT_IMPL(declaration::variable, "VarDecl:  {} {}", *ident, *init);
-FORMAT_IMPL(declaration::function, "{}", "Function declaration: ");
+FORMAT_IMPL(decl::label, "LabelDecl({})", term);
+FORMAT_IMPL(decl::variable, "VarDecl:  {} {}", *ident, *init);
+FORMAT_IMPL(decl::function, "{}", "Function decl: ");
 FORMAT_IMPL(iteration::while_, "While:\n  {}", condition);
 FORMAT_IMPL(iteration::for_, "For:\n  {}", *condition);
 FORMAT_IMPL(selection::if_, "If:\n  {}\n  {}", condition, *block);
@@ -82,7 +82,7 @@ expr::unary_operator::unary_operator(expression& expression,
   expr.set_parent(this);
   operator_.set_parent(this);
 }
-using namespace declaration;
+using namespace decl;
 
 label::label(const token& label_)
     : DerivedVisitable(label_.location),
@@ -170,7 +170,7 @@ iteration::while_::while_(term::keyword k,
 }
 
 iteration::for_::for_(term::keyword k,
-                      declaration::variable* start_,
+                      decl::variable* start_,
                       expr::expression* condition_,
                       expr::expression* step_,
                       statement* block)

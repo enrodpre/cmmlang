@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.hpp"
+#include "ir.hpp"
 #include "lang.hpp"
 #include "revisited/visitor.h"
 #include "token.hpp"
@@ -21,9 +22,7 @@ using revisited::DerivedVisitable;
 using revisited::Visitable;
 using revisited::VisitableBase;
 
-struct base_visitable : public virtual formattable,
-                        public virtual VisitableBase {};
-struct node : public base_visitable, public Visitable<node> {
+struct node : public virtual formattable, public virtual VisitableBase {
   location loc;
 
   node() = default;
@@ -219,13 +218,14 @@ namespace expr {
       const ast::expr::identifier&
 }; // namespace expr
 
-namespace declaration {
+namespace decl {
 
   struct specifiers : public siblings<term::specifier*> {};
 
-  struct global_declaration : DerivedVisitable<global_declaration, statement> {
-  };
-  struct label : public DerivedVisitable<label, statement> {
+  struct declaration : DerivedVisitable<declaration, statement> {};
+  struct global_declaration
+      : DerivedVisitable<global_declaration, declaration> {};
+  struct label : public DerivedVisitable<label, declaration> {
     // term::keyword keyword;
     term::identifier term;
     label(const token&);
@@ -234,11 +234,11 @@ namespace declaration {
   static_assert(std::is_move_assignable<label>());
 
   struct variable : public DerivedVisitable<variable, global_declaration> {
-    declaration::specifiers specifiers;
+    decl::specifiers specifiers;
     const term::identifier* ident; // Can be null, used for function parameters
     expr::expression* init;
 
-    variable(declaration::specifiers&&, decltype(ident), decltype(init));
+    variable(decl::specifiers&&, decltype(ident), decltype(init));
     [[nodiscard]] std::string label() const noexcept {
       return std::format("{}_{}", "variable", ident->value);
     }
@@ -249,7 +249,7 @@ namespace declaration {
   struct function : public DerivedVisitable<function, global_declaration> {
     using parameters_t = siblings<variable*>;
 
-    declaration::specifiers specifiers;
+    decl::specifiers specifiers;
     const term::identifier& ident;
     parameters_t parameters;
     compound* body;
@@ -261,7 +261,7 @@ namespace declaration {
     FORMAT_DECL_IMPL();
   };
 
-}; // namespace declaration
+}; // namespace decl
 //
 namespace selection {
   struct if_ : public DerivedVisitable<if_, statement> {
@@ -306,12 +306,12 @@ namespace iteration {
                 public identifiable_parent<for_>,
                 public iteration<for_> {
     term::keyword keyword;
-    declaration::variable* start;
+    decl::variable* start;
     expr::expression* condition;
     expr::expression* step;
     statement* body;
     for_(term::keyword k,
-         declaration::variable* start_,
+         decl::variable* start_,
          expr::expression* condition_,
          expr::expression* step_,
          statement* block);
@@ -359,19 +359,19 @@ namespace debug {
   };
 } // namespace debug
 
-using global_declaration =
-    std::variant<ast::declaration::function*, ast::declaration::variable>;
 struct program
-    : public DerivedVisitable<program, siblings<global_declaration*>> {};
+    : public DerivedVisitable<program, siblings<decl::global_declaration*>> {};
 
 #define TERM_TYPES \
   const ast::term::literal&, const ast::term::identifier&, \
       const ast::term::keyword&, const ast::term::specifier&, \
       const ast::term::operator_&
 
+#define GLOBAL_DECL_TYPES const ast::decl::function&, const ast::decl::variable&
+
 #define STATEMENT_TYPES \
-  const ast::compound&, const ast::declaration::variable&, \
-      const ast::declaration::label&, const ast::declaration::function&, \
+  const ast::decl::function&, const ast::decl::variable&, \
+      const ast::compound&, const ast::decl::label&, \
       const ast::iteration::for_&, const ast::iteration::while_&, \
       const ast::selection::if_&, const ast::jump::break_&, \
       const ast::jump::continue_&, const ast::jump::goto_&, \
@@ -379,57 +379,61 @@ struct program
       const ast::debug::printobj&
 
 #define SIBLING_TYPES \
-  const ast::expr::call::arguments&, \
-      const ast::declaration::function::parameters_t&, \
-      const ast::declaration::specifiers&
+  const ast::expr::call::arguments&, const ast::decl::function::parameters_t&, \
+      const ast::decl::specifiers&
 
 #define NODE_TYPES STATEMENT_TYPES, EXPRESSION_TYPES, TERM_TYPES, SIBLING_TYPES
 
-struct ast_expression_visitor : public revisited::Visitor<EXPRESSION_TYPES> {
-  void visit(const ast::expr::call&) override;
-  void visit(const ast::expr::binary_operator&) override;
-  void visit(const ast::expr::unary_operator&) override;
-  void visit(const ast::expr::literal&) override;
-  void visit(const ast::expr::identifier&) override;
-};
-struct ast_statement_visitor : public revisited::Visitor<STATEMENT_TYPES> {
-  void visit(const ast::compound& scope) override;
-  void visit(const ast::declaration::variable& vardecl) override;
-  void visit(const ast::declaration::label& label_) override;
-  void visit(const ast::declaration::function& func) override;
-  void visit(const ast::iteration::for_& for_) override;
-  void visit(const ast::iteration::while_& while_) override;
-  void visit(const ast::selection::if_& if_) override;
-  void visit(const ast::jump::break_& break_) override;
-  void visit(const ast::jump::continue_& continue_) override;
-  void visit(const ast::jump::goto_& goto_) override;
-  void visit(const ast::jump::return_& ret) override;
-  void visit(const ast::expr::expression& expr) override;
-  void visit(const ast::debug::printobj& comp) override;
-};
-struct ast_visitor : public revisited::Visitor<NODE_TYPES> {
-  void visit(const ast::expr::call&) override;
-  void visit(const ast::expr::binary_operator&) override;
-  void visit(const ast::expr::unary_operator&) override;
-  void visit(const ast::expr::literal&) override;
-  void visit(const ast::expr::identifier&) override;
-  void visit(const ast::expr::call::arguments&) override;
-  void visit(const ast::declaration::function::parameters_t&) override;
-  void visit(const ast::declaration::specifiers&) override;
-  void visit(const ast::compound& scope) override;
-  void visit(const ast::declaration::variable& vardecl) override;
-  void visit(const ast::declaration::label& label_) override;
-  void visit(const ast::declaration::function& func) override;
-  void visit(const ast::iteration::for_& for_) override;
-  void visit(const ast::iteration::while_& while_) override;
-  void visit(const ast::selection::if_& if_) override;
-  void visit(const ast::jump::break_& break_) override;
-  void visit(const ast::jump::continue_& continue_) override;
-  void visit(const ast::jump::goto_& goto_) override;
-  void visit(const ast::jump::return_& ret) override;
-  void visit(const ast::expr::expression& expr) override;
-  void visit(const ast::debug::printobj& comp) override;
-};
+// struct ast_global_visitor : public revisited::Visitor<GLOBAL_DECL_TYPES> {
+//   void visit(const ast::decl::variable&) override;
+//   void visit(const ast::decl::function&) override;
+// };
+// struct ast_expression_visitor : public revisited::Visitor<EXPRESSION_TYPES> {
+//   void visit(const ast::expr::call&) override;
+//   void visit(const ast::expr::binary_operator&) override;
+//   void visit(const ast::expr::unary_operator&) override;
+//   void visit(const ast::expr::literal&) override;
+//   void visit(const ast::expr::identifier&) override;
+// };
+// struct ast_statement_visitor : public revisited::Visitor<STATEMENT_TYPES> {
+//   void visit(const ast::compound& scope) override;
+//   void visit(const ast::decl::variable& vardecl) override;
+//   void visit(const ast::decl::label& label_) override;
+//   void visit(const ast::decl::function& func) override;
+//   void visit(const ast::iteration::for_& for_) override;
+//   void visit(const ast::iteration::while_& while_) override;
+//   void visit(const ast::selection::if_& if_) override;
+//   void visit(const ast::jump::break_& break_) override;
+//   void visit(const ast::jump::continue_& continue_) override;
+//   void visit(const ast::jump::goto_& goto_) override;
+//   void visit(const ast::jump::return_& ret) override;
+//   void visit(const ast::expr::expression& expr) override;
+//   void visit(const ast::debug::printobj& comp) override;
+// };
+// struct ast_visitor : public revisited::Visitor<NODE_TYPES> {
+//   void visit(const ast::expr::call&) override;
+//   void visit(const ast::expr::binary_operator&) override;
+//   void visit(const ast::expr::unary_operator&) override;
+//   void visit(const ast::expr::literal&) override;
+//   void visit(const ast::expr::identifier&) override;
+//   void visit(const ast::expr::call::arguments&) override;
+//   void visit(const ast::decl::function::parameters_t&) override;
+//   void visit(const ast::decl::specifiers&) override;
+//   void visit(const ast::compound& scope) override;
+//   void visit(const ast::decl::variable& vardecl) override;
+//   void visit(const ast::decl::label& label_) override;
+//   void visit(const ast::decl::function& func) override;
+//   void visit(const ast::iteration::for_& for_) override;
+//   void visit(const ast::iteration::while_& while_) override;
+//   void visit(const ast::selection::if_& if_) override;
+//   void visit(const ast::jump::break_& break_) override;
+//   void visit(const ast::jump::continue_& continue_) override;
+//   void visit(const ast::jump::goto_& goto_) override;
+//   void visit(const ast::jump::return_& ret) override;
+//   void visit(const ast::expr::expression& expr) override;
+//   void visit(const ast::debug::printobj& comp) override;
+//   void visit(const ast::program& comp) override;
+// };
 
 } // namespace cmm::ast
 

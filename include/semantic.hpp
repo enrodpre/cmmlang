@@ -24,9 +24,9 @@ class semantics {
   //   void visit(ast::expr::unary_operator& c) override {}
   //   void visit(ast::expr::binary_operator& c) override {}
   //   void visit(ast::expr::call& c) override {}
-  //   void visit(ast::declaration::variable& c) override {}
-  //   void visit(ast::declaration::function& c) override {}
-  //   void visit(ast::declaration::label& c) override {}
+  //   void visit(ast::decl::variable& c) override {}
+  //   void visit(ast::decl::function& c) override {}
+  //   void visit(ast::decl::label& c) override {}
   //   void visit(ast::iteration::while_& c) override {}
   //   void visit(ast::iteration::for_& c) override {}
   //   void visit(ast::selection::if_& c) override {}
@@ -82,17 +82,17 @@ public:
   /*       SET_PARENT_AND_VISIT(call_, ident); */
   /*       RANGE_VARIANT_SET_PARENT_AND_VISIT(call_, args); */
   /*     } */
-  /*     void operator()(declaration::label& label_) override */
+  /*     void operator()(decl::label& label_) override */
   /*     { */
   /*       SET_PARENT_AND_VISIT(label_, ident); */
   /*     } */
-  /*     void operator()(declaration::variable& variable_) override */
+  /*     void operator()(decl::variable& variable_) override */
   /*     { */
   /*       RANGE_SET_PARENT_AND_VISIT(variable_, specs); */
   /*       SET_PARENT_AND_VISIT(variable_, ident); */
   /*       VARIANT_SET_PARENT_AND_VISIT(variable_, init); */
   /*     } */
-  /*     void operator()(declaration::function& function_) override */
+  /*     void operator()(decl::function& function_) override */
   /*     { */
   /*       RANGE_SET_PARENT_AND_VISIT(function_, specs); */
   /*       SET_PARENT_AND_VISIT(function_, ident); */

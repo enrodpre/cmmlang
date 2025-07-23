@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-// Forward declarations
+// Forward decls
 class Operand;
 class Register;
 class Immediate;

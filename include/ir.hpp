@@ -80,21 +80,21 @@ struct compilation_unit;
 
 template <typename Decl>
 struct symbol : public formattable {
-  using address_t     = assembly::operand*;
-  using declaration_t = Decl;
-  const Decl* declaration;
+  using address_t = assembly::operand*;
+  using decl_t    = Decl;
+  const Decl* decl;
   address_t addr;
 
   symbol(const Decl* decl, address_t);
 };
 
-struct label : public symbol<ast::declaration::label> {
-  label(const declaration_t* label_, address_t);
+struct label : public symbol<ast::decl::label> {
+  label(const decl_t* label_, address_t);
   [[nodiscard]] std::string format() const override;
 };
 
-struct array : public symbol<ast::declaration::label> {
-  array(const declaration_t* label_, address_t);
+struct array : public symbol<ast::decl::label> {
+  array(const decl_t* label_, address_t);
   [[nodiscard]] std::string format() const override;
 };
 
@@ -104,13 +104,13 @@ static_assert(std::is_move_assignable<label>());
 struct scope;
 struct local_scope;
 
-struct variable : public symbol<ast::declaration::variable> {
+struct variable : public symbol<ast::decl::variable> {
   linkage_t linkage;
   storage_t storage;
   cv_type type;
   scope& scope_ref;
   variable(scope&,
-           const ast::declaration::variable*,
+           const ast::decl::variable*,
            address_t,
            linkage_t,
            storage_t,
@@ -120,7 +120,7 @@ struct variable : public symbol<ast::declaration::variable> {
 
 struct local_variable : public variable {
   local_variable(local_scope&,
-                 const ast::declaration::variable*,
+                 const ast::decl::variable*,
                  operand*,
                  storage_t,
                  cv_type);
@@ -128,14 +128,14 @@ struct local_variable : public variable {
 
 struct auto_local_variable : public local_variable {
   auto_local_variable(local_scope&,
-                      const ast::declaration::variable*,
+                      const ast::decl::variable*,
                       assembly::reg_memory*,
                       storage_t,
                       cv_type);
 };
 struct arg_local_variable : public local_variable {
   arg_local_variable(local_scope&,
-                     const ast::declaration::variable*,
+                     const ast::decl::variable*,
                      assembly::reg*,
                      storage_t,
                      cv_type);
@@ -143,17 +143,17 @@ struct arg_local_variable : public local_variable {
 
 struct global_variable : public variable {
   global_variable(scope&,
-                  const ast::declaration::variable*,
+                  const ast::decl::variable*,
                   assembly::label_memory*,
                   cv_type);
 };
 
-struct function : public symbol<ast::declaration::function> {
+struct function : public symbol<ast::decl::function> {
   std::string identifier;
   linkage_t linkage;
   cv_type return_type;
   bool inlined;
-  function(const ast::declaration::function*,
+  function(const ast::decl::function*,
            address_t,
            std::string,
            linkage_t,
@@ -174,7 +174,7 @@ public:
 
   static mangled_name free_unary_operator(const operator_t&, cstring);
   static mangled_name free_binary_operator(const operator_t&, cstring, cstring);
-  static mangled_name free_function(const ast::declaration::function*);
+  static mangled_name free_function(const ast::decl::function*);
   static mangled_name builtin_function(value_type, const std::vector<cv_type>&);
   static std::string types(const std::vector<cv_type>&);
 
@@ -225,8 +225,8 @@ struct builtin_function : public function {
 struct user_function : public function {
   using body_t = ast::compound*;
   body_t body;
-  ast::declaration::function::parameters_t parameters;
-  user_function(const ast::declaration::function*,
+  ast::decl::function::parameters_t parameters;
+  user_function(const ast::decl::function*,
                 address_t,
                 linkage_t,
                 cv_type,
@@ -276,7 +276,7 @@ public:
                                   const std::vector<cv_type>&,
                                   const builtin_function::descriptor_t&,
                                   bool = false);
-  const function* emplace_user_provided(const ast::declaration::function*,
+  const function* emplace_user_provided(const ast::decl::function*,
                                         bool = false);
   void clear();
 
@@ -328,13 +328,13 @@ struct scope {
 };
 
 struct global_scope : public scope, public identifiable_parent<global_scope> {
-  operand* emplace_static(const ast::declaration::variable*);
+  operand* emplace_static(const ast::decl::variable*);
 };
 
 struct local_scope : public scope,
                      public identifiable_child<local_scope, frame> {
-  operand* emplace_argument(const ast::declaration::variable*, assembly::reg*);
-  operand* emplace_automatic(const ast::declaration::variable*);
+  operand* emplace_argument(const ast::decl::variable*, assembly::reg*);
+  operand* emplace_automatic(const ast::decl::variable*);
   cref<frame> frame_ref;
   cref<ast::compound> compound;
   local_scope(const frame&, const ast::compound&);
@@ -367,11 +367,11 @@ struct symbol_table : public cmm::formattable {
   const variable* get_variable(const ast::term::identifier&) const;
   const function* get_function(const mangled_name&) const;
   const function* get_function(const ast::term::identifier&) const;
-  void declare_function(const ast::declaration::function*, bool = false);
+  void declare_function(const ast::decl::function*, bool = false);
 
   bool is_entry_point_defined() const noexcept;
   user_function* get_entry_point();
-  void link_entry_point(const ast::declaration::function*);
+  void link_entry_point(const ast::decl::function*);
   [[nodiscard]] bool is_global_scope() const noexcept;
   bool in_main() const noexcept;
 
@@ -459,8 +459,8 @@ private:
 public:
   [[nodiscard]] std::string current_line() const;
 
-  const variable* declare_variable(const ast::declaration::variable&, operand*);
-  void declare_label(const ast::declaration::label&);
+  const variable* declare_variable(const ast::decl::variable&, operand*);
+  void declare_label(const ast::decl::label&);
   [[nodiscard]] operand* get_variable_address(
       const ast::term::identifier&) const;
   void save_variable(const variable*, operand*);

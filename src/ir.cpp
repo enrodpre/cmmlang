@@ -13,7 +13,7 @@
 namespace cmm::ir {
 
 namespace {
-  linkage_t parse_linkage(const ast::declaration::specifiers& specs) {
+  linkage_t parse_linkage(const ast::decl::specifiers& specs) {
     if (auto static_ = std::ranges::find_if(
             specs.data(),
             [](auto* spec) { return spec->type == token_t::static_; });
@@ -23,7 +23,7 @@ namespace {
     return linkage_t::normal;
   }
 
-  storage_t parse_storage(const ast::declaration::specifiers& specs) {
+  storage_t parse_storage(const ast::decl::specifiers& specs) {
     auto storages = specs.data() |
                     std::views::filter([](const ast::term::specifier* spec) {
                       return spec->type.is_storage();
@@ -39,7 +39,7 @@ namespace {
     throw incompatible_token(
         storages[1]->loc, storages[1]->format(), storages[0]->format());
   }
-  cv_type parse_type(const ast::declaration::specifiers& specs) {
+  cv_type parse_type(const ast::decl::specifiers& specs) {
     bool const_    = false;
     bool volatile_ = false;
     bool unsigned_ = false;
@@ -100,17 +100,17 @@ mangled_name mangled_name::builtin_function(std::string name,
   return std::format("{}_{}", name, types(t));
 }
 
-label::label(const ast::declaration::label* label_, address_t addr)
+label::label(const ast::decl::label* label_, address_t addr)
     : symbol(label_, addr) {}
 
 [[nodiscard]] std::string label::format() const {
-  return std::format("label({})", declaration->term);
+  return std::format("label({})", decl->term);
 }
 
 static_assert(std::formattable<ast::term::identifier, char>);
 
 variable::variable(scope& scope,
-                   const ast::declaration::variable* p,
+                   const ast::decl::variable* p,
                    address_t addr,
                    linkage_t l,
                    storage_t s,
@@ -122,7 +122,7 @@ variable::variable(scope& scope,
       scope_ref(scope) {}
 
 global_variable::global_variable(scope& scope,
-                                 const ast::declaration::variable* decl,
+                                 const ast::decl::variable* decl,
                                  assembly::label_memory* addr,
                                  cv_type t)
     : variable(scope,
@@ -133,21 +133,21 @@ global_variable::global_variable(scope& scope,
                t) {}
 
 local_variable::local_variable(local_scope& scope,
-                               const ast::declaration::variable* decl,
+                               const ast::decl::variable* decl,
                                operand* addr,
                                storage_t s,
                                cv_type t)
     : variable(scope, decl, addr, linkage_t::normal, s, t) {}
 
 auto_local_variable::auto_local_variable(local_scope& scope,
-                                         const ast::declaration::variable* decl,
+                                         const ast::decl::variable* decl,
                                          assembly::reg_memory* r,
                                          storage_t s,
                                          cv_type t)
     : local_variable(scope, decl, r, s, t) {}
 
 arg_local_variable::arg_local_variable(local_scope& scope,
-                                       const ast::declaration::variable* decl,
+                                       const ast::decl::variable* decl,
                                        assembly::reg* r,
                                        storage_t s,
                                        cv_type t)
@@ -155,13 +155,13 @@ arg_local_variable::arg_local_variable(local_scope& scope,
 
 [[nodiscard]] std::string variable::format() const {
   return std::format("var({}, {}, {}, {})",
-                     declaration->ident->value,
+                     decl->ident->value,
                      linkage,
                      storage,
                      type->format());
 }
 
-function::function(const ast::declaration::function* decl,
+function::function(const ast::decl::function* decl,
                    address_t addr,
                    std::string id,
                    linkage_t link,
@@ -198,7 +198,7 @@ operand* builtin_function::run(compilation_unit& ctx,
   return descriptor.postprocess(ctx, res);
 }
 
-user_function::user_function(const ast::declaration::function* decl,
+user_function::user_function(const ast::decl::function* decl,
                              address_t addr,
                              linkage_t link,
                              cv_type t,
@@ -209,11 +209,11 @@ user_function::user_function(const ast::declaration::function* decl,
 
 operand* user_function::run(compilation_unit& ctx,
                             ast::expr::call::arguments args) const {
-  REGISTER_TRACE("Calling {}", declaration->ident);
+  REGISTER_TRACE("Calling {}", decl->ident);
 
   // Load parameters
   auto prepared_args =
-      std::views::zip(declaration->parameters, args) | std::views::enumerate |
+      std::views::zip(decl->parameters, args) | std::views::enumerate |
       std::views::transform(
           [this, &ctx](const auto& enumerated_pair) -> operand* {
             const auto& [i, pair]         = enumerated_pair;
@@ -230,7 +230,7 @@ operand* user_function::run(compilation_unit& ctx,
             }
 
             if (actual_expr == nullptr) {
-              throw bad_function_call(declaration->loc, declaration->ident);
+              throw bad_function_call(decl->loc, decl->ident);
             }
 
             const auto* expr_type = ctx.get_expression_type(*actual_expr);
@@ -251,10 +251,10 @@ operand* user_function::run(compilation_unit& ctx,
 user_function::address_t user_function::run(compilation_unit& ctx,
                                             std::vector<operand*> ops) const {
 
-  ctx.table.push_frame(declaration->ident);
+  ctx.table.push_frame(decl->ident);
 
   for (const auto& [param, op] :
-       std::views::zip(declaration->parameters, ops)) {
+       std::views::zip(decl->parameters, ops)) {
     ctx.table.active_frame().active_scope().emplace_argument(
         param, dynamic_cast<reg*>(op));
   }
@@ -262,7 +262,7 @@ user_function::address_t user_function::run(compilation_unit& ctx,
   if (!inlined) {
     // The rsp stored in the stack
     ctx.table.active_frame().local_stack.push();
-    ctx.call(declaration->ident.value);
+    ctx.call(decl->ident.value);
     ctx.asmgen.create_delay();
   }
 
@@ -270,7 +270,7 @@ user_function::address_t user_function::run(compilation_unit& ctx,
 
   if (!inlined) {
     auto code = ctx.asmgen.dump_delayed();
-    ctx.asmgen.register_labeled_code_block(declaration->ident.value,
+    ctx.asmgen.register_labeled_code_block(decl->ident.value,
                                            std::move(code));
   }
 
@@ -288,7 +288,7 @@ bool user_function::is_defined() const {
   return body != nullptr;
 }
 
-using parameters_t = ast::declaration::function::parameters_t;
+using parameters_t = ast::decl::function::parameters_t;
 using arguments_t  = ast::expr::call::arguments;
 
 function_store::function_store()
@@ -344,7 +344,7 @@ mangled_name mangled_name::free_binary_operator(const operator_t& op,
   return os.str();
 }
 
-mangled_name mangled_name::free_function(const ast::declaration::function* fn) {
+mangled_name mangled_name::free_function(const ast::decl::function* fn) {
   if (fn->parameters.empty()) {
     return mangled_name{fn->ident.value};
   }
@@ -385,7 +385,7 @@ void var_store::clear() {
   m_store.clear();
 }
 
-operand* local_scope::emplace_argument(const ast::declaration::variable* decl,
+operand* local_scope::emplace_argument(const ast::decl::variable* decl,
                                        reg* r) {
   auto var = variables.emplace<local_variable>(decl->ident->value,
                                                *this,
@@ -398,7 +398,7 @@ operand* local_scope::emplace_argument(const ast::declaration::variable* decl,
 }
 
 operand* local_scope::emplace_automatic(
-    const ast::declaration::variable* decl) {
+    const ast::decl::variable* decl) {
   auto* addr = operand_factory::instance().create<stack_memory>(
       frame_ref.get().local_stack.size() + 1);
   auto var = variables.emplace<local_variable>(decl->ident->value,
@@ -411,7 +411,7 @@ operand* local_scope::emplace_automatic(
   return addr;
 }
 
-operand* global_scope::emplace_static(const ast::declaration::variable* decl) {
+operand* global_scope::emplace_static(const ast::decl::variable* decl) {
   auto* addr = operand_factory::instance().create<label_memory>(decl->label());
   auto var   = variables.emplace<global_variable>(
       decl->ident->value, *this, decl, addr, parse_type(decl->specifiers));
@@ -454,7 +454,7 @@ const function* fn_store::emplace_builtin(
   return m_store.emplace(mang_str, std::move(ptr)).first->second.get();
 }
 const function* fn_store::emplace_user_provided(
-    const ast::declaration::function* decl,
+    const ast::decl::function* decl,
     bool inline_) {
   auto mang = mangled_name::free_function(decl);
   return m_store
@@ -626,7 +626,7 @@ const function* symbol_table::get_function(id ident) const {
 
   return candidates[0];
 }
-void symbol_table::declare_function(const ast::declaration::function* func,
+void symbol_table::declare_function(const ast::decl::function* func,
                                     bool inline_) {
   REGISTER_TRACE("Creating func {}", func->ident);
   if (m_functions.contains(mangled_name::free_function(func))) {
@@ -640,7 +640,7 @@ user_function* symbol_table::get_entry_point() {
   return m_entry_point.get();
 }
 
-void symbol_table::link_entry_point(const ast::declaration::function* fn) {
+void symbol_table::link_entry_point(const ast::decl::function* fn) {
   if (!is_entry_point_defined()) {
     m_entry_point = std::make_unique<user_function>(
         fn,
@@ -658,7 +658,7 @@ bool symbol_table::is_global_scope() const noexcept {
 }
 
 bool symbol_table::in_main() const noexcept {
-  return m_stackframe.top().func.get().declaration->ident.value == "main";
+  return m_stackframe.top().func.get().decl->ident.value == "main";
 }
 
 operand* compilation_unit::call_builtin(
@@ -687,7 +687,7 @@ std::string compilation_unit::current_line() const {
 }
 
 const variable* compilation_unit::declare_variable(
-    const ast::declaration::variable& decl,
+    const ast::decl::variable& decl,
     operand* init) {
   if (table.is_declarable<variable>(*decl.ident)) {
     throw already_declared_symbol(decl.ident->loc, decl);
@@ -719,7 +719,7 @@ void compilation_unit::save_variable(const variable* var, operand* r) {
   asmgen.write_instruction(_instruction_t::mov, var->addr->value(), r->value());
 }
 
-void compilation_unit::declare_label(const ast::declaration::label& l) {
+void compilation_unit::declare_label(const ast::decl::label& l) {
   if (table.is_global_scope()) {
     throw label_in_global(l.term.loc, l.term.value);
   }

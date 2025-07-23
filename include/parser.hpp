@@ -45,18 +45,19 @@ public:
   parser& operator=(parser&&)      = delete;
 
   ast::program parse();
+  ast::program parse_program();
   ast::statement* parse_statement();
-  template <bool InScope>
   ast::compound& parse_compound();
   ast::statement* parse_if();
   ast::statement* parse_goto();
   ast::statement* parse_label();
   ast::statement* parse_while();
   ast::statement* parse_for();
-  ast::declaration::variable& parse_variable(ast::declaration::specifiers,
-                                             const ast::term::identifier*);
-  ast::statement* parse_function(ast::declaration::specifiers,
-                                 const ast::term::identifier&);
+  ast::decl::global_declaration* parse_declaration();
+  ast::decl::variable& parse_variable(ast::decl::specifiers,
+                                      const ast::term::identifier*);
+  ast::decl::function* parse_function(ast::decl::specifiers,
+                                      const ast::term::identifier&);
 
   // EXPRESSIONS
   ast::expr::expression* parse_primary();
@@ -66,12 +67,13 @@ public:
   ast::expr::expression* parse_expr(uint8_t = 0);
 
   // Terms
-  ast::declaration::specifiers parse_specifiers();
+  ast::decl::specifiers parse_specifiers();
   ast::term::identifier& parse_identifier();
 
 private:
   tokens m_tokens;
   memory::Allocator m_arena;
+  ast::program m_global;
   cmm::stack<ast::compound> m_compound;
 
   ast::expr::expression* parse_lhs_expr();

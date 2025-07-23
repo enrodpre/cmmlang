@@ -76,7 +76,7 @@ struct CheckersTestData {
 /**/
 /*   EXPECT_EQ(vars.Size(), 0); */
 /**/
-/*   vars.declarationare("undefined", {specs}); */
+/*   vars.declare("undefined", {specs}); */
 /**/
 /*   EXPECT_EQ(vars.Size(), 1); */
 /**/
@@ -88,9 +88,9 @@ struct CheckersTestData {
 /*   size_t x  = 1; */
 /**/
 /*   size_t bv = 12, cv = 35; */
-/*   vars.declarationare(std::string("a"), {specs, x}); */
-/*   vars.declarationare("b", {specs, bv}); */
-/*   vars.declarationare("c", {specs, cv}); */
+/*   vars.declare(std::string("a"), {specs, x}); */
+/*   vars.declare("b", {specs, bv}); */
+/*   vars.declare("c", {specs, cv}); */
 /**/
 /*   auto [id, v] = vars.Get("c"); */
 /*   EXPECT_EQ(v, 35); */
@@ -107,13 +107,13 @@ struct CheckersTestData {
 /**/
 /*   vars.Pop(); */
 /*   EXPECT_EQ(vars.Size(), 3); */
-/*   EXPECT_THROW(vars.declarationare("b", {specs}),
- * cmm:exceptionAlreadydeclarationared);
+/*   EXPECT_THROW(vars.declare("b", {specs}),
+ * cmm:exceptionAlreadydeclared);
  */
 /*   vars.Pop(); */
 /*   EXPECT_EQ(vars.Size(), 2); */
 /**/
-/*   vars.declarationare("aad", {specs}); */
+/*   vars.declare("aad", {specs}); */
 /*   EXPECT_THROW(vars.Check({.ident = "aad", .declared = true, .init = true}),
  */
 /*                cmm:exceptionundefined_symbol); */

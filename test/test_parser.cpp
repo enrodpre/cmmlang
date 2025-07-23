@@ -110,10 +110,10 @@ TEST_F(ParserTest, Call) {
   check_literal(*arg2, "12");
 }
 
-TEST_F(ParserTest, Vardeclaration) {
+TEST_F(ParserTest, Vardecl) {
   auto parser   = prepare_parser({int_t, ident, assign, lit, semi});
   auto elements = parser->parse();
-  auto vardecl  = unfold<declaration::variable>(elements);
+  auto vardecl  = unfold<decl::variable>(elements);
 
   // EXPECT_EQ(vardecl->specs.type, cmm::Specifier::int_t);
   EXPECT_EQ(vardecl.ident->value, "var");

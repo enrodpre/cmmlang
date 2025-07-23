@@ -95,7 +95,7 @@ operand* ast_traverser::call_function(const ast::term::identifier& id,
                                       expr::call::arguments args) {
 
   const function* func = m_context.table.get_function(id);
-  const auto& term     = func->declaration->ident;
+  const auto& term     = func->decl->ident;
   DEBUG_ASSERT(id.value == term.value);
   ASSERT(func->is_defined(), id.value);
   return func->run(m_context, std::move(args));
@@ -253,7 +253,7 @@ void statement_visitor::visit(const compound& scope) {
   gen->end_scope();
 }
 
-void statement_visitor::visit(const declaration::variable& vardecl) {
+void statement_visitor::visit(const decl::variable& vardecl) {
   auto b = gen->m_context.asmgen.begin_comment_block("init variable {}",
                                                      vardecl.ident->value);
   const auto* ident = vardecl.ident;
@@ -268,7 +268,7 @@ void statement_visitor::visit(const declaration::variable& vardecl) {
 
   gen->m_context.declare_variable(vardecl, reg_);
 }
-void statement_visitor::visit(const declaration::label& label_) {
+void statement_visitor::visit(const decl::label& label_) {
   if (gen->m_context.table.is_declared<label>(label_.term)) {
     throw already_declared_symbol(label_.term.loc, label_.term.value);
   }
@@ -282,7 +282,7 @@ void statement_visitor::visit(const declaration::label& label_) {
   }
 }
 
-void statement_visitor::visit(const declaration::function& func) {
+void statement_visitor::visit(const decl::function& func) {
   if (gen->m_context.table.is_declared<function>(func.ident)) {
     throw already_declared_symbol(func.ident.loc, func.ident.value);
   }

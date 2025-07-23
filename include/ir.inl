@@ -12,7 +12,7 @@ namespace cmm::ir {
 static_assert(std::formattable<const instruction_t&, char>);
 template <typename Decl>
 symbol<Decl>::symbol(const Decl* decl, address_t addr)
-    : declaration(decl),
+    : decl(decl),
       addr(addr) {}
 
 template <typename T, typename... Args>

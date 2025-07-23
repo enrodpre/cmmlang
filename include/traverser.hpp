@@ -65,6 +65,10 @@ private:
   friend expression_visitor;
 };
 
+struct global_visitor : public revisited::Visitor<GLOBAL_DECL_TYPES> {
+  void visit(const ast::decl::variable&) override;
+  void visit(const ast::decl::function&) override;
+};
 struct expression_visitor : public revisited::Visitor<EXPRESSION_TYPES> {
   ast_traverser* gen;
   operand* in;
@@ -84,9 +88,9 @@ struct statement_visitor : public revisited::Visitor<STATEMENT_TYPES> {
   statement_visitor(ast_traverser*);
 
   void visit(const ast::compound& scope) override;
-  void visit(const ast::declaration::variable& vardecl) override;
-  void visit(const ast::declaration::label& label_) override;
-  void visit(const ast::declaration::function& func) override;
+  void visit(const ast::decl::variable& vardecl) override;
+  void visit(const ast::decl::label& label_) override;
+  void visit(const ast::decl::function& func) override;
   void visit(const ast::iteration::for_& for_) override;
   void visit(const ast::iteration::while_& while_) override;
   void visit(const ast::selection::if_& if_) override;
