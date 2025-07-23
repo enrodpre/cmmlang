@@ -2,7 +2,6 @@
 
 #include "common.hpp"
 #include "fs.hpp"
-#include "strings.hpp"
 #include <cpptrace.hpp>
 
 namespace cmm {
@@ -20,7 +19,7 @@ public:
   ~compiler()                          = default;
 
   static void preprocess(const std::string& = "");
-  fs::ofile compile(const strings::source_code&);
+  fs::ofile compile(const source_code&);
   static fs::ofile assemble(fs::ofile& file);
   static fs::ofile link(fs::ofile& file);
   fs::ofile run();
@@ -31,7 +30,7 @@ public:
   static void throw_linking_error(const std::string&);
 
 private:
-  strings::source_code m_source_code;
+  source_code m_source_code;
   config m_config;
   cstring m_output_filename;
 };

@@ -6,9 +6,44 @@
 
 namespace cmm {
 
-formattable::operator std::string() const {
-  return format();
-}
+namespace log {
+  template <typename T>
+  constexpr std::string apply(T&& t, style_t s) {
+    std::string pre;
+    switch (s) {
+      case style_t::HEADER:
+        pre = "\033[40;1;35m";
+        break;
+      case style_t::BOLD:
+        pre = "\033[1;33m";
+        break;
+      case style_t::ERROR:
+        pre = "\033[1;38;2;205;92;92m";
+        break;
+      case style_t::RED:
+        pre = "\e[0;31m";
+        break;
+      case style_t::MAGENTA:
+        pre = "\e[0;35m";
+        break;
+      case style_t::YELLOW:
+        pre = "\e[0;33m";
+        break;
+      case style_t::GREEN:
+        pre = "\e[0;32m";
+        break;
+      case style_t::WHITE:
+        pre = "\e[0;37m";
+        break;
+      case style_t::WHITE_SMOKE:
+      case style_t::DARK_RED:
+      case style_t::NORMAL:
+        return t;
+    };
+
+    return std::format("{}{}{}", pre, t, "\033[0m");
+  }
+} // namespace log
 
 template <std::ranges::range T>
 formattable_range<T>::formattable_range(T* t)
@@ -28,7 +63,7 @@ template <class Delim>
 template <std::ranges::range T>
 auto formattable_range<T>::element_merger() const {
   if constexpr (ScalarLike<T>) {
-    return std::identity();
+    return [](const auto& el) { return el.format(); };
   } else if constexpr (PairLike<T>) {
     return [](const auto& pair) {
       return std::format("{}, {}", pair.first, pair.second);
@@ -133,9 +168,9 @@ To enumeration<From>::cast() const {
       return to.value();
     }
 
-    spdlog::error("Shouldnt cast {} to {} if it is not castable",
-                  name(),
-                  To::type_name());
+    REGISTER_ERROR("Shouldnt cast {} to {} if it is not castable",
+                   name(),
+                   To::type_name());
     assert(false);
   } else {
     if (auto to =
@@ -143,9 +178,9 @@ To enumeration<From>::cast() const {
       return to.value();
     }
 
-    spdlog::error("Shouldnt cast {} to {} if it is not castable",
-                  name(),
-                  magic_enum::enum_type_name<To>());
+    REGISTER_ERROR("Shouldnt cast {} to {} if it is not castable",
+                   name(),
+                   magic_enum::enum_type_name<To>());
     assert(false);
   }
 }

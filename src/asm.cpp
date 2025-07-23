@@ -211,7 +211,7 @@ std::string asmgen::end() {
     text = std::format("{}\n\n{}:\n  {}", text, fn.first, fn.second);
   }
 
-  strings::string_buffer res;
+  string_buffer res;
   if (!m_sections.bss.empty()) {
     res << "section .bss\n";
     for (const auto& line : m_sections.bss) {

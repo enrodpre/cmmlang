@@ -3,7 +3,6 @@
 #include "asm.hpp"
 #include "ir.hpp"
 #include "lang.hpp"
-#include "spdlog/spdlog.h"
 #include <libassert/assert.hpp>
 #include <tuple>
 #include <utility>
@@ -20,10 +19,9 @@ template <typename T, typename... Args>
   requires std::is_constructible_v<T, Args...>
 const variable_store::value_type& variable_store::emplace(key_type k,
                                                           Args&&... args) {
-  return m_store.emplace<T>(
-      std::piecewise_construct,
-      std::forward_as_tuple(k),
-      std::forward_as_tuple<Args...>(std::forward<Args>(args)...));
+  const auto& [it, ok] =
+      m_store.emplace(std::make_pair(k, T(std::forward<Args>(args)...)));
+  return it->second;
 }
 
 template <typename T>
@@ -69,7 +67,7 @@ void compilation_unit::instruction(const instruction_t& ins, Args&&... args) {
     if (!instruction_t(ins).can_address_memory) {
       // Use an aux register to load the value and then put it back onto the
       // address
-      spdlog::warn("{} cannot address memory", ins);
+      REGISTER_WARN("{} cannot address memory", ins.format());
       static_assert(std::formattable<cmm::instruction_t, char>);
       if (!op->empty() && op->content()->attribute ==
                               operand::symbol_container::symbol_attr::ADDRESS) {

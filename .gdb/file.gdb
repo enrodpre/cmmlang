@@ -1,1 +1,1 @@
-set args examples/scope.cmm
+set args examples/binop.cmm

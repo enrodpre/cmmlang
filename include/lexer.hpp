@@ -1,6 +1,5 @@
 #pragma once
 
-#include "strings.hpp"
 #include "token.hpp"
 
 namespace cmm {
@@ -15,7 +14,7 @@ public:
   [[nodiscard]] tokens tokenize();
 
 private:
-  tokens m_tokens;
+  std::vector<token> m_tokens;
   cmm::cstring m_src;
   size_t m_pointer;
   size_t m_row;

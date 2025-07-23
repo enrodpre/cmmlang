@@ -74,9 +74,4 @@ constexpr const token_t::properties_map& token_t::properties_array() {
   return MAP;
 }
 
-template <typename... Args>
-  requires std::is_constructible_v<token, Args...>
-void tokens::emplace_back(Args&&... args) {
-  m_tokens.emplace_back<token>(std::forward<Args>(args)...);
-}
 } // namespace cmm

@@ -26,6 +26,7 @@ enum class memloc : uint8_t {
 
 template <typename T, typename... Ts>
 concept IsAnyType = (std::is_same_v<T, Ts> || ...);
+
 namespace intents {
   enum class address_intent_t : uint8_t {
     HAVING_VALUE = 0,
@@ -426,7 +427,7 @@ namespace builtin::function {
 
 class compilation_unit : public singleton<compilation_unit> {
 public:
-  compilation_unit(const ast::program* p, const strings::source_code&);
+  compilation_unit(const ast::program* p, const source_code&);
 
   ast_traverser runner;
   std::string compile(ast::program&);
@@ -447,7 +448,7 @@ public:
   symbol_table table;
   location src_location;
   cmm::ast::statement* current_statement{};
-  const strings::source_code& source_code;
+  const source_code& source;
   assembly::registers regs;
 
   cmm::assembly::asmgen asmgen;

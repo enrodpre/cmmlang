@@ -32,7 +32,6 @@ set(CMAKE_CXX_FLAGS_DEBUG
 file(GLOB_RECURSE sources CONFIGURE_DEPENDS
      "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 
-find_package(spdlog REQUIRED)
 find_package(magic_enum REQUIRED)
 find_package(cpptrace REQUIRED)
 find_package(libassert REQUIRED)
@@ -54,7 +53,7 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
 
 target_link_libraries(
   ${PROJECT_NAME} PUBLIC magic_enum::magic_enum cpptrace::cpptrace
-                         libassert::assert Revisited spdlog::spdlog $<$<BOOL:${MINGW}>:ws2_32>)
+                         libassert::assert Revisited $<$<BOOL:${MINGW}>:ws2_32>)
 target_include_directories(
   ${PROJECT_NAME}
   PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

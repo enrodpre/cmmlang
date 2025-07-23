@@ -4,6 +4,14 @@
 #include "lang.hpp"
 #include <ranges>
 
+#define TYPE_FORMAT_IMPL(TYPE, stdstr, ...) \
+  constexpr std::string TYPE::format() const { \
+    return std::format(stdstr, \
+                       std::format("{}{}", \
+                                   base_type::const_ ? "const " : "", \
+                                   base_type::volatile_ ? "volatile " : ""), \
+                       ##__VA_ARGS__); \
+  }
 #define CALL(op) op<T>(const_, volatile_, std::forward<Args>(args)...)
 #define HASH()   std::hash<T>{}(const_, volatile_, std::forward<Args>(args)...)
 #ifdef TYPE_MAP_STORAGE
@@ -154,6 +162,26 @@ operator_t::properties_array() {
 }
 
 namespace types {
+
+  constexpr bool base_type::operator==(const base_type& other) const {
+    return typeid(*this) == typeid(other);
+  }
+
+  constexpr bool indirection_t::operator==(const indirection_t& other) const {
+    return typeid(*this) == typeid(other) &&
+           typeid(type_) == typeid(other.type_);
+  }
+
+  TYPE_FORMAT_IMPL(bool_t, "{}bool")
+  TYPE_FORMAT_IMPL(char_t, "{}char")
+  TYPE_FORMAT_IMPL(sint_t, "{}int")
+  TYPE_FORMAT_IMPL(uint_t, "{}unsigned int")
+  TYPE_FORMAT_IMPL(float_t, "{}float")
+  TYPE_FORMAT_IMPL(lvalue_ref_t, "{}{}&", type_->format())
+  TYPE_FORMAT_IMPL(rvalue_ref_t, "{}{}&&", type_->format())
+  TYPE_FORMAT_IMPL(pointer_t, "{}{}*", type_->format())
+  TYPE_FORMAT_IMPL(array_t, "{}array<{}>", length)
+  TYPE_FORMAT_IMPL(function_t, "{}function<{}()>", return_t->format())
 
   template <typename T, typename... Args>
   cv_type store::get_type(Args&&... args) {

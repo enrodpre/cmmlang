@@ -11,7 +11,7 @@ FORMAT_IMPL(term::identifier, "{}", value);
 FORMAT_IMPL(term::specifier, "{}", type);
 FORMAT_IMPL(expr::identifier, "{}", term.value);
 FORMAT_IMPL(expr::literal, "{}", term.value);
-FORMAT_IMPL(expr::call, "{}({})", ident, args.join(", "));
+FORMAT_IMPL(expr::call, "{}()", ident); // args.join(", "));
 FORMAT_IMPL(expr::unary_operator,
             "Unary operator_t:\n  {}\n  {}",
             operator_,

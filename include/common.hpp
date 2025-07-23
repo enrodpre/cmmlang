@@ -1,8 +1,10 @@
 #pragma once
 
+#include "fs.hpp"
 #include "os.hpp"
 #include "traits.hpp"
 #include <bits/version.h>
+#include <cstdint>
 #include <exception>
 #include <format>
 #include <functional>
@@ -13,7 +15,6 @@
 #include <mutex>
 #include <print>
 #include <ranges>
-#include <spdlog/spdlog.h>
 #include <string>
 #include <sys/types.h>
 #include <tuple>
@@ -21,6 +22,117 @@
 #include <utility>
 #include <utils.hpp>
 
+namespace cmm {
+
+namespace log {
+  enum class style_t : uint8_t {
+    HEADER,
+    BOLD,
+    ERROR,
+    NORMAL,
+    RED,
+    MAGENTA,
+    YELLOW,
+    GREEN,
+    DARK_RED,
+    WHITE_SMOKE,
+    WHITE
+  };
+
+  template <typename T>
+  constexpr std::string apply(T&&, style_t);
+
+  enum class Level : uint8_t { NONE = 0, ERROR, WARN, INFO, DEBUG, TRACE };
+} // namespace log
+#ifndef LOG_LEVEL
+  #define LOG_LEVEL TRACE_LEVEL
+#endif
+
+#define TRACE_LEVEL 5
+#define DEBUG_LEVEL 4
+#define INFO_LEVEL  3
+#define WARN_LEVEL  2
+#define ERROR_LEVEL 1
+#define NONE_LEVEL  0
+
+#define PPCAT_NX(A, B)  A##B
+#define PPCAT_(A, B)    PPCAT_NX(A, B)
+#define STRINGIZE_NX(A) #A
+#define STRINGIZE(A)    STRINGIZE_NX(A)
+
+#define REGISTER_LOG(lvl, file, header_color, formatter_string, ...) \
+  std::print(file, \
+             "[{}:{} {}] ", \
+             __FILE_NAME__, \
+             __LINE__, \
+             log::apply(lvl, header_color)); \
+  std::println(file, formatter_string, ##__VA_ARGS__)
+
+#if LOG_LEVEL >= ERROR_LEVEL
+  #define REGISTER_ERROR(std_string, ...) \
+    REGISTER_LOG(STRINGIZE_NX(ERROR), \
+                 stderr, \
+                 log::style_t::RED, \
+                 std_string, \
+                 ##__VA_ARGS__)
+#else
+  #define REGISTER_ERROR(std_string, ...)
+#endif
+
+#if LOG_LEVEL >= WARN_LEVEL
+  #define REGISTER_WARN(std_string, ...) \
+    REGISTER_LOG(STRINGIZE_NX(WARN), \
+                 stdout, \
+                 log::style_t::MAGENTA, \
+                 std_string, \
+                 ##__VA_ARGS__)
+#else
+  #define REGISTER_WARN(std_string, ...)
+#endif
+
+#if LOG_LEVEL >= INFO_LEVEL
+  #define REGISTER_INFO(std_string, ...) \
+    REGISTER_LOG(STRINGIZE_NX(INFO), \
+                 stdout, \
+                 log::style_t::GREEN, \
+                 std_string, \
+                 ##__VA_ARGS__)
+#else
+  #define REGISTER_INFO(std_string, ...)
+#endif
+
+#if LOG_LEVEL >= DEBUG_LEVEL
+  #define REGISTER_DEBUG(std_string, ...) \
+    REGISTER_LOG(STRINGIZE_NX(DEBUG), \
+                 stdout, \
+                 log::style_t::YELLOW, \
+                 std_string, \
+                 ##__VA_ARGS__)
+
+#else
+  #define REGISTER_DEBUG(std_string, ...)
+#endif
+
+#if LOG_LEVEL >= TRACE_LEVEL
+  #if DEBUG_MEMORY
+    #define MEMORY_TRACE(std_string, ...) \
+      REGISTER_LOG(STRINGIZE_NX(TRACE), \
+                   stdout, \
+                   std::color::white_smoke, \
+                   std_string, \
+                   ##__VA_ARGS__)
+  #else
+    #define MEMORY_TRACE(std_string, ...)
+  #endif
+  #define REGISTER_TRACE(std_string, ...) \
+    REGISTER_LOG(STRINGIZE_NX(TRACE), \
+                 stdout, \
+                 log::style_t::WHITE, \
+                 std_string, \
+                 ##__VA_ARGS__)
+#else
+  #define REGISTER_TRACE(std_string, ...)
+#endif
 #define CMM_UNREACHABLE(stdstr, ...) \
   UNREACHABLE(std::format(stdstr, ##__VA_ARGS__))
 #ifndef SAVE_PREPROCESSED
@@ -64,8 +176,6 @@
   NOT_COPYABLE_CLS(CLS) \
   NOT_MOVABLE_CLS(CLS)
 
-namespace cmm {
-
 constexpr static uint8_t DATASIZE      = 8;
 constexpr static uint8_t MAX_ARGUMENTS = 6;
 constexpr static uint8_t WORD_LEN      = DATASIZE; // bytes
@@ -92,12 +202,21 @@ concept FormattablePtr =
     std::is_base_of_v<cmm::formattable,
                       std::remove_cv_t<std::remove_pointer_t<T>>>;
 
+constexpr static inline auto format_func =
+    [](const auto& _formattable) -> std::string {
+  if constexpr (std::is_pointer_v<decltype(_formattable)>) {
+    return _formattable->format();
+  } else {
+    return _formattable.format();
+  }
+};
+
 template <std::ranges::range T>
 struct formattable_range {
   using value_type = std::ranges::range_value_t<T>;
 
   formattable_range(T*);
-  static_assert(std::formattable<std::ranges::range_value_t<T>, char>);
+  // static_assert(std::formattable<std::ranges::range_value_t<T>, char>);
 
   template <class Delim>
   [[nodiscard]] constexpr std::string join(Delim&&) const;
@@ -111,71 +230,20 @@ private:
 
 // Specialization for cmm::formattable itself
 template <cmm::Formattable T>
-struct std::formatter<T, char> {
-  template <typename Ctx>
-  constexpr auto parse(Ctx& ctx) {
-    return ctx.begin();
-  }
-
+struct std::formatter<T, char> : std::formatter<string_view> {
   template <typename Ctx>
   auto format(const T& obj, Ctx& ctx) const {
-    return std::format_to(ctx.out(), "{}", obj.format());
+    return std::formatter<string_view>::format(obj.format(), ctx);
   }
 };
 
 template <cmm::Formattable T>
-struct std::formatter<T*, char> {
-  template <typename Ctx>
-  constexpr auto parse(Ctx& ctx) {
-    return ctx.begin();
-  }
+struct std::formatter<T*, char> : std::formatter<string_view> {
   template <typename Ctx>
   auto format(const T* obj, Ctx& ctx) const {
-    return std::format_to(ctx.out(), "{}", obj->format());
+    return std::formatter<string_view>::format(obj->format(), ctx);
   }
 };
-
-// template <typename T>
-// concept FormattableSmartPtr =
-//     cmm::Formattable<T> &&
-//     (std::is_same_v<std::unique_ptr<T>, std::remove_cv_t<T>> ||
-//      std::is_same_v<std::shared_ptr<T>, std::remove_cv_t<T>>);
-//
-// template <FormattableSmartPtr T>
-// struct std::formatter<T, char> {
-//   template <typename Ctx>
-//   constexpr auto parse(Ctx& ctx) {
-//     return ctx.begin();
-//   }
-//   template <typename Ctx>
-//   auto format(const T& obj, Ctx& ctx) const {
-//     return std::format_to(ctx.out(), "{}", obj->format());
-//   }
-// };
-
-// template <typename T>
-//   requires(std::is_same_v<T, std::unique_ptr<typename T::element_type>> ||
-//            std::is_same_v<T, std::shared_ptr<typename T::element_type>>)
-//
-// struct std::formatter<T, char> : std::formatter<string_view> {
-//
-//   template <typename Ctx>
-//   auto format(const std::shared_ptr<T>& formattablePtr, Ctx& ctx) const {
-//     if (formattablePtr) {
-//       return std::formatter<string_view>::format(formattablePtr->format(),
-//       ctx);
-//     }
-//     return std::formatter<string_view>::format("nullptr", ctx);
-//   }
-//   template <typename Ctx>
-//   auto format(const std::unique_ptr<T>& formattablePtr, Ctx& ctx) const {
-//     if (formattablePtr) {
-//       return std::formatter<string_view>::format(formattablePtr->format(),
-//       ctx);
-//     }
-//     return std::formatter<string_view>::format("nullptr", ctx);
-//   }
-// };
 
 namespace cmm {
 template <typename T>
@@ -658,7 +726,7 @@ static_assert(cmm::Formattable<const range>);
 static_assert(cmm::Formattable<const range&>);
 static_assert(std::formattable<const range&, char>);
 static_assert(std::formattable<range, char>);
-static_assert(std::formattable<range*, char>);
+// static_assert(std::formattable<range*, char>);
 // static_assert(std::formattable<std::unique_ptr<range>, char>);
 // static_assert(std::formattable<std::shared_ptr<range>, char>);
 
@@ -853,6 +921,81 @@ struct config {
         dump_memory(dump_memory) {}
 };
 
+class source_code {
+public:
+  source_code(const fs::ifile&);
+
+  [[nodiscard]] const std::string& get_code() const;
+  [[nodiscard]] const std::string& get_filename() const;
+  [[nodiscard]] bool is_valid(const location&) const;
+  [[nodiscard]] std::string get_line(size_t) const;
+  [[nodiscard]] std::string get_chunk(const location&) const;
+  [[nodiscard]] std::tuple<std::string, std::string, std::string>
+  get_line_chunked(const location&) const;
+
+private:
+  std::string m_code;
+  std::string m_filename;
+};
+
+class string_buffer {
+public:
+  using buffer_type                                  = std::stringstream;
+  using reference_type                               = buffer_type&;
+  using constant_type                                = const buffer_type;
+
+  string_buffer(string_buffer&&) noexcept            = default;
+  string_buffer& operator=(string_buffer&&) noexcept = default;
+  virtual ~string_buffer()                           = default;
+  string_buffer(const string_buffer&)                = delete;
+  string_buffer& operator=(const string_buffer&)     = delete;
+
+  string_buffer();
+  string_buffer& operator<<(string_buffer&);
+  string_buffer& operator<<(const std::string&);
+
+  // Main generators
+  template <size_t, typename... Args>
+  constexpr string_buffer& write(std::format_string<Args...>,
+                                 Args&&...) noexcept;
+  template <size_t>
+  constexpr string_buffer& newline() noexcept;
+
+  // For delays
+  void create();
+  void save();
+  void load();
+  std::string dump();
+  std::string flush();
+  [[nodiscard]] cstring snapshot() const noexcept;
+
+private:
+  reference_type active() noexcept;
+  [[nodiscard]] const buffer_type& active() const noexcept;
+  stack<buffer_type> m_actives;
+  stack<buffer_type> m_saved;
+};
+
+template <size_t IndentLvl = 0, typename... Args>
+constexpr string_buffer& string_buffer::write(
+    std::format_string<Args...> std_string,
+    Args&&... args) noexcept {
+  if constexpr (IndentLvl > 0) {
+    active() << std::format("{:{}}", "", IndentLvl);
+  }
+  active() << std::format(std_string, std::forward<Args>(args)...);
+  return *this;
+}
+
+template <size_t Times = 1>
+constexpr string_buffer& string_buffer::newline() noexcept {
+  active() << '\n';
+  if constexpr (Times > 1) {
+    return newline<Times - 1>();
+  } else {
+    return *this;
+  }
+}
 } // namespace cmm
 
 #include "common.inl"

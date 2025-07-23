@@ -27,8 +27,9 @@ void Allocator::report_statistics() const noexcept {
     uintptr_t end = (reg.size + reg.start);
     if (last_end != 0 && last_end != end) {
       // strings::colorizer::colorize<strings::colorizer::style_t::RED>(color);
+      // log::apply(color, log::style_t::RED);
     }
-    spdlog::debug("{}: {}, {}-{}",
+    REGISTER_DEBUG("{}: {}, {}-{}",
                    reg.node,
                    reg.size,
                    (const void*)reg.start,

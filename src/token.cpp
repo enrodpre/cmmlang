@@ -20,6 +20,11 @@ tokens::tokens()
     : formattable_range(&m_tokens),
       m_pointer() {}
 
+tokens::tokens(const std::vector<token>& toks)
+    : m_tokens(toks),
+      formattable_range(&m_tokens),
+      m_pointer(0) {}
+
 tokens::tokens(std::initializer_list<token> list)
     : formattable_range(&m_tokens),
       m_tokens(list),
@@ -72,4 +77,5 @@ tokens::const_iterator tokens::cend() const noexcept {
 void tokens::reserve(size_t n) {
   m_tokens.reserve(n);
 }
+
 } // namespace cmm

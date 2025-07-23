@@ -55,7 +55,7 @@ compound& parser::parse_compound() {
 statement* parser::parse_statement() {
   token next = m_tokens.peek();
   if (next.type == token_t::debug_ast) {
-    // spdlog::debug("{}", m_compound);
+    // REGISTER_DEBUG("{}", m_compound);
     // return emplace<debug::printobj>(next, debug::Component::ast);
   }
   if (next.type == token_t::debug_mem) {
@@ -191,7 +191,7 @@ ast::expr::expression* parser::parse_lhs_expr() {
     return emplace_expression<expr::unary_operator>(*operand, std::move(op));
   }
 
-  throw unexpected_token(token.location);
+  throw unexpected_token(token.location, token.value);
 }
 
 expr::expression* parser::parse_expr(uint8_t min_prec) {

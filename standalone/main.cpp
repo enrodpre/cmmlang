@@ -1,9 +1,7 @@
-#include "../include/compiler.hpp"
-#include "cxxopts.hpp"
-#include "messages.hpp"
-#include <algorithm>
-#include <csignal>
+#include "common.hpp"
+#include "compiler.hpp"
 #include <cstdlib>
+#include <cxxopts.hpp>
 #include <execinfo.h>
 #include <iostream>
 #include <unistd.h>
@@ -20,36 +18,42 @@ int main(int argc, char* argv[]) {
   options.add_options()("h,help", "Show help")(
       "o,out",
       "Compiled file path",
+      cxxopts::value<std::string>()->default_value(
           compiler::DEFAULT_OUTPUT_FILENAME))(
       ADD_DUMP_OPT("dump-ast", "Dump ast nodes"))(
       ADD_DUMP_OPT("dump-memory", "Dump memory statistics"))(
       ADD_DUMP_OPT("dump-state", "Dump state"))(
       "dump-tokens", "Dump tokens", cxxopts::value<bool>());
 
-  options.parse_positional(INPUT_ARG);
+  options.add_options("Positional")(
+      INPUT_ARG, "Input file", cxxopts::value<std::string>());
+  options.parse_positional({INPUT_ARG});
   auto result        = options.parse(argc, argv);
 
   auto* default_file = std::getenv("CMM_CURRENT_FILE");
 
-  if (result.count("help") > 0) {
+  if (result["help"].count() > 0) {
     std::cout << options.help() << '\n';
     return 0;
   }
 
+  std::optional<std::string> input_file;
+
   if (result[INPUT_ARG].count() > 0) {
+    input_file = result[INPUT_ARG].as<std::string>();
   } else if (default_file != nullptr) {
     input_file.emplace(default_file);
   }
 
   if (!input_file.has_value()) {
-    spdlog::error("No input file providad");
+    REGISTER_ERROR("No input file providad");
     exit(EXIT_FAILURE);
   }
 
   fs::path input_path{input_file.value()};
 
   if (!fs::exists(input_path)) {
-    spdlog::error("Input file {} does not exist", input_path);
+    REGISTER_ERROR("Input file {} does not exist", input_path.string());
     exit(EXIT_FAILURE);
   }
 
@@ -60,6 +64,10 @@ int main(int argc, char* argv[]) {
 
   config conf{dump_tokens, dump_ast, dump_state, dump_memory};
 
+  compiler compiler_instance{
+      conf,
+      input_path,
+  };
   compiler_instance.run();
 
   return EXIT_SUCCESS;

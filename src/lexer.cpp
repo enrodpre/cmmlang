@@ -98,6 +98,7 @@ void lexer::create_token(cmm::token_t&& type, size_t length) {
   m_tokens.emplace_back(std::move(type), location(m_row, 1, m_column, length));
   advance(length);
 }
+
 void lexer::create_token(cmm::token_t&& type, cmm::cstring value) {
   advance(value.length());
 
@@ -108,14 +109,14 @@ void lexer::create_token(cmm::token_t&& type, cmm::cstring value) {
 void lexer::parse_token() {
   // Debug tokens if :TOKENS
   if (peek(7) == ":TOKENS") {
-    spdlog::debug("{}", m_tokens.join(" "));
+    // REGISTER_DEBUG("{}", m_tokens.join(" "));
   }
 
   // Try first reserved words
   for (auto const& [tokenType, reserved] : multi_patterns()) {
     auto pattern       = reserved.pattern;
     size_t word_length = pattern.length();
-    // spdlog::trace("Trying to match {} with {}", peek(word_length),
+    // REGISTER_TRACE("Trying to match {} with {}", peek(word_length),
     // pattern.pattern)
     if (peek(word_length) == pattern) {
       create_token(tokenType, word_length);
@@ -136,7 +137,7 @@ void lexer::parse_token() {
     std::cmatch match;
     std::regex re("^" + pattern);
     auto next_token = peek_remaining();
-    /* spdlog::trace("Trying {}", tokenType); */
+    /* REGISTER_TRACE("Trying {}", tokenType); */
     if (std::regex_search(next_token.cbegin(), next_token.cend(), match, re)) {
       const auto* start =
           m_src.cbegin() + (cmm::cstring::difference_type)m_pointer;
@@ -152,7 +153,7 @@ void lexer::parse_token() {
   }
 
   // If nothing was matched
-  spdlog::error("Error reading token {}", peek_remaining());
+  REGISTER_ERROR("Error reading token {}", peek_remaining());
   exit(1);
 }
 } // namespace cmm

@@ -84,7 +84,7 @@ struct siblings : public DerivedVisitable<siblings<T>, node>,
   const T* find(Fn) const;
 
   [[nodiscard]] std::string format() const override {
-    // return std::format("{}", this->join(", "));
+    return ""; // std::format("{}", this->join(", "));
   }
 
   void set_parent(node* ptr) override {
@@ -223,6 +223,8 @@ namespace declaration {
 
   struct specifiers : public siblings<term::specifier*> {};
 
+  struct global_declaration : DerivedVisitable<global_declaration, statement> {
+  };
   struct label : public DerivedVisitable<label, statement> {
     // term::keyword keyword;
     term::identifier term;
@@ -231,7 +233,7 @@ namespace declaration {
   };
   static_assert(std::is_move_assignable<label>());
 
-  struct variable : public DerivedVisitable<variable, node> {
+  struct variable : public DerivedVisitable<variable, global_declaration> {
     declaration::specifiers specifiers;
     const term::identifier* ident; // Can be null, used for function parameters
     expr::expression* init;
@@ -244,7 +246,7 @@ namespace declaration {
     FORMAT_DECL_IMPL();
   };
 
-  struct function : public DerivedVisitable<function, statement> {
+  struct function : public DerivedVisitable<function, global_declaration> {
     using parameters_t = siblings<variable*>;
 
     declaration::specifiers specifiers;
@@ -357,7 +359,10 @@ namespace debug {
   };
 } // namespace debug
 
-using program = compound; // program is just a vector of elements
+using global_declaration =
+    std::variant<ast::declaration::function*, ast::declaration::variable>;
+struct program
+    : public DerivedVisitable<program, siblings<global_declaration*>> {};
 
 #define TERM_TYPES \
   const ast::term::literal&, const ast::term::identifier&, \

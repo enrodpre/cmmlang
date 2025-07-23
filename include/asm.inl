@@ -60,7 +60,7 @@ namespace {
   }
 }; // namespace
 
-registers::store_type registers::initialize_registers() {
+constexpr registers::store_type registers::initialize_registers() {
   store_type res = {create_register(0),
                     create_register(1),
                     create_register(2),

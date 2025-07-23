@@ -119,7 +119,7 @@ operand* ast_traverser::call_operator(const term::operator_& op,
       op.type, left_t->format(), right_t->format());
   const function* func = m_context.table.get_function(mangled);
   ASSERT(func->is_defined(), mangled.str());
-  return func->run(m_context, {&l, &r});
+  return func->run(m_context, ast::expr::call::arguments{&l, &r});
 }
 
 std::optional<std::tuple<std::string, std::string>>
@@ -201,7 +201,7 @@ void expression_visitor::visit(const expr::unary_operator& unary) {
   gen->m_context.last.operator_.emplace(op);
 }
 void expression_visitor::visit(const expr::literal& lit) {
-  // spdlog::debug("{}", gen->m_context.current_statement);
+  // REGISTER_DEBUG("{}", gen->m_context.current_statement);
   gen->m_context.move_immediate(in, lit.to_asm());
 }
 void expression_visitor::visit(const expr::identifier& ident) {
@@ -287,10 +287,10 @@ void statement_visitor::visit(const declaration::function& func) {
     throw already_declared_symbol(func.ident.loc, func.ident.value);
   }
 
-  spdlog::trace("Generating function {}", func.ident.value);
+  REGISTER_TRACE("Generating function {}", func.ident.value);
   if (func.ident.value == "main") {
     gen->m_context.table.link_entry_point(&func);
-    // spdlog::debug("{}", gen->m_context.table)
+    // REGISTER_DEBUG("{}", gen->m_context.table)
     // Call entry point
     gen->m_context.current_phase = Phase::EXECUTING;
     gen->m_context.table.get_entry_point()->run(gen->m_context);
@@ -394,7 +394,7 @@ void statement_visitor::visit(const jump::return_& ret) {
   operand* op = nullptr;
   if (ret.expr != nullptr) {
     op = gen->generate_expr(*ret.expr);
-    spdlog::debug("{}", op->value());
+    REGISTER_DEBUG("{}", op->value());
     // We store return value in proper register
     // but happens to be the same
     /* gen->m_context.source.move(registers::accumulator.get(),
@@ -417,10 +417,10 @@ void statement_visitor::visit(const expr::expression& expr) {
 
 void statement_visitor::visit(const debug::printobj& comp) {
   if (comp.comp == debug::Component::mem) {
-    // spdlog::debug(gen->m_context.)
+    // REGISTER_DEBUG(gen->m_context.)
   }
   if (comp.comp == debug::Component::state) {
-    // spdlog::debug("{}", gen->m_context.table);
+    // REGISTER_DEBUG("{}", gen->m_context.table);
   }
 }
 

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "common.hpp"
-#include "strings.hpp"
 #include <string>
 
 namespace cmm {

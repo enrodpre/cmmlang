@@ -2,7 +2,6 @@
 
 #include "allocator.hpp"
 #include "common.hpp"
-#include "traits.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <fmt/base.h>
@@ -12,7 +11,7 @@
 #include <type_traits>
 
 #define DEFAULT_VALUE_OVERRIDE(value) \
-  [[nodiscard]] cstring default_value() const override { \
+  [[nodiscard]] constexpr cstring default_value() const override { \
     return value; \
   }
 
@@ -179,17 +178,17 @@ namespace types {
   struct builder;
 
   struct base_type : public formattable, public hashable {
-    base_type() = default;
-    base_type(bool c, bool v)
+    constexpr base_type() = default;
+    constexpr base_type(bool c, bool v)
         : const_(c),
           volatile_(v) {}
-    bool const_                                       = false;
-    bool volatile_                                    = false;
-    [[nodiscard]] std::string format() const override = 0;
+    bool const_                                                 = false;
+    bool volatile_                                              = false;
+    [[nodiscard]] constexpr std::string format() const override = 0;
     virtual type decay() { return this; }
-    [[nodiscard]] virtual ushort size() const = 0;
+    [[nodiscard]] constexpr virtual ushort size() const = 0;
     template <typename T, typename... Types>
-    [[nodiscard]] bool is() const {
+    [[nodiscard]] constexpr bool is() const {
       // Base case: if Types... is empty, return false
       if constexpr (sizeof...(Types) == 0) {
         return dynamic_cast<const T*>(this) != nullptr;
@@ -199,112 +198,127 @@ namespace types {
       }
     }
 
-    bool operator==(const base_type& other) const;
-    [[nodiscard]] virtual cstring default_value() const = 0;
-    [[nodiscard]] bool is_const() const { return const_; }
-    [[nodiscard]] bool is_volatile() const { return volatile_; }
-    [[nodiscard]] virtual bool is_reference() const { return false; }
-    [[nodiscard]] static auto tie() { return std::tie(); };
+    constexpr bool operator==(const base_type& other) const;
+    [[nodiscard]] constexpr virtual cstring default_value() const = 0;
+    [[nodiscard]] constexpr bool is_const() const { return const_; }
+    [[nodiscard]] constexpr bool is_volatile() const { return volatile_; }
+    [[nodiscard]] constexpr virtual bool is_reference() const { return false; }
+    [[nodiscard]] constexpr static auto tie() { return std::tie(); };
   };
 
   struct fundamental_t : public base_type {
     using base_type::base_type;
-    [[nodiscard]] ushort size() const override = 0;
+    [[nodiscard]] constexpr ushort size() const override = 0;
   };
   struct void_t : public fundamental_t {
     using fundamental_t::fundamental_t;
-    [[nodiscard]] ushort size() const override { return 0; }
-    [[nodiscard]] cstring default_value() const override { PANIC(); }
-    [[nodiscard]] std::string format() const override { return "void"; }
+    [[nodiscard]] constexpr ushort size() const override { return 0; }
+    [[nodiscard]] constexpr cstring default_value() const override { PANIC(); }
+    [[nodiscard]] constexpr std::string format() const override {
+      return "void";
+    }
   };
   struct nullptr_t : public fundamental_t {
     using fundamental_t::fundamental_t;
-    [[nodiscard]] ushort size() const override { return 0; }
-    [[nodiscard]] cstring default_value() const override { PANIC(); }
-    [[nodiscard]] std::string format() const override { return "nullptr"; }
+    [[nodiscard]] constexpr ushort size() const override { return 0; }
+    [[nodiscard]] constexpr cstring default_value() const override { PANIC(); }
+    [[nodiscard]] constexpr std::string format() const override {
+      return "nullptr";
+    }
   };
   struct arithmetic_t : public fundamental_t {
     using fundamental_t::fundamental_t;
-    [[nodiscard]] ushort size() const override = 0;
+    [[nodiscard]] constexpr ushort size() const override = 0;
   };
   struct integral_t : public arithmetic_t {
     using arithmetic_t::arithmetic_t;
-    [[nodiscard]] ushort size() const override = 0;
+    [[nodiscard]] constexpr ushort size() const override = 0;
   };
   struct bool_t : public integral_t {
     using integral_t::integral_t;
 
-    [[nodiscard]] ushort size() const override { return 1; }
+    [[nodiscard]] constexpr ushort size() const override { return 1; }
     DEFAULT_VALUE_OVERRIDE("0")
-    [[nodiscard]] std::string format() const override;
-    [[nodiscard]] auto tie() const { return std::tie(const_, volatile_); };
+    [[nodiscard]] constexpr std::string format() const override;
+    [[nodiscard]] constexpr auto tie() const {
+      return std::tie(const_, volatile_);
+    };
   };
   struct char_t : public integral_t {
     using integral_t::integral_t;
-    [[nodiscard]] ushort size() const override { return 1; }
+    [[nodiscard]] constexpr ushort size() const override { return 1; }
     DEFAULT_VALUE_OVERRIDE("0")
-    [[nodiscard]] std::string format() const override;
-    [[nodiscard]] auto tie() const { return std::tie(const_, volatile_); };
+    [[nodiscard]] constexpr std::string format() const override;
+    [[nodiscard]] constexpr auto tie() const {
+      return std::tie(const_, volatile_);
+    };
   };
   struct sint_t : public integral_t {
     using integral_t::integral_t;
-    [[nodiscard]] ushort size() const override { return 4; }
+    [[nodiscard]] constexpr ushort size() const override { return 4; }
     DEFAULT_VALUE_OVERRIDE("0")
-    [[nodiscard]] std::string format() const override;
-    [[nodiscard]] auto tie() const { return std::tie(const_, volatile_); };
+    [[nodiscard]] constexpr std::string format() const override;
+    [[nodiscard]] constexpr auto tie() const {
+      return std::tie(const_, volatile_);
+    };
   };
   struct uint_t : public integral_t {
     using integral_t::integral_t;
-    [[nodiscard]] ushort size() const override { return 4; }
+    [[nodiscard]] constexpr ushort size() const override { return 4; }
     DEFAULT_VALUE_OVERRIDE("0")
-    [[nodiscard]] std::string format() const override;
-    [[nodiscard]] auto tie() const { return std::tie(const_, volatile_); };
+    [[nodiscard]] constexpr std::string format() const override;
+    [[nodiscard]] constexpr auto tie() const {
+      return std::tie(const_, volatile_);
+    };
   };
   struct float_t : public arithmetic_t {
     using arithmetic_t::arithmetic_t;
-    [[nodiscard]] ushort size() const override { return WORD_LEN; }
-    DEFAULT_VALUE_OVERRIDE("0")
-    [[nodiscard]] std::string format() const override;
-    [[nodiscard]] auto tie() const { return std::tie(const_, volatile_); };
+    [[nodiscard]] constexpr ushort size() const override { return WORD_LEN; }
+    [[nodiscard]] constexpr std::string format() const override;
+    DEFAULT_VALUE_OVERRIDE("0");
   };
 
   struct compound_t : public base_type {
     using base_type::base_type;
-    [[nodiscard]] ushort size() const override = 0;
+    [[nodiscard]] constexpr ushort size() const override = 0;
   };
   struct indirection_t : public compound_t {
     type type_;
-    indirection_t(bool c, bool v, type ptr)
+    constexpr indirection_t(bool c, bool v, type ptr)
         : compound_t(c, v),
           type_(ptr) {}
-    bool operator==(const indirection_t& other) const;
-    [[nodiscard]] ushort size() const override { return WORD_LEN; }
-    [[nodiscard]] auto tie() const {
+    constexpr bool operator==(const indirection_t& other) const;
+    [[nodiscard]] constexpr ushort size() const override { return WORD_LEN; }
+    [[nodiscard]] constexpr auto tie() const {
       return std::tie(const_, volatile_, type_);
     };
   };
   struct reference_t : public indirection_t {
     using indirection_t::indirection_t;
-    [[nodiscard]] ushort size() const override { return MEM_ADDR_LEN; }
-    type decay() override { return type_; }
-    [[nodiscard]] bool is_reference() const override { return true; }
+    [[nodiscard]] constexpr ushort size() const override {
+      return MEM_ADDR_LEN;
+    }
+    constexpr type decay() override { return type_; }
+    [[nodiscard]] constexpr bool is_reference() const override { return true; }
     DEFAULT_VALUE_OVERRIDE("0")
   };
   struct lvalue_ref_t : public reference_t {
     using reference_t::reference_t;
-    FORMAT_DECL_IMPL()
+    [[nodiscard]] constexpr std ::string format() const override;
   };
   struct rvalue_ref_t : public reference_t {
     using reference_t::reference_t;
-    FORMAT_DECL_IMPL()
+    [[nodiscard]] constexpr std ::string format() const override;
   };
   struct pointer_t : public indirection_t {
     using indirection_t::indirection_t;
-    [[nodiscard]] ushort size() const override { return MEM_ADDR_LEN; }
-    bool operator==(const pointer_t& other) const;
-    FORMAT_DECL_IMPL()
+    [[nodiscard]] constexpr ushort size() const override {
+      return MEM_ADDR_LEN;
+    }
+    constexpr bool operator==(const pointer_t& other) const;
+    [[nodiscard]] constexpr std ::string format() const override;
     DEFAULT_VALUE_OVERRIDE("0")
-    [[nodiscard]] auto tie() const {
+    [[nodiscard]] constexpr auto tie() const {
       return std::tie(const_, volatile_, type_);
     };
   };
@@ -312,15 +326,15 @@ namespace types {
     type items_t;
     unsigned short length;
 
-    array_t(bool c, bool v, type t, short l)
+    constexpr array_t(bool c, bool v, type t, short l)
         : compound_t(c, v),
           items_t(t),
           length(l) {}
-    [[nodiscard]] ushort size() const override {
+    [[nodiscard]] constexpr ushort size() const override {
       return items_t->size() * length;
     }
-    FORMAT_DECL_IMPL()
-    [[nodiscard]] auto tie() const {
+    [[nodiscard]] constexpr std ::string format() const override;
+    [[nodiscard]] constexpr auto tie() const {
       return std::tie(const_, volatile_, items_t, length);
     };
   };
@@ -330,33 +344,37 @@ namespace types {
 
     // The size would be: one pointer per parameter, one pointer for the return
     // and another for the code.
-    [[nodiscard]] ushort size() const override {
+    [[nodiscard]] constexpr ushort size() const override {
       return (parameters_t.size() + 2) * MEM_ADDR_LEN;
     }
-    FORMAT_DECL_IMPL()
-    [[nodiscard]] auto tie() const {
+    [[nodiscard]] constexpr std ::string format() const override;
+    [[nodiscard]] constexpr auto tie() const {
       return std::tie(const_, volatile_, parameters_t, return_t);
     };
   };
   struct enum_t : public compound_t {
     type underlying_t;
     enum_t();
-    [[nodiscard]] ushort size() const override = 0;
+    [[nodiscard]] constexpr ushort size() const override = 0;
     DEFAULT_VALUE_OVERRIDE("0")
-    [[nodiscard]] auto tie() const {
+    [[nodiscard]] constexpr auto tie() const {
       return std::tie(const_, volatile_, underlying_t);
     };
   };
   struct scoped_enum_t : public enum_t {
-    [[nodiscard]] ushort size() const override { return underlying_t->size(); }
+    [[nodiscard]] constexpr ushort size() const override {
+      return underlying_t->size();
+    }
   };
   struct unscoped_enum_t : public enum_t {
-    [[nodiscard]] ushort size() const override { return underlying_t->size(); }
+    [[nodiscard]] constexpr ushort size() const override {
+      return underlying_t->size();
+    }
   };
   struct class_t : public compound_t {
-    [[nodiscard]] ushort size() const override { return 1; }
-    [[nodiscard]] cstring default_value() const override { PANIC(); }
-    [[nodiscard]] std::string format() const override { return ""; }
+    [[nodiscard]] constexpr ushort size() const override { return 1; }
+    [[nodiscard]] constexpr cstring default_value() const override { PANIC(); }
+    [[nodiscard]] constexpr std::string format() const override { return ""; }
   };
 
   template <typename T>
@@ -424,6 +442,11 @@ namespace types {
                                     Args&&...);
   };
 
+#define INDIRECT_CV_STATIC_TYPE(INDIR, CLS, NAME, CONST, VOLATILE) \
+  constexpr const static inline auto CONCAT(_, NAME) = \
+      INDIR(CONST, VOLATILE, CLS); \
+  constexpr const static inline auto CONCAT(NAME, _T) = &CONCAT(_, NAME);
+
 #define CV_STATIC_TYPE(CLS, NAME, CONST, VOLATILE) \
   constexpr const static inline auto CONCAT(_, NAME)  = CLS(); \
   constexpr const static inline auto CONCAT(NAME, _T) = &CONCAT(_, NAME);
@@ -437,10 +460,8 @@ namespace types {
   STATIC_TYPE(sint_t, INT)
   STATIC_TYPE(char_t, CHAR)
   STATIC_TYPE(float_t, FLOAT)
-  const cv_type INTREF_T =
-      builder::init().reference_of().base_type<types::sint_t>();
-  const cv_type INTPTR_T =
-      builder::init().pointer_to().base_type<types::sint_t>();
+  INDIRECT_CV_STATIC_TYPE(lvalue_ref_t, INT_T, INTREF, false, false)
+  INDIRECT_CV_STATIC_TYPE(pointer_t, INT_T, INTPTR, false, false)
 
   template <typename T>
   struct is_type : std::is_same<T, type> {};
@@ -451,6 +472,5 @@ namespace types {
 
 } // namespace cmm
 
-static_assert(fmt::formattable<cmm::instruction_t>());
 static_assert(std::formattable<cmm::instruction_t, char>);
 #include "lang.inl"

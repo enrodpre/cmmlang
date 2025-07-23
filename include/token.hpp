@@ -7,7 +7,6 @@
 #include <utility>
 
 #include "lang.hpp"
-#include "strings.hpp"
 
 namespace cmm {
 
@@ -194,6 +193,7 @@ private:
 
 public:
   tokens();
+  tokens(const std::vector<token>&);
   tokens(std::initializer_list<token>);
 
   [[nodiscard]] const std::vector<token>& data() const noexcept;
@@ -206,9 +206,7 @@ public:
   void pointer(size_t) noexcept;
   [[nodiscard]] size_t pointer() const noexcept;
   void reserve(size_t);
-  template <typename... Args>
-    requires std::is_constructible_v<token, Args...>
-  void emplace_back(Args&&...);
+  void emplace(cmm::token_t&&, location&&, cstring = "");
 
   [[nodiscard]] const_iterator cbegin() const noexcept;
   [[nodiscard]] const_iterator cend() const noexcept;

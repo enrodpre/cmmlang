@@ -209,7 +209,7 @@ user_function::user_function(const ast::declaration::function* decl,
 
 operand* user_function::run(compilation_unit& ctx,
                             ast::expr::call::arguments args) const {
-  spdlog::trace("Calling {}", declaration->ident);
+  REGISTER_TRACE("Calling {}", declaration->ident);
 
   // Load parameters
   auto prepared_args =
@@ -474,7 +474,9 @@ void fn_store::clear() {
 }
 
 frame::frame(const user_function* fn)
-    : func(*fn) {}
+    : func(*fn) {
+  create_scope(*fn->body);
+}
 
 void frame::clear() noexcept {
   while (!scopes.empty()) {
@@ -554,7 +556,7 @@ size_t frame::destroy_scope() noexcept {
   size_t ditched = scopes.top().variables.size();
   DEBUG_ASSERT(!scopes.empty());
   scopes.pop();
-  spdlog::trace("Cleared local scope: ditched {} elements", ditched);
+  REGISTER_TRACE("Cleared local scope: ditched {} elements", ditched);
   return ditched;
 }
 
@@ -591,7 +593,8 @@ bool symbol_table::is_entry_point_defined() const noexcept {
 }
 
 std::string symbol_table::format() const {
-  return m_global_scope.variables.join(", ");
+  return "";
+  // m_global_scope.variables.join(", ");
 }
 
 const label* symbol_table::get_label(id ident) const {
@@ -625,7 +628,7 @@ const function* symbol_table::get_function(id ident) const {
 }
 void symbol_table::declare_function(const ast::declaration::function* func,
                                     bool inline_) {
-  spdlog::trace("Creating func {}", func->ident);
+  REGISTER_TRACE("Creating func {}", func->ident);
   if (m_functions.contains(mangled_name::free_function(func))) {
     throw already_declared_symbol(func->ident.loc, func->ident.value);
   }
@@ -667,9 +670,9 @@ operand* compilation_unit::call_builtin(
 }
 
 compilation_unit::compilation_unit(const ast::program* p,
-                                   const strings::source_code& src)
+                                   const source_code& src)
     : table(p),
-      source_code(src),
+      source(src),
       runner(*this) {}
 
 std::string compilation_unit::compile(ast::program& p) {
@@ -680,7 +683,7 @@ std::string compilation_unit::compile(ast::program& p) {
 
 std::string compilation_unit::current_line() const {
   size_t line_n = current_statement->loc.rows.start;
-  return source_code.get_line(line_n);
+  return source.get_line(line_n);
 }
 
 const variable* compilation_unit::declare_variable(
@@ -830,10 +833,10 @@ void compilation_unit::jump(const instruction_t& ins, cstring a) {
   asmgen.write_instruction(ins, a);
 }
 
-// void compilation_unit::move_rsp(size_t n) {
-//   asmgen.write_instruction<_instruction_t::sub>("rsp", n * DATASIZE);
-//   table.active_frame().local_stack.pop(n);
-// }
+void compilation_unit::move_rsp(size_t n) {
+  asmgen.write_instruction(instruction_t::sub, "rsp", n * DATASIZE);
+  table.active_frame().local_stack.pop(n);
+}
 
 void compilation_unit::cmp(cstring a, cstring b) {
   asmgen.write_instruction(_instruction_t::cmp, a, b);
@@ -885,7 +888,7 @@ std::string compilation_unit::end() {
   asmgen.write_label("exit");
   syscall("60");
 
-  spdlog::trace("Code generation finished");
+  REGISTER_TRACE("Code generation finished");
   return asmgen.end();
 }
 

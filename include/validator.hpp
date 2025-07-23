@@ -7,7 +7,7 @@ namespace cmm::ast {
 
 // struct validation_visitor : public const_visitor<NODE_TYPES> {
 //   void visit(const declaration::specifiers& specs) override {
-//     spdlog::info("validating specifiers");
+//     REGISTER_INFO("validating specifiers");
 //     bool typed = false;
 //     for (const term::specifier* spec : specs) {
 //       if (spec->type.is_type()) {

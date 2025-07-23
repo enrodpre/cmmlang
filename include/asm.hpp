@@ -3,7 +3,6 @@
 #include "common.hpp"
 #include "lang.hpp"
 #include <cstdint>
-#include <strings.hpp>
 #include <utility>
 
 namespace cmm::ir {
@@ -191,7 +190,7 @@ struct registers {
 private:
   store_type m_registers;
 
-  static store_type initialize_registers();
+  constexpr static store_type initialize_registers();
 };
 
 static_assert(!std::is_abstract_v<label>);
@@ -283,7 +282,7 @@ public:
   void load_delayed();
 
 private:
-  strings::string_buffer m_text;
+  string_buffer m_text;
   // line_store_t m_instructions;
   std::vector<std::string> m_comment_blocks;
 

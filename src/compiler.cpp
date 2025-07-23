@@ -1,12 +1,10 @@
 #include "compiler.hpp"
 #include "common.hpp"
-#include "filesystem"
 #include "fs.hpp"
 #include "ir.hpp"
 #include "lexer.hpp"
 #include "os.hpp"
 #include "parser.hpp"
-#include "strings.hpp"
 #include <basic.hpp>
 #include <iostream>
 #include <string>
@@ -23,7 +21,7 @@ compiler::compiler(const config& config_,
       m_output_filename(output) {}
 
 void compiler::preprocess(const std::string&) {
-  spdlog::warn("Preprocessor disabled");
+  REGISTER_WARN("Preprocessor disabled");
   /* auto preprocessor   = code == "" ? Preprocessor(m_source_code) :
    * Preprocessor(code);
    */
@@ -35,19 +33,19 @@ void compiler::preprocess(const std::string&) {
 #endif
 }
 
-ofile compiler::compile(const strings::source_code& src) {
+ofile compiler::compile(const source_code& src) {
   lexer lexer_instance(src.get_code());
   auto tokens = lexer_instance.tokenize();
 
   if (m_config.dump_tokens) {
-    std::print("{}", tokens);
+    // std::print("{}", tokens);
   }
 
   parser::parser parser(tokens);
   auto compound = parser.parse();
 
   if (m_config.dump_ast) {
-    std::print("{}\n", compound.join('\n'));
+    // std::print("{}\n", compound.join('\n'));
   }
 
   // exit(1);
@@ -85,7 +83,7 @@ ofile compiler::link(ofile& obj_file) {
 
 fs::ofile compiler::run() {
   LOG_PATH();
-  spdlog::info("Compiling {}", m_source_code.get_filename());
+  REGISTER_INFO("Compiling {}", m_source_code.get_filename());
 
   preprocess();
   auto asm_file     = compile(m_source_code);
@@ -93,7 +91,7 @@ fs::ofile compiler::run() {
   auto obj_file     = assemble(asm_file);
   const auto binary = link(obj_file);
 
-  spdlog::info("Succesfully compiled {} into {}",
+  REGISTER_INFO("Succesfully compiled {} into {}",
                 m_source_code.get_filename(),
                 binary.path().string());
 
@@ -104,14 +102,29 @@ fs::ofile compiler::run() {
 }
 
 void compiler::throw_linking_error(const std::string& err) {
-  spdlog::error("{}\n", err);
+  REGISTER_ERROR("{}\n", err);
   cmm::os::error(os::status::LINKING_ERROR);
 }
 
 void compiler::throw_compilation_error(std::string_view err,
                                        const location& loc) {
-  auto formatted_msg =
-      strings::generate_compilation_message(m_source_code, err, loc);
+  auto text_header          = std::format("{}:{}:{}:",
+                                 m_source_code.get_filename(),
+                                 loc.rows.start,
+                                 loc.cols.start);
+  auto styled_text_header   = log::apply(text_header, log::style_t::HEADER);
+  auto first_line           = std::format("{} {} {}",
+                                styled_text_header,
+                                log::apply("error: ", log::style_t::ERROR),
+                                err);
+
+  auto [left, error, right] = m_source_code.get_line_chunked(loc);
+  auto formatted_error      = log::apply(error, log::style_t::ERROR);
+  auto formatter_error_line =
+      std::format("{}{}{}\n", left, formatted_error, right);
+  auto second_line =
+      std::format("   {} |    {}", loc.rows.start, formatter_error_line);
+  auto formatted_msg = std::format("{}\n{}", first_line, second_line);
 
   std::cout << formatted_msg;
 }

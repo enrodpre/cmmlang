@@ -5,7 +5,7 @@
 #include <filesystem>
 
 #define LOG_PATH() \
-  spdlog::info("Current path: {}", fs::current_path().string());
+  REGISTER_INFO("Current path: {}", fs::current_path().string());
 
 namespace cmm::fs {
 using std::filesystem::absolute;
