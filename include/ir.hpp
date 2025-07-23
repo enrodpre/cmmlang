@@ -460,6 +460,7 @@ public:
   [[nodiscard]] std::string current_line() const;
 
   const variable* declare_variable(const ast::decl::variable&, operand*);
+  const variable* declare_global_variable(const ast::decl::variable&, operand*);
   void declare_label(const ast::decl::label&);
   [[nodiscard]] operand* get_variable_address(
       const ast::term::identifier&) const;

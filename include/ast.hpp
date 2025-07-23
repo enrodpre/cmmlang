@@ -1,7 +1,6 @@
 #pragma once
 
 #include "common.hpp"
-#include "ir.hpp"
 #include "lang.hpp"
 #include "revisited/visitor.h"
 #include "token.hpp"
@@ -27,21 +26,23 @@ struct node : public virtual formattable, public virtual VisitableBase {
 
   node() = default;
   template <typename... Ts>
-  node(Ts&&... ts)
-      : loc((ts + ...)) {}
+  node(Ts... ts)
+      : loc(std::move((ts + ...))) {}
 
   mutable node* parent = nullptr;
   virtual void set_parent(node* parent_) { parent = parent_; }
 };
 
-// struct statement : public DerivedVisitable<statement, node> {};
-using statement = node;
+struct statement : public node, public Visitable<statement> {
+  using node::node;
+};
 
 // template <typename T>
 // concept IsNode = std::is_base_of_v<node, std::remove_pointer_t<T>>;
 
 template <typename T>
-struct siblings : public DerivedVisitable<siblings<T>, node>,
+struct siblings : public node,
+                  public Visitable<siblings<T>>,
                   public formattable_range<std::vector<T>> {
   static_assert(std::is_pointer_v<T>);
 
@@ -100,18 +101,18 @@ private:
 struct compound : public DerivedVisitable<compound, siblings<statement*>> {};
 
 namespace term {
-  struct keyword : public DerivedVisitable<keyword, node> {
+  struct keyword : public node, public Visitable<keyword> {
     token_t kind;
     keyword(const token& token)
-        : DerivedVisitable(token.location),
+        : node(token.location),
           kind(token.type) {}
     FORMAT_DECL_IMPL();
   };
 
-  struct identifier : public DerivedVisitable<identifier, node> {
+  struct identifier : public node, public Visitable<identifier> {
     std::string value;
     identifier(const token& token)
-        : DerivedVisitable(token.location),
+        : node(token.location),
           value(token.value) {}
     operator cstring() const { return value; }
     FORMAT_DECL_IMPL();
@@ -120,30 +121,30 @@ namespace term {
   static bool operator==(const identifier& r, const identifier& l) {
     return r.loc == l.loc && r.value == l.value;
   }
-  struct literal : public DerivedVisitable<literal, node> {
+  struct literal : public node, public Visitable<literal> {
     std::string value;
 
     literal(const token& token)
-        : DerivedVisitable(token.location),
+        : node(token.location),
           value(token.value) {}
     FORMAT_DECL_IMPL();
   };
 
-  struct operator_ : public DerivedVisitable<operator_, node> {
+  struct operator_ : public node, public Visitable<operator_> {
     operator_t type;
     operator_(const token& token)
-        : DerivedVisitable(token.location),
+        : node(token.location),
           type(token.type.cast<operator_t>()) {}
     operator_(const token& loc, operator_t type_)
-        : DerivedVisitable(loc.location),
+        : node(loc.location),
           type(std::move(type_)) {}
     FORMAT_DECL_IMPL();
   };
 
-  struct specifier : public DerivedVisitable<specifier, node> {
+  struct specifier : public node, public Visitable<specifier> {
     token_t type;
     specifier(const token& token)
-        : DerivedVisitable(token.location),
+        : node(token.location),
           type(token.type) {}
     FORMAT_DECL_IMPL();
   };
@@ -152,13 +153,13 @@ namespace term {
 
 namespace expr {
 
-  struct expression : public DerivedVisitable<expression, node> {
+  struct expression : public DerivedVisitable<expression, statement> {
     expression(const expression&)            = delete;
     expression& operator=(const expression&) = delete;
 
     template <typename... Ts>
     expression(Ts... ts)
-        : DerivedVisitable(std::forward<Ts>(ts)...) {}
+        : node(std::forward<Ts>(ts)...) {}
 
     template <typename Derived>
     Derived cast() const {
@@ -194,6 +195,8 @@ namespace expr {
     FORMAT_DECL_IMPL();
   };
 
+  static_assert(std::is_assignable_v<expression*, call*>);
+
   struct unary_operator : public DerivedVisitable<unary_operator, expression> {
     expression& expr;
     term::operator_ operator_;
@@ -220,12 +223,20 @@ namespace expr {
 
 namespace decl {
 
-  struct specifiers : public siblings<term::specifier*> {};
+  struct specifiers : public siblings<term::specifier*> {
+    using siblings::siblings;
+  };
 
-  struct declaration : DerivedVisitable<declaration, statement> {};
+  struct declaration : public DerivedVisitable<declaration, statement> {
+    using DerivedVisitable::DerivedVisitable;
+  };
+
   struct global_declaration
-      : DerivedVisitable<global_declaration, declaration> {};
-  struct label : public DerivedVisitable<label, declaration> {
+      : public DerivedVisitable<global_declaration, declaration> {
+    using DerivedVisitable::DerivedVisitable;
+  };
+
+  struct label : public DerivedVisitable<label, global_declaration> {
     // term::keyword keyword;
     term::identifier term;
     label(const token&);
@@ -290,7 +301,7 @@ namespace iteration {
     friend It;
   };
 
-  struct while_ : public DerivedVisitable<while_, node>,
+  struct while_ : public DerivedVisitable<while_, statement>,
                   public identifiable_parent<while_>,
                   public iteration<while_> {
     term::keyword keyword;
@@ -367,7 +378,7 @@ struct program
       const ast::term::keyword&, const ast::term::specifier&, \
       const ast::term::operator_&
 
-#define GLOBAL_DECL_TYPES const ast::decl::function&, const ast::decl::variable&
+#define GLOBAL_TYPES const ast::decl::function&, const ast::decl::variable&
 
 #define STATEMENT_TYPES \
   const ast::decl::function&, const ast::decl::variable&, \

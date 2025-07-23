@@ -2,6 +2,7 @@
 #include "ast.hpp"
 #include "common.hpp"
 #include "ir.hpp"
+#include <libassert/assert.hpp>
 #include <revisited/visitor.h>
 #include <traverser.hpp>
 
@@ -17,6 +18,16 @@ using intents::intent_t;
 
 ast_traverser::ast_traverser(compilation_unit& cunit)
     : m_context(cunit) {}
+
+global_visitor::global_visitor(ast_traverser* gen_)
+    : gen(gen_) {}
+
+void ast_traverser::generate_program(const ast::program& p) {
+  global_visitor visitor{this};
+  for (const auto& decl : p) {
+    decl->accept(visitor);
+  }
+}
 
 operand* ast_traverser::generate_expr(const expr::expression& expr,
                                       intents::intent_t intent_,
@@ -178,6 +189,49 @@ template void ast_traverser::generate_continue_break<ast::jump::continue_>(
 template void ast_traverser::generate_continue_break<ast::jump::break_>(
     const ast::jump::break_&);
 
+template <bool IsGlobal>
+void ast_traverser::generate_variable_decl(const ast::decl::variable& vardecl) {
+  if (m_context.table.is_declarable<variable>(*vardecl.ident)) {
+    throw already_declared_symbol(vardecl.ident->loc, vardecl);
+  }
+  auto b            = m_context.asmgen.begin_comment_block("init variable {}",
+                                                vardecl.ident->value);
+  const auto* ident = vardecl.ident;
+
+  operand* reg_     = nullptr;
+  if (auto* defined = vardecl.init) {
+    reg_ = generate_expr(*defined);
+  } else {
+    reg_ = m_context.move_immediate(m_context.regs.get(registers::ACCUMULATOR),
+                                    "0");
+  }
+
+  if constexpr (IsGlobal) {
+    m_context.declare_global_variable(vardecl, reg_);
+  } else {
+    m_context.declare_variable(vardecl, reg_);
+  }
+}
+void global_visitor::visit(const ast::decl::variable& vardecl) {
+  gen->generate_variable_decl<true>(vardecl);
+}
+
+void global_visitor::visit(const ast::decl::function& func) {
+  if (gen->m_context.table.is_declared<function>(func.ident)) {
+    throw already_declared_symbol(func.ident.loc, func.ident.value);
+  }
+
+  REGISTER_TRACE("Generating function {}", func.ident.value);
+  if (func.ident.value == "main") {
+    gen->m_context.table.link_entry_point(&func);
+    // REGISTER_DEBUG("{}", gen->m_context.table)
+    // Call entry point
+    gen->m_context.current_phase = Phase::EXECUTING;
+    gen->m_context.table.get_entry_point()->run(gen->m_context);
+  } else {
+    gen->m_context.table.declare_function(&func);
+  }
+}
 expression_visitor::expression_visitor(ast_traverser* t, operand* o, intent_t l)
     : gen(t),
       in(o),
@@ -256,18 +310,9 @@ void statement_visitor::visit(const compound& scope) {
 void statement_visitor::visit(const decl::variable& vardecl) {
   auto b = gen->m_context.asmgen.begin_comment_block("init variable {}",
                                                      vardecl.ident->value);
-  const auto* ident = vardecl.ident;
-
-  operand* reg_     = nullptr;
-  if (auto* defined = vardecl.init) {
-    reg_ = gen->generate_expr(*defined);
-  } else {
-    reg_ = gen->m_context.move_immediate(
-        gen->m_context.regs.get(registers::ACCUMULATOR), "0");
-  }
-
-  gen->m_context.declare_variable(vardecl, reg_);
+  gen->generate_variable_decl<false>(vardecl);
 }
+
 void statement_visitor::visit(const decl::label& label_) {
   if (gen->m_context.table.is_declared<label>(label_.term)) {
     throw already_declared_symbol(label_.term.loc, label_.term.value);
@@ -282,21 +327,8 @@ void statement_visitor::visit(const decl::label& label_) {
   }
 }
 
-void statement_visitor::visit(const decl::function& func) {
-  if (gen->m_context.table.is_declared<function>(func.ident)) {
-    throw already_declared_symbol(func.ident.loc, func.ident.value);
-  }
-
-  REGISTER_TRACE("Generating function {}", func.ident.value);
-  if (func.ident.value == "main") {
-    gen->m_context.table.link_entry_point(&func);
-    // REGISTER_DEBUG("{}", gen->m_context.table)
-    // Call entry point
-    gen->m_context.current_phase = Phase::EXECUTING;
-    gen->m_context.table.get_entry_point()->run(gen->m_context);
-  } else {
-    gen->m_context.table.declare_function(&func);
-  }
+void statement_visitor::visit(const decl::function&) {
+  UNREACHABLE("not implemented");
 }
 
 void statement_visitor::visit(const iteration::for_& for_) {

@@ -200,19 +200,23 @@ iteration::for_::for_(term::keyword k,
 }
 
 jump::goto_::goto_(const token& token)
-    : term(token) {
+    : DerivedVisitable(token),
+      term(token) {
   term.set_parent(this);
 }
 jump::break_::break_(const token& token)
-    : keyword(token) {
+    : DerivedVisitable(token),
+      keyword(token) {
   keyword.set_parent(this);
 }
 jump::continue_::continue_(const token& token)
-    : keyword(token) {
+    : DerivedVisitable(token),
+      keyword(token) {
   keyword.set_parent(this);
 }
 jump::return_::return_(term::keyword k, expr::expression* expr_)
-    : keyword(std::move(k)),
+    : DerivedVisitable(k.loc + GET_LOC(expr_)),
+      keyword(std::move(k)),
       expr(expr_) {
   keyword.set_parent(this);
 }

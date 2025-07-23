@@ -253,8 +253,7 @@ user_function::address_t user_function::run(compilation_unit& ctx,
 
   ctx.table.push_frame(decl->ident);
 
-  for (const auto& [param, op] :
-       std::views::zip(decl->parameters, ops)) {
+  for (const auto& [param, op] : std::views::zip(decl->parameters, ops)) {
     ctx.table.active_frame().active_scope().emplace_argument(
         param, dynamic_cast<reg*>(op));
   }
@@ -270,8 +269,7 @@ user_function::address_t user_function::run(compilation_unit& ctx,
 
   if (!inlined) {
     auto code = ctx.asmgen.dump_delayed();
-    ctx.asmgen.register_labeled_code_block(decl->ident.value,
-                                           std::move(code));
+    ctx.asmgen.register_labeled_code_block(decl->ident.value, std::move(code));
   }
 
   size_t ditched = ctx.table.pop_frame();
@@ -397,8 +395,7 @@ operand* local_scope::emplace_argument(const ast::decl::variable* decl,
   return r;
 }
 
-operand* local_scope::emplace_automatic(
-    const ast::decl::variable* decl) {
+operand* local_scope::emplace_automatic(const ast::decl::variable* decl) {
   auto* addr = operand_factory::instance().create<stack_memory>(
       frame_ref.get().local_stack.size() + 1);
   auto var = variables.emplace<local_variable>(decl->ident->value,
@@ -453,9 +450,8 @@ const function* fn_store::emplace_builtin(
       std::make_unique<builtin_function>(mang_str, ret, params, desc, inline_);
   return m_store.emplace(mang_str, std::move(ptr)).first->second.get();
 }
-const function* fn_store::emplace_user_provided(
-    const ast::decl::function* decl,
-    bool inline_) {
+const function* fn_store::emplace_user_provided(const ast::decl::function* decl,
+                                                bool inline_) {
   auto mang = mangled_name::free_function(decl);
   return m_store
       .emplace(
@@ -677,7 +673,7 @@ compilation_unit::compilation_unit(const ast::program* p,
 
 std::string compilation_unit::compile(ast::program& p) {
   start();
-  runner.generate_statements(p);
+  runner.generate_program(p);
   return end();
 }
 
@@ -686,21 +682,19 @@ std::string compilation_unit::current_line() const {
   return source.get_line(line_n);
 }
 
+const variable* compilation_unit::declare_global_variable(
+    const ast::decl::variable& decl,
+    operand* init) {
+  ASSERT(table.is_global_scope());
+  reserve_memory(decl.label(), "resq", "1");
+  auto* addr = table.m_global_scope.emplace_static(&decl);
+  move(addr, init);
+  return addr->variable();
+}
+
 const variable* compilation_unit::declare_variable(
     const ast::decl::variable& decl,
     operand* init) {
-  if (table.is_declarable<variable>(*decl.ident)) {
-    throw already_declared_symbol(decl.ident->loc, decl);
-  }
-
-  if (table.is_global_scope()) {
-    ASSERT(table.is_global_scope());
-    reserve_memory(decl.label(), "resq", "1");
-    auto* addr = table.m_global_scope.emplace_static(&decl);
-    move(addr, init);
-    return addr->variable();
-  }
-
   // + 1 because not counted yet
   const auto* var =
       table.active_frame().active_scope().emplace_automatic(&decl)->variable();

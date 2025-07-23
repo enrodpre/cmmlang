@@ -26,6 +26,7 @@ using assembly::operand;
 
 struct expression_visitor;
 struct statement_visitor;
+struct global_visitor;
 
 class ast_traverser {
 public:
@@ -34,6 +35,7 @@ public:
   NOT_MOVABLE_CLS(ast_traverser)
   NOT_COPYABLE_CLS(ast_traverser)
 
+  void generate_program(const ast::program&);
   void generate_statements(const ast::compound&);
   void generate_statement(const ast::statement&);
   operand* generate_expr(const ast::expr::expression&,
@@ -47,6 +49,8 @@ private:
   // std::queue<callback_body_t> m_callbacks;
 
   // Helpers
+  template <bool IsGlobal>
+  void generate_variable_decl(const ast::decl::variable&);
   template <typename Jump>
   void generate_continue_break(const Jump&);
   instruction_t generate_condition(const ast::expr::expression&);
@@ -63,9 +67,12 @@ private:
 
   friend statement_visitor;
   friend expression_visitor;
+  friend global_visitor;
 };
 
-struct global_visitor : public revisited::Visitor<GLOBAL_DECL_TYPES> {
+struct global_visitor : public revisited::Visitor<GLOBAL_TYPES> {
+  ast_traverser* gen;
+  global_visitor(ast_traverser*);
   void visit(const ast::decl::variable&) override;
   void visit(const ast::decl::function&) override;
 };
