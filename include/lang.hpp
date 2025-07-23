@@ -2,9 +2,10 @@
 
 #include "allocator.hpp"
 #include "common.hpp"
-#include "stl.hpp"
+#include "traits.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <fmt/base.h>
 #include <format>
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_format.hpp>
@@ -122,9 +123,6 @@ struct operator_t : public cmm::enumeration<_operator_t> {
   [[nodiscard]] std::string caller_function() const;
   [[nodiscard]] std::string format() const override;
 };
-
-static_assert(std::is_base_of_v<cmm::formattable, operator_t>);
-static_assert(std::formattable<const operator_t&, char>);
 
 enum class type_t : uint8_t {
   void_t,
@@ -453,7 +451,6 @@ namespace types {
 
 } // namespace cmm
 
-static_assert(std::formattable<cmm::types::type, char>);
-static_assert(std::formattable<cmm::cv_type, char>);
-
+static_assert(fmt::formattable<cmm::instruction_t>());
+static_assert(std::formattable<cmm::instruction_t, char>);
 #include "lang.inl"

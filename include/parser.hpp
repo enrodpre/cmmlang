@@ -4,7 +4,6 @@
 #include "ast.hpp"
 #include <format>
 
-#include "stl.hpp"
 #include "token.hpp"
 #include <queue>
 #include <utility>

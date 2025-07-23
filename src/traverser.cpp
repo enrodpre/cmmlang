@@ -119,7 +119,7 @@ operand* ast_traverser::call_operator(const term::operator_& op,
       op.type, left_t->format(), right_t->format());
   const function* func = m_context.table.get_function(mangled);
   ASSERT(func->is_defined(), mangled.str());
-  return func->run(m_context, std::vector{&l, &r});
+  return func->run(m_context, {&l, &r});
 }
 
 std::optional<std::tuple<std::string, std::string>>
@@ -394,7 +394,7 @@ void statement_visitor::visit(const jump::return_& ret) {
   operand* op = nullptr;
   if (ret.expr != nullptr) {
     op = gen->generate_expr(*ret.expr);
-    spdlog::debug("{}", op->value())
+    spdlog::debug("{}", op->value());
     // We store return value in proper register
     // but happens to be the same
     /* gen->m_context.source.move(registers::accumulator.get(),

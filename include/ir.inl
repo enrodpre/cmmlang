@@ -10,6 +10,7 @@
 
 namespace cmm::ir {
 
+static_assert(std::formattable<const instruction_t&, char>);
 template <typename Decl>
 symbol<Decl>::symbol(const Decl* decl, address_t addr)
     : declaration(decl),
@@ -21,8 +22,8 @@ const variable_store::value_type& variable_store::emplace(key_type k,
                                                           Args&&... args) {
   return m_store.emplace<T>(
       std::piecewise_construct,
-      std::make_tuple<k>,
-      std::make_tuple<Args...>(std::forward<Args>(args)...));
+      std::forward_as_tuple(k),
+      std::forward_as_tuple<Args...>(std::forward<Args>(args)...));
 }
 
 template <typename T>

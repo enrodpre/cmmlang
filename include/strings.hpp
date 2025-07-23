@@ -2,7 +2,6 @@
 
 #include "common.hpp"
 #include "fs.hpp"
-#include "stl.hpp"
 #include <cstdint>
 #include <regex>
 

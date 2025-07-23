@@ -6,22 +6,12 @@ namespace cmm::ast {
 
 template <typename T>
 siblings<T>::siblings()
-    : formattable_range<container_type>(m_data) {}
+    : formattable_range<container_type>(&m_data) {}
 
 template <typename T>
 siblings<T>::siblings(std::initializer_list<T> init)
-    : siblings<T>(),
-      m_data(init) {}
-
-template <typename T>
-siblings<T>::siblings(const std::vector<T>& vec)
-    : siblings<T>(),
-      m_data(vec) {}
-
-template <typename T>
-siblings<T>::siblings(std::vector<T>&& vec)
-    : siblings<T>(),
-      m_data(std::move(vec)) {}
+    : m_data(init),
+      formattable_range<container_type>(&m_data) {}
 
 template <typename T>
 T& siblings<T>::at(size_t i) {

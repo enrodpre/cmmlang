@@ -232,22 +232,6 @@ std::string asmgen::end() {
   return res.dump();
 }
 
-void asmgen::write_instruction(const instruction_t& ins,
-                               std::optional<cstring> first,
-                               std::optional<cstring> second) {
-  cstring format_str;
-  if (first) {
-    if (second) {
-      m_text.write<2>("{} {}, {}", ins.name(), first.value(), second.value());
-    } else {
-      m_text.write<2>("{} {}", ins.name(), first.value());
-    }
-  } else {
-    m_text.write<2>("{}", ins.name());
-  }
-  m_text.newline();
-}
-
 void asmgen::add_section_data(Section section_enum,
                               cstring ident,
                               cstring type,

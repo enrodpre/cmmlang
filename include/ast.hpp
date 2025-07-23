@@ -3,7 +3,6 @@
 #include "common.hpp"
 #include "lang.hpp"
 #include "revisited/visitor.h"
-#include "stl.hpp"
 #include "token.hpp"
 #include <libassert/assert.hpp>
 #include <magic_enum/magic_enum.hpp>
@@ -57,8 +56,6 @@ struct siblings : public DerivedVisitable<siblings<T>, node>,
 
   siblings();
   siblings(std::initializer_list<T> init);
-  siblings(const std::vector<T>& vec);
-  siblings(std::vector<T>&& vec);
   ~siblings() override                 = default;
   siblings(const siblings&)            = default;
   siblings& operator=(const siblings&) = default;

@@ -2,7 +2,6 @@
 
 #include "common.hpp"
 #include "lang.hpp"
-#include "stl.hpp"
 #include <cstdint>
 #include <strings.hpp>
 #include <utility>
@@ -194,6 +193,7 @@ private:
 
   static store_type initialize_registers();
 };
+
 static_assert(!std::is_abstract_v<label>);
 static_assert(!std::is_abstract_v<reg_memory>);
 static_assert(!std::is_abstract_v<immediate_memory>);

@@ -1,5 +1,5 @@
 #include "os.hpp"
-#include "common.hpp"
+#include <spdlog/spdlog.h>
 
 namespace cmm::os {
 
