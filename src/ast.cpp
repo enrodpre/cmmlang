@@ -4,6 +4,9 @@
 
 namespace cmm::ast {
 
+node::node(const token& tok)
+    : loc(tok.location) {}
+
 FORMAT_IMPL(term::keyword, "{}", kind);
 FORMAT_IMPL(term::literal, "{}", value);
 FORMAT_IMPL(term::operator_, "{}", type);
@@ -23,14 +26,14 @@ FORMAT_IMPL(expr::binary_operator,
             ""); // right);
 /* FORMAT_IMPL(compound, "Compound({}):\n  {}", size(), *this); */
 FORMAT_IMPL(decl::label, "LabelDecl({})", term);
-FORMAT_IMPL(decl::variable, "VarDecl:  {} {}", *ident, *init);
-FORMAT_IMPL(decl::function, "{}", "Function decl: ");
+FORMAT_IMPL(decl::variable, "VarDecl: DerivedVisitable {} {}", *ident, *init);
+FORMAT_IMPL(decl::function, "Function decl: {}", ident.value);
 FORMAT_IMPL(iteration::while_, "While:\n  {}", condition);
 FORMAT_IMPL(iteration::for_, "For:\n  {}", *condition);
 FORMAT_IMPL(selection::if_, "If:\n  {}\n  {}", condition, *block);
 FORMAT_IMPL(jump::break_, "{}", "Break");
 FORMAT_IMPL(jump::continue_, "{}", "Continue");
-FORMAT_IMPL(jump::return_, "{}: {}", "Return: ", *expr);
+FORMAT_IMPL(jump::return_, "{}: DerivedVisitable{}", "Return: ", *expr);
 FORMAT_IMPL(jump::goto_, "Goto({})", term);
 // FORMAT_IMPL(statement, "Goto()", nullptr);
 
@@ -107,10 +110,10 @@ function::function(struct specifiers mods,
                    decltype(ident) ident_,
                    decltype(parameters) args,
                    compound* body_)
-    : DerivedVisitable(specifiers.loc,
-                       ident_.loc,
-                       parameters.loc,
-                       GET_LOC(body_)),
+    : DerivedVisitable<function, global_declaration>(specifiers.loc,
+                                                     ident_.loc,
+                                                     parameters.loc,
+                                                     GET_LOC(body_)),
       specifiers(std::move(mods)),
       ident(ident_),
       parameters(std::move(args)),
@@ -200,7 +203,7 @@ iteration::for_::for_(term::keyword k,
 }
 
 jump::goto_::goto_(const token& token)
-    : DerivedVisitable(token),
+    : DerivedVisitable(token.location),
       term(token) {
   term.set_parent(this);
 }

@@ -106,7 +106,6 @@ struct statement_visitor : public revisited::Visitor<STATEMENT_TYPES> {
   void visit(const ast::jump::goto_& goto_) override;
   void visit(const ast::jump::return_& ret) override;
   void visit(const ast::expr::expression& expr) override;
-  void visit(const ast::debug::printobj& comp) override;
 };
 } // namespace cmm::ir
 

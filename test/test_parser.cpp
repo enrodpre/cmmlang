@@ -194,7 +194,7 @@ TEST_F(ParserTest, Block) {
   auto parser = prepare_parser(
       {o_curly, o_curly, semi, c_curly, semi, o_curly, c_curly, c_curly});
 
-  auto block = parser->parse_compound<true>();
+  auto block = parser->parse_compound();
   EXPECT_EQ(block.size(), 2);
 
   auto* first_stmt = block.front();

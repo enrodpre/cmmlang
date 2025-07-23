@@ -4,22 +4,22 @@
 
 namespace cmm::ast {
 
-template <typename T>
-siblings<T>::siblings()
-    : formattable_range<container_type>(&m_data) {}
-
+// template <typename T>
+// siblings<T>::siblings()
+//     : formattable_range<container_type>(&m_data) {}
+//
 template <typename T>
 siblings<T>::siblings(std::initializer_list<T> init)
-    : m_data(init),
-      formattable_range<container_type>(&m_data) {}
+    : m_data(init) {}
+// formattable_range<container_type>(&m_data) {}
 
 template <typename T>
-T& siblings<T>::at(size_t i) {
+inline T& siblings<T>::at(size_t i) {
   return m_data.at(i);
 }
 
 template <typename T>
-const T& siblings<T>::at(size_t i) const {
+inline const T& siblings<T>::at(size_t i) const {
   return m_data.at(i);
 }
 

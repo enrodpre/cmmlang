@@ -2,6 +2,7 @@
 
 #include "common.hpp"
 #include <functional>
+#include <type_traits>
 #include <utils.hpp>
 
 namespace cmm {
@@ -348,6 +349,107 @@ template <typename T>
 template <typename T>
 [[nodiscard]] constexpr bool stack<T>::empty() const noexcept {
   return m_data.empty();
+}
+
+template <typename T>
+refvector<T>::refvector(std::initializer_list<T> init)
+    : m_data(init) {}
+// formattable_range<container_type>(&m_data) {}
+
+template <typename T>
+inline T& refvector<T>::at(size_t i) {
+  return m_data.at(i).get();
+}
+
+template <typename T>
+inline const T& refvector<T>::at(size_t i) const {
+  return m_data.at(i).get();
+}
+
+template <typename T>
+const refvector<T>::container_type& refvector<T>::data() const {
+  return m_data;
+}
+
+template <typename T>
+refvector<T>::iterator refvector<T>::begin() {
+  return m_data.begin();
+}
+
+template <typename T>
+refvector<T>::iterator refvector<T>::end() {
+  return m_data.end();
+}
+template <typename T>
+refvector<T>::const_iterator refvector<T>::begin() const {
+  return m_data.begin();
+}
+
+template <typename T>
+refvector<T>::const_iterator refvector<T>::end() const {
+  return m_data.end();
+}
+
+template <typename T>
+refvector<T>::const_iterator refvector<T>::cbegin() const {
+  return m_data.cbegin();
+}
+
+template <typename T>
+refvector<T>::const_iterator refvector<T>::cend() const {
+  return m_data.cend();
+}
+
+template <typename T>
+refvector<T>::reverse_iterator refvector<T>::rbegin() {
+  return m_data.rbegin();
+}
+template <typename T>
+refvector<T>::reverse_iterator refvector<T>::rend() {
+  return m_data.rend();
+}
+template <typename T>
+refvector<T>::const_reverse_iterator refvector<T>::rbegin() const {
+  return m_data.rbegin();
+}
+template <typename T>
+refvector<T>::const_reverse_iterator refvector<T>::rend() const {
+  return m_data.rend();
+}
+
+namespace {
+  template <typename T>
+  constexpr refvector<T>::element_type wrap(T& t) {
+    if constexpr (std::is_const_v<std::remove_reference<T>>) {
+      return std::cref<T>(t);
+    }
+    return std::ref<T>(t);
+  }
+} // namespace
+
+template <typename T>
+[[nodiscard]] bool refvector<T>::empty() const {
+  return m_data.empty();
+}
+
+template <typename T>
+[[nodiscard]] size_t refvector<T>::size() const {
+  return m_data.size();
+}
+template <typename T>
+void refvector<T>::push_back(T t) {
+  m_data.push_back(wrap(t));
+}
+template <typename T>
+template <typename Fn>
+T* refvector<T>::find(Fn fn) {
+  return *(m_data | std::ranges::find_if(fn));
+}
+
+template <typename T>
+template <typename Fn>
+const T* refvector<T>::find(Fn fn) const {
+  return *(m_data | std::ranges::find_if(fn));
 }
 
 }; // namespace cmm

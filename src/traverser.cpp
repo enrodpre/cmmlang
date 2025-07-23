@@ -447,13 +447,4 @@ void statement_visitor::visit(const expr::expression& expr) {
   gen->generate_expr(expr);
 }
 
-void statement_visitor::visit(const debug::printobj& comp) {
-  if (comp.comp == debug::Component::mem) {
-    // REGISTER_DEBUG(gen->m_context.)
-  }
-  if (comp.comp == debug::Component::state) {
-    // REGISTER_DEBUG("{}", gen->m_context.table);
-  }
-}
-
 } // namespace cmm::ir

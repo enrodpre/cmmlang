@@ -1,11 +1,10 @@
-#include "strings.hpp"
+#include "common.hpp"
 #include "gtest/gtest.h"
 
-using namespace cmm::strings;
+using namespace cmm;
 
-TEST(dynamic_buffer, dump)
-{
-  string_buffer text;
+TEST(dynamic_buffer, dump) {
+  cmm::string_buffer text;
   text.create();
   text.write("before");
 
@@ -18,8 +17,7 @@ TEST(dynamic_buffer, dump)
   EXPECT_EQ(dumped2, "before");
 }
 
-TEST(dynamic_buffer, save_and_load)
-{
+TEST(dynamic_buffer, save_and_load) {
   string_buffer text;
 
   text.create();

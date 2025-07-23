@@ -996,6 +996,51 @@ constexpr string_buffer& string_buffer::newline() noexcept {
     return *this;
   }
 }
+
+template <typename T>
+struct refvector {
+  using value_type       = T;
+  using element_type     = std::reference_wrapper<T>;
+  using container_type   = std::vector<element_type>;
+  using iterator         = typename container_type::iterator;
+  using const_iterator   = typename container_type::const_iterator;
+  using reverse_iterator = typename container_type::reverse_iterator;
+  using const_reverse_iterator =
+      typename container_type::const_reverse_iterator;
+
+  refvector() = default;
+  refvector(std::initializer_list<T> init);
+  virtual ~refvector()                   = default;
+  refvector(const refvector&)            = default;
+  refvector& operator=(const refvector&) = default;
+  refvector(refvector&&)                 = default;
+  refvector& operator=(refvector&&)      = default;
+
+  T& at(size_t);
+  const T& at(size_t) const;
+  const container_type& data() const;
+  iterator begin();
+  iterator end();
+  const_iterator begin() const;
+  const_iterator end() const;
+  const_iterator cbegin() const;
+  const_iterator cend() const;
+  reverse_iterator rbegin();
+  reverse_iterator rend();
+  const_reverse_iterator rbegin() const;
+  const_reverse_iterator rend() const;
+  [[nodiscard]] bool empty() const;
+  [[nodiscard]] size_t size() const;
+  void push_back(T);
+  template <typename Fn>
+  T* find(Fn);
+  template <typename Fn>
+  const T* find(Fn) const;
+
+private:
+  container_type m_data;
+};
+
 } // namespace cmm
 
 #include "common.inl"
