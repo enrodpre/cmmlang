@@ -1,7 +1,6 @@
 #pragma once
 
 #include "common.hpp"
-#include <functional>
 #include <type_traits>
 #include <utils.hpp>
 
@@ -351,104 +350,111 @@ template <typename T>
   return m_data.empty();
 }
 
-template <typename T>
-refvector<T>::refvector(std::initializer_list<T> init)
-    : m_data(init) {}
+template <typename T, template <typename> class Modifier>
+vector_impl<T, Modifier>::vector_impl(
+    std::initializer_list<vector_impl<T, Modifier>::value_type> init)
+    : m_data(init | std::transform(Modifier<T>::wrap) |
+             std::ranges::to<std::vector>()) {}
 // formattable_range<container_type>(&m_data) {}
 
-template <typename T>
-inline T& refvector<T>::at(size_t i) {
-  return m_data.at(i).get();
+template <typename T, template <typename> class Modifier>
+inline vector_impl<T, Modifier>::reference_type vector_impl<T, Modifier>::at(
+    size_t i) {
+  return Modifier<T>::unwrap(m_data.at(i));
 }
 
-template <typename T>
-inline const T& refvector<T>::at(size_t i) const {
-  return m_data.at(i).get();
+template <typename T, template <typename> class Modifier>
+inline vector_impl<T, Modifier>::const_reference_type
+vector_impl<T, Modifier>::at(size_t i) const {
+  return Modifier<T>::unwrap(m_data.at(i));
 }
 
-template <typename T>
-const refvector<T>::container_type& refvector<T>::data() const {
+template <typename T, template <typename> class Modifier>
+const vector_impl<T, Modifier>::container_type& vector_impl<T, Modifier>::data()
+    const {
   return m_data;
 }
 
-template <typename T>
-refvector<T>::iterator refvector<T>::begin() {
+template <typename T, template <typename> class Modifier>
+vector_impl<T, Modifier>::iterator vector_impl<T, Modifier>::begin() {
   return m_data.begin();
 }
 
-template <typename T>
-refvector<T>::iterator refvector<T>::end() {
+template <typename T, template <typename> class Modifier>
+vector_impl<T, Modifier>::iterator vector_impl<T, Modifier>::end() {
   return m_data.end();
 }
-template <typename T>
-refvector<T>::const_iterator refvector<T>::begin() const {
+template <typename T, template <typename> class Modifier>
+vector_impl<T, Modifier>::const_iterator vector_impl<T, Modifier>::begin()
+    const {
   return m_data.begin();
 }
 
-template <typename T>
-refvector<T>::const_iterator refvector<T>::end() const {
+template <typename T, template <typename> class Modifier>
+vector_impl<T, Modifier>::const_iterator vector_impl<T, Modifier>::end() const {
   return m_data.end();
 }
 
-template <typename T>
-refvector<T>::const_iterator refvector<T>::cbegin() const {
+template <typename T, template <typename> class Modifier>
+vector_impl<T, Modifier>::const_iterator vector_impl<T, Modifier>::cbegin()
+    const {
   return m_data.cbegin();
 }
 
-template <typename T>
-refvector<T>::const_iterator refvector<T>::cend() const {
+template <typename T, template <typename> class Modifier>
+vector_impl<T, Modifier>::const_iterator vector_impl<T, Modifier>::cend()
+    const {
   return m_data.cend();
 }
 
-template <typename T>
-refvector<T>::reverse_iterator refvector<T>::rbegin() {
+template <typename T, template <typename> class Modifier>
+vector_impl<T, Modifier>::reverse_iterator vector_impl<T, Modifier>::rbegin() {
   return m_data.rbegin();
 }
-template <typename T>
-refvector<T>::reverse_iterator refvector<T>::rend() {
+template <typename T, template <typename> class Modifier>
+vector_impl<T, Modifier>::reverse_iterator vector_impl<T, Modifier>::rend() {
   return m_data.rend();
 }
-template <typename T>
-refvector<T>::const_reverse_iterator refvector<T>::rbegin() const {
+template <typename T, template <typename> class Modifier>
+vector_impl<T, Modifier>::const_reverse_iterator
+vector_impl<T, Modifier>::rbegin() const {
   return m_data.rbegin();
 }
-template <typename T>
-refvector<T>::const_reverse_iterator refvector<T>::rend() const {
+template <typename T, template <typename> class Modifier>
+vector_impl<T, Modifier>::const_reverse_iterator
+vector_impl<T, Modifier>::rend() const {
   return m_data.rend();
 }
 
-namespace {
-  template <typename T>
-  constexpr refvector<T>::element_type wrap(T& t) {
-    if constexpr (std::is_const_v<std::remove_reference<T>>) {
-      return std::cref<T>(t);
-    }
-    return std::ref<T>(t);
-  }
-} // namespace
-
-template <typename T>
-[[nodiscard]] bool refvector<T>::empty() const {
+template <typename T, template <typename> class Modifier>
+[[nodiscard]] bool vector_impl<T, Modifier>::empty() const {
   return m_data.empty();
 }
 
-template <typename T>
-[[nodiscard]] size_t refvector<T>::size() const {
+template <typename T, template <typename> class Modifier>
+[[nodiscard]] size_t vector_impl<T, Modifier>::size() const {
   return m_data.size();
 }
-template <typename T>
-void refvector<T>::push_back(T t) {
-  m_data.push_back(wrap(t));
+template <typename T, template <typename> class Modifier>
+void vector_impl<T, Modifier>::push_back(
+    vector_impl<T, Modifier>::rvalue_type t) {
+  m_data.push_back(Modifier<T>::wrap(std::move(t)));
 }
-template <typename T>
+template <typename T, template <typename> class Modifier>
+void vector_impl<T, Modifier>::push_back(
+    vector_impl<T, Modifier>::const_reference_type t) {
+  m_data.push_back(Modifier<T>::wrap(t));
+}
+template <typename T, template <typename> class Modifier>
 template <typename Fn>
-T* refvector<T>::find(Fn fn) {
+vector_impl<T, Modifier>::pointer_type vector_impl<T, Modifier>::find(Fn fn) {
   return *(m_data | std::ranges::find_if(fn));
 }
 
-template <typename T>
+template <typename T, template <typename> class Modifier>
 template <typename Fn>
-const T* refvector<T>::find(Fn fn) const {
+vector_impl<T, Modifier>::const_pointer_type vector_impl<T, Modifier>::find(
+    Fn fn) const {
   return *(m_data | std::ranges::find_if(fn));
 }
 

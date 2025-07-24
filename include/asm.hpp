@@ -1,5 +1,6 @@
 #pragma once
 
+#include "allocator.hpp"
 #include "common.hpp"
 #include "lang.hpp"
 #include <cstdint>
@@ -142,7 +143,7 @@ struct operand_factory : public default_singleton<operand_factory> {
   V* create(Args&&...);
 
 private:
-  ::cmm::memory::Allocator m_allocator;
+  cmm::memory::Allocator m_allocator;
 };
 
 struct registers {

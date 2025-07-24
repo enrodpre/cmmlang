@@ -5,7 +5,6 @@
 #include <format>
 
 #include "token.hpp"
-#include <queue>
 #include <utility>
 
 namespace cmm::parser {
@@ -53,10 +52,10 @@ public:
   ast::statement* parse_label();
   ast::statement* parse_while();
   ast::statement* parse_for();
-  ast::decl::global_declaration* parse_declaration();
-  ast::decl::variable& parse_variable(ast::decl::specifiers,
+  ast::decl::global_declaration& parse_declaration();
+  ast::decl::variable& parse_variable(ast::decl::specifiers&&,
                                       const ast::term::identifier*);
-  ast::decl::function* parse_function(ast::decl::specifiers,
+  ast::decl::function& parse_function(ast::decl::specifiers&&,
                                       const ast::term::identifier&);
 
   // EXPRESSIONS
@@ -68,7 +67,8 @@ public:
 
   // Terms
   ast::decl::specifiers parse_specifiers();
-  ast::term::identifier& parse_identifier();
+  template <bool Optional = true>
+  ast::term::identifier* parse_identifier();
 
 private:
   tokens m_tokens;
@@ -82,15 +82,6 @@ private:
   void want(const token_t&, bool = false);
   bool need_semicolon_after_statement = true;
   void want_semicolon();
-
-  template <typename T, typename... Args>
-    requires std::is_constructible_v<T, Args...>
-  T* emplace(Args&&...);
-
-  template <typename T, typename... Args>
-    requires std::is_constructible_v<T, Args...> &&
-             std::is_base_of_v<ast::expr::expression, T>
-  ast::expr::expression* emplace_expression(Args&&...);
 };
 
 } // namespace cmm::parser

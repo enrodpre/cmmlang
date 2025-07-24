@@ -7,6 +7,15 @@ formattable::operator std::string() const {
   return format();
 }
 
+allocated::allocated(cmm::location&& loc)
+    : m_location(std::move(loc)) {}
+allocated::allocated(const cmm::location& loc)
+    : m_location(loc) {}
+
+const cmm::location& allocated::location() const {
+  return m_location;
+}
+
 [[nodiscard]] std::string location::format() const {
   return std::format("({}, {})", rows, cols);
 }

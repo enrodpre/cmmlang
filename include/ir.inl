@@ -3,6 +3,7 @@
 #include "asm.hpp"
 #include "ir.hpp"
 #include "lang.hpp"
+#include "types.hpp"
 #include <libassert/assert.hpp>
 #include <tuple>
 #include <utility>
@@ -86,12 +87,12 @@ void compilation_unit::instruction(const instruction_t& ins, Args&&... args) {
 
 namespace {
   constexpr assembly::operand* load_parameter(compilation_unit& v,
-                                              cv_type type,
-                                              ast::expr::expression* expr,
+                                              cv_rtti type,
+                                              const ast::expr::expression* expr,
                                               assembly::reg* to) {
 
     return v.runner.generate_expr(*expr,
-                                  type->is_reference()
+                                  cmm::is_const_v::operator()(type)
                                       ? intents::intent_t::LOAD_VARIABLE_ADDRESS
                                       : intents::intent_t::LOAD_VARIABLE_VALUE,
                                   to);
@@ -99,21 +100,11 @@ namespace {
 }; // namespace
 namespace builtin {
   namespace function {
-    [[nodiscard]] constexpr const header_t::properties_map&
-    header_t::properties_array() {
-      static constexpr properties_map MAP{
-          {{{"exit", types::VOID_T, {types::UINT_T}}}}};
-      return MAP;
-    }
-    constexpr std::string header_t::mangle() const {
-      return mangled_name::builtin_function(name, {parameter_t}).str();
-    }
-
     namespace preprocessors {
       template <size_t N>
       constexpr auto SIMPLE_LOADING =
           [](compilation_unit&,
-             builtin_function::parameters_t,
+             const builtin_function::parameters_t&,
              const ast::expr::call::arguments&) { UNREACHABLE(""); };
       template <>
       inline constexpr auto SIMPLE_LOADING<1> =
@@ -121,7 +112,7 @@ namespace builtin {
              builtin_function::parameters_t param_t,
              const ast::expr::call::arguments& arg) {
             auto* to = load_parameter(
-                v, param_t.at(0), arg.at(0), v.regs.parameters.at(0));
+                v, param_t.at(0), &arg.at(0), v.regs.parameters.at(0));
             return std::vector<operand*>{to};
           };
       template <>
@@ -130,9 +121,9 @@ namespace builtin {
              builtin_function::parameters_t params,
              const ast::expr::call::arguments& args) {
             auto* to = load_parameter(
-                v, params.at(0), args.at(0), v.regs.parameters.at(0));
+                v, params.at(0), &args.at(0), v.regs.parameters.at(0));
             auto* from = load_parameter(
-                v, params.at(1), args.at(1), v.regs.parameters.at(1));
+                v, params.at(1), &args.at(1), v.regs.parameters.at(1));
             return std::vector<operand*>{to, from};
           };
     } // namespace preprocessors
@@ -206,9 +197,9 @@ namespace builtin {
     }; // namespace postprocessors
   }; // namespace function
   constexpr void provider::create_builtin_function(
-      cv_type ret,
+      std::optional<cv_rtti> ret,
       std::string name,
-      const std::vector<cv_type>& args,
+      const std::vector<cv_rtti>& args,
       builtin_function::preprocess_t pre,
       builtin_function::body_t body,
       builtin_function::postprocess_t post) {
@@ -221,9 +212,9 @@ namespace builtin {
         false);
   }
   constexpr void provider::create_builtin_operator(
-      cv_type ret,
+      cv_rtti ret,
       const operator_t& op,
-      const std::vector<cv_type>& args,
+      const std::vector<cv_rtti>& args,
       builtin_function::preprocess_t pre,
       builtin_function::body_t body,
       builtin_function::postprocess_t post) {
@@ -236,7 +227,7 @@ namespace builtin {
   }
   template <_instruction_t Ins, size_t N>
   constexpr void provider::create_simple_operator(const operator_t& op,
-                                                  cv_type type) {
+                                                  cv_rtti type) {
     if constexpr (N == 1) {
       create_builtin_operator(type,
                               op,
@@ -255,63 +246,61 @@ namespace builtin {
   }
 
   constexpr void provider::provide_operators() {
-    create_builtin_operator(types::INTREF_T,
+    create_builtin_operator(INTREF_T,
                             operator_t::assign,
-                            {types::INTREF_T, types::INT_T},
+                            {INTREF_T, INT_T},
                             function::preprocessors::SIMPLE_LOADING<2>,
                             function::bodies::EXECUTE_MOVE,
                             function::postprocessors::SIMPLE_RET);
 
     create_builtin_operator(
-        types::INTREF_T,
+        INTREF_T,
         operator_t::pre_inc,
-        {types::INTREF_T},
+        {INTREF_T},
         function::preprocessors::SIMPLE_LOADING<1>,
         function::bodies::EXECUTE_INSTRUC<_instruction_t::inc>,
         function::postprocessors::SIMPLE_RET);
     create_builtin_operator(
-        types::INTREF_T,
+        INTREF_T,
         operator_t::pre_dec,
-        {types::INTREF_T},
+        {INTREF_T},
         function::preprocessors::SIMPLE_LOADING<1>,
         function::bodies::EXECUTE_INSTRUC<_instruction_t::dec>,
         function::postprocessors::SIMPLE_RET);
-    create_builtin_operator(types::INTREF_T,
+    create_builtin_operator(INTREF_T,
                             operator_t::post_dec,
-                            {types::INTREF_T},
+                            {INTREF_T},
                             function::preprocessors::SIMPLE_LOADING<1>,
                             function::bodies::POST_UNARY<_instruction_t::dec>,
                             function::postprocessors::SIMPLE_RET);
-    create_builtin_operator(types::INTREF_T,
+    create_builtin_operator(INTREF_T,
                             operator_t::post_inc,
-                            {types::INTREF_T},
+                            {INTREF_T},
                             function::preprocessors::SIMPLE_LOADING<1>,
                             function::bodies::POST_UNARY<_instruction_t::inc>,
                             function::postprocessors::SIMPLE_RET);
 
-    create_simple_operator<instruction_t::add>(operator_t::plus, types::INT_T);
-    create_simple_operator<instruction_t::sub>(operator_t::minus, types::INT_T);
-    create_simple_operator<instruction_t::mul>(operator_t::star, types::INT_T);
-    create_simple_operator<instruction_t::div>(operator_t::fslash,
-                                               types::INT_T);
-    create_simple_operator<instruction_t::cmp>(operator_t::eq, types::INT_T);
-    create_simple_operator<instruction_t::cmp>(operator_t::neq, types::INT_T);
-    create_simple_operator<instruction_t::cmp>(operator_t::le, types::INT_T);
-    create_simple_operator<instruction_t::cmp>(operator_t::lt, types::INT_T);
-    create_simple_operator<instruction_t::cmp>(operator_t::ge, types::INT_T);
-    create_simple_operator<instruction_t::cmp>(operator_t::gt, types::INT_T);
-    create_simple_operator<instruction_t::and_>(operator_t::and_, types::INT_T);
-    create_simple_operator<instruction_t::or_>(operator_t::or_, types::INT_T);
-    create_simple_operator<instruction_t::not_>(operator_t::not_, types::INT_T);
-    create_simple_operator<instruction_t::not_>(operator_t::star, types::INT_T);
-    create_simple_operator<instruction_t::not_>(operator_t::ampersand,
-                                                types::INT_T);
+    create_simple_operator<instruction_t::add>(operator_t::plus, INT_T);
+    create_simple_operator<instruction_t::sub>(operator_t::minus, INT_T);
+    create_simple_operator<instruction_t::mul>(operator_t::star, INT_T);
+    create_simple_operator<instruction_t::div>(operator_t::fslash, INT_T);
+    create_simple_operator<instruction_t::cmp>(operator_t::eq, INT_T);
+    create_simple_operator<instruction_t::cmp>(operator_t::neq, INT_T);
+    create_simple_operator<instruction_t::cmp>(operator_t::le, INT_T);
+    create_simple_operator<instruction_t::cmp>(operator_t::lt, INT_T);
+    create_simple_operator<instruction_t::cmp>(operator_t::ge, INT_T);
+    create_simple_operator<instruction_t::cmp>(operator_t::gt, INT_T);
+    create_simple_operator<instruction_t::and_>(operator_t::and_, INT_T);
+    create_simple_operator<instruction_t::or_>(operator_t::or_, INT_T);
+    create_simple_operator<instruction_t::not_>(operator_t::not_, INT_T);
+    create_simple_operator<instruction_t::not_>(operator_t::star, INT_T);
+    create_simple_operator<instruction_t::not_>(operator_t::ampersand, INT_T);
   }
 
   constexpr void provider::provide_functions() {
-    create_builtin_function(types::VOID_T,
+    create_builtin_function(std::nullopt,
                             "exit",
-                            {types::UINT_T},
+                            {UINT_T},
                             function::preprocessors::SIMPLE_LOADING<1>,
                             function::bodies::EXIT,
                             function::postprocessors::SIMPLE_RET);

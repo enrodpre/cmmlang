@@ -1,5 +1,6 @@
 #pragma once
 
+#include "allocator.hpp"
 #include "asm.hpp"
 #include "ast.hpp"
 #include "common.hpp"
@@ -7,6 +8,7 @@
 #include "traverser.hpp"
 #include <cstdint>
 #include <libassert/assert.hpp>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
@@ -15,14 +17,6 @@ namespace cmm::ir {
 using assembly::operand;
 
 constexpr static uint8_t DATASIZE = 8;
-
-enum class memloc : uint8_t {
-  INLINE = 0,
-  HEAP,
-  STACK,
-  DATASEGMENT,
-  TEXTSEGMENT
-};
 
 template <typename T, typename... Ts>
 concept IsAnyType = (std::is_same_v<T, Ts> || ...);
@@ -107,14 +101,14 @@ struct local_scope;
 struct variable : public symbol<ast::decl::variable> {
   linkage_t linkage;
   storage_t storage;
-  cv_type type;
+  cv_rtti type;
   scope& scope_ref;
   variable(scope&,
            const ast::decl::variable*,
            address_t,
            linkage_t,
            storage_t,
-           cv_type);
+           decltype(type));
   [[nodiscard]] std::string format() const override;
 };
 
@@ -123,7 +117,7 @@ struct local_variable : public variable {
                  const ast::decl::variable*,
                  operand*,
                  storage_t,
-                 cv_type);
+                 decltype(type));
 };
 
 struct auto_local_variable : public local_variable {
@@ -131,33 +125,34 @@ struct auto_local_variable : public local_variable {
                       const ast::decl::variable*,
                       assembly::reg_memory*,
                       storage_t,
-                      cv_type);
+                      decltype(type));
 };
 struct arg_local_variable : public local_variable {
   arg_local_variable(local_scope&,
                      const ast::decl::variable*,
                      assembly::reg*,
                      storage_t,
-                     cv_type);
+                     decltype(type));
 };
 
 struct global_variable : public variable {
   global_variable(scope&,
                   const ast::decl::variable*,
                   assembly::label_memory*,
-                  cv_type);
+                  decltype(type));
 };
 
 struct function : public symbol<ast::decl::function> {
+  using return_t = std::optional<cv_rtti>;
   std::string identifier;
   linkage_t linkage;
-  cv_type return_type;
+  return_t return_type;
   bool inlined;
   function(const ast::decl::function*,
            address_t,
            std::string,
            linkage_t,
-           cv_type,
+           return_t,
            bool);
   [[nodiscard]] std::string format() const override;
   virtual address_t run(compilation_unit&,
@@ -175,8 +170,8 @@ public:
   static mangled_name free_unary_operator(const operator_t&, cstring);
   static mangled_name free_binary_operator(const operator_t&, cstring, cstring);
   static mangled_name free_function(const ast::decl::function*);
-  static mangled_name builtin_function(value_type, const std::vector<cv_type>&);
-  static std::string types(const std::vector<cv_type>&);
+  static mangled_name builtin_function(value_type, const std::vector<cv_rtti>&);
+  static std::string types(const std::vector<cv_rtti>&);
 
   [[nodiscard]] const value_type& str() const;
   operator std::string() const;
@@ -186,14 +181,15 @@ private:
 };
 
 struct builtin_function : public function {
+  using return_t = address_t;
   using body_t =
-      std::function<address_t(compilation_unit&, std::vector<address_t>)>;
-  using parameters_t = std::vector<cv_type>;
+      std::function<return_t(compilation_unit&, std::vector<address_t>)>;
+  using parameters_t = std::vector<cv_rtti>;
   using preprocess_t =
       std::function<std::vector<address_t>(compilation_unit&,
                                            parameters_t,
                                            ast::expr::call::arguments)>;
-  using postprocess_t = std::function<address_t(compilation_unit&, address_t)>;
+  using postprocess_t = std::function<address_t(compilation_unit&, return_t)>;
 
   struct descriptor_t {
     preprocess_t preprocess;
@@ -211,7 +207,7 @@ struct builtin_function : public function {
   parameters_t parameters;
   descriptor_t descriptor;
   builtin_function(std::string,
-                   cv_type,
+                   std::optional<cv_rtti>,
                    parameters_t,
                    descriptor_t,
                    bool = false);
@@ -229,7 +225,7 @@ struct user_function : public function {
   user_function(const ast::decl::function*,
                 address_t,
                 linkage_t,
-                cv_type,
+                cv_rtti,
                 bool = false);
 
   address_t run(compilation_unit&, ast::expr::call::arguments) const override;
@@ -272,8 +268,8 @@ public:
   std::vector<value_type::pointer> get(cstring) const;
 
   const function* emplace_builtin(const mangled_name&,
-                                  cv_type,
-                                  const std::vector<cv_type>&,
+                                  std::optional<cv_rtti>,
+                                  const std::vector<cv_rtti>&,
                                   const builtin_function::descriptor_t&,
                                   bool = false);
   const function* emplace_user_provided(const ast::decl::function*,
@@ -410,19 +406,7 @@ template <_instruction_t Ins, size_t N>
 concept FuncWithNParams = instruction_t(Ins).n_params == N;
 
 namespace builtin::function {
-  enum class _header_t : uint8_t { EXIT };
-  struct header_t : public enumeration<_header_t> {
-    using parameter_types = cv_type;
-    BUILD_ENUMERATION(header_t,
-                      std::string,
-                      name,
-                      cv_type,
-                      return_t,
-                      parameter_types,
-                      parameter_t)
-    [[nodiscard]] constexpr std::string mangle() const;
-  };
-  static_assert(std::formattable<header_t, char>);
+  [[nodiscard]] std::string mangle();
 }; // namespace builtin::function
 
 class compilation_unit : public singleton<compilation_unit> {
@@ -466,10 +450,8 @@ public:
       const ast::term::identifier&) const;
   void save_variable(const variable*, operand*);
   void reserve_memory(cstring, cstring, cstring);
-  cv_type get_expression_type(const ast::expr::expression&);
-
-  operand* call_builtin(const builtin::function::header_t&,
-                        std::vector<operand*>);
+  cv_rtti get_expression_type(const ast::expr::expression&);
+  operand* call_builtin(const std::string&, std::vector<operand*>);
 
   template <typename... Args>
   void instruction(const instruction_t&, Args&&...);
@@ -490,7 +472,6 @@ public:
   void syscall();
   void syscall(cstring);
   void ret();
-
   void label(cstring);
   void comment(cstring);
 
@@ -502,21 +483,21 @@ private:
 namespace builtin {
   struct provider {
     symbol_table& table;
-    constexpr void create_builtin_function(cv_type,
+    constexpr void create_builtin_function(std::optional<cv_rtti>,
                                            std::string,
-                                           const std::vector<cv_type>&,
+                                           const std::vector<cv_rtti>&,
                                            builtin_function::preprocess_t,
                                            builtin_function::body_t,
                                            builtin_function::postprocess_t);
-    constexpr void create_builtin_operator(cv_type,
+    constexpr void create_builtin_operator(cv_rtti,
                                            const operator_t&,
-                                           const std::vector<cv_type>&,
+                                           const std::vector<cv_rtti>&,
                                            builtin_function::preprocess_t,
                                            builtin_function::body_t,
                                            builtin_function::postprocess_t);
 
     template <_instruction_t Ins, size_t = instruction_t(Ins).n_params>
-    constexpr void create_simple_operator(const operator_t& op, cv_type type);
+    constexpr void create_simple_operator(const operator_t& op, cv_rtti type);
     constexpr void provide_operators();
     constexpr void provide_functions();
     constexpr void provide();

@@ -11,10 +11,10 @@ using RCtoken   = const token&;
 std::string token::format() const {
   if (!value.empty()) {
     return std::format(
-        "token:\n  {}\n  location: {}\n  Value: {}\n", type, location, value);
+        "token:\n  {}\n  location: {}\n  Value: {}\n", type, location(), value);
   }
 
-  return std::format("token:\n  {}\n  location: {}\n", type, location);
+  return std::format("token:\n  {}\n  location: {}\n", type, location());
 }
 tokens::tokens()
     : formattable_range(&m_tokens),

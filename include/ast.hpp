@@ -2,8 +2,10 @@
 
 #include "common.hpp"
 #include "lang.hpp"
+#include "macros.hpp"
 #include "revisited/visitor.h"
 #include "token.hpp"
+#include "traits.hpp"
 #include <libassert/assert.hpp>
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_format.hpp>
@@ -12,8 +14,15 @@
 #include <utility>
 #include <utils.hpp>
 
-#define FORMAT_DECL() \
-  virtual std::string format() const {}
+#define SIMPLE_NODE(REL, NAME, BASE) \
+  struct NAME : public REL<NAME, BASE> { \
+    using REL::REL; \
+  }
+
+#define SIMPLE_VIRTUAL(NAME, BASE) \
+  struct NAME : public VirtualVisitable<BASE> { \
+    using VirtualVisitable::VirtualVisitable; \
+  };
 
 namespace cmm::ast {
 template <typename Base, typename Derived>
@@ -28,27 +37,26 @@ struct polymorphic_traits {
 #define DERIVE_OK(BASE, DERIVED) \
   static_assert(polymorphic_traits<BASE, DERIVED>::value);
 using revisited::DerivedVisitable;
+using revisited::JoinVisitable;
 using revisited::VirtualVisitable;
 using revisited::Visitable;
 using revisited::VisitableBase;
 
-struct node : public virtual Visitable<node>, public formattable {
-  location loc;
-
+struct node : public virtual Visitable<node>,
+              public formattable,
+              public allocated {
   node() = default;
-  node(const token&);
   template <typename... Ts>
-  node(Ts&&... ts)
-      : loc((ts + ...)) {}
-  ~node() override             = default;
-  node(node&&)                 = default;
-  node& operator=(node&&)      = default;
-  node(const node&)            = default;
-  node& operator=(const node&) = default;
+  node(Ts&&...);
+  ~node() override = default;
+  MOVABLE_CLS(node);
+  COPYABLE_CLS(node);
 
-  mutable node* parent         = nullptr;
-  virtual void set_parent(node* parent_) { parent = parent_; }
+  mutable node* parent = nullptr;
+  virtual void set_parent(node* parent_) const { parent = parent_; }
 };
+
+static_assert(Allocated<node>);
 
 struct statement : public DerivedVisitable<statement, node> {
   using DerivedVisitable::DerivedVisitable;
@@ -56,99 +64,63 @@ struct statement : public DerivedVisitable<statement, node> {
 
 DERIVE_OK(node, statement);
 
-// template <typename T>
-// concept IsNode = std::is_base_of_v<node, std::remove_pointer_t<T>>;
+template <typename...>
+inline constexpr bool dependent_false = false;
 
-template <typename T>
-struct siblings : public node {
-  // public formattable_range<std::vector<T>> {
-  static_assert(std::is_pointer_v<T>);
-
-  using container_type   = std::vector<T>;
-  using value_type       = T;
-  using iterator         = typename container_type::iterator;
-  using const_iterator   = typename container_type::const_iterator;
-  using reverse_iterator = typename container_type::reverse_iterator;
-  using const_reverse_iterator =
-      typename container_type::const_reverse_iterator;
-
-  siblings() = default;
-  siblings(std::initializer_list<T> init);
-  ~siblings() override                 = default;
-  siblings(const siblings&)            = default;
-  siblings& operator=(const siblings&) = default;
-  siblings(siblings&&)                 = default;
-  siblings& operator=(siblings&&)      = default;
-
-  T& at(size_t);
-  const T& at(size_t) const;
-  const container_type& data() const;
-  iterator begin();
-  iterator end();
-  const_iterator begin() const;
-  const_iterator end() const;
-  const_iterator cbegin() const;
-  const_iterator cend() const;
-  reverse_iterator rbegin();
-  reverse_iterator rend();
-  const_reverse_iterator rbegin() const;
-  const_reverse_iterator rend() const;
-  [[nodiscard]] bool empty() const;
-  [[nodiscard]] size_t size() const;
-  void push_back(T);
-  template <typename Fn>
-  T* find(Fn);
-  template <typename Fn>
-  const T* find(Fn) const;
-
+template <typename T, typename NodeType = node>
+  requires(std::is_same_v<node, NodeType> ||
+           std::is_same_v<NodeType, statement>)
+struct siblings : public vector<T>, public VirtualVisitable<NodeType> {
+  using vector<T>::vector;
   [[nodiscard]] std::string format() const override {
-    return ""; // std::format("{}", this->join(", "));
+    return std::format("Array {}({})",
+                       cpptrace::demangle(typeid(T).name()),
+                       vector<T>::size());
   }
-
-  void set_parent(node* ptr) override {
-    node::set_parent(ptr);
-    for (value_type elem : m_data) {
-      elem->set_parent(this);
+  void set_parent(node* parent_) const override {
+    set_parent(parent_);
+    for (auto& elem : *this) {
+      if constexpr (Ptr<T>) {
+        elem->set_parent(this);
+      } else {
+        elem.get().set_parent(this);
+      }
     }
   }
-
-private:
-  container_type m_data;
 };
-
-struct compound : public refvector<statement>,
-                  public DerivedVisitable<compound, statement> {
+struct compound
+    : public DerivedVisitable<compound, siblings<statement&, statement>> {
   [[nodiscard]] std::string format() const override {
     return ""; // std::format("{}", this->join(", "));
   }
 };
+
+static_assert(std::is_base_of_v<siblings<statement&, statement>, compound>);
+static_assert(std::is_base_of_v<statement, compound>);
+static_assert(Allocated<const compound&>);
+static_assert(AllocatedPtr<compound*>);
+
 template <typename T>
 concept ZeroParamConstructible = requires {
   { T() } -> std::same_as<T>;
   { T{} } -> std::same_as<T>;
 };
 
-static_assert(!std::is_abstract_v<compound>);
-static_assert(ZeroParamConstructible<compound>);
-static_assert(std::is_default_constructible_v<compound>);
-static_assert(std::is_constructible_v<siblings<statement*>>);
-static_assert(std::is_convertible_v<compound*, statement*>);
 DERIVE_OK(statement, compound);
-DERIVE_OK(refvector<statement>, compound);
 
 namespace term {
-  struct keyword : public node, public Visitable<keyword> {
+  struct keyword : public DerivedVisitable<keyword, node> {
     token_t kind;
     keyword(const token& token)
-        : node(token.location),
+        : DerivedVisitable(token),
           kind(token.type) {}
     FORMAT_DECL_IMPL();
   };
 
-  struct identifier : public node, public Visitable<identifier> {
+  struct identifier : public DerivedVisitable<identifier, node> {
     std::string value;
     identifier(const token& token)
-        : node(token.location),
+        : DerivedVisitable(token),
           value(token.value) {}
     operator cstring() const { return value; }
     FORMAT_DECL_IMPL();
@@ -157,26 +129,28 @@ namespace term {
   DERIVE_OK(node, identifier);
 
   static bool operator==(const identifier& r, const identifier& l) {
-    return r.loc == l.loc && r.value == l.value;
+    return r.location() == l.location() && r.value == l.value;
   }
   struct literal : public DerivedVisitable<literal, node> {
     std::string value;
 
     literal(const token& token)
-        : DerivedVisitable(token.location),
+        : DerivedVisitable(token),
           value(token.value) {}
     FORMAT_DECL_IMPL();
   };
 
+  static_assert(Allocated<const literal&>);
+  static_assert(EveryIsAllocated<const literal&, literal, node>);
   DERIVE_OK(node, literal);
 
   struct operator_ : public DerivedVisitable<operator_, node> {
     operator_t type;
     operator_(const token& token)
-        : DerivedVisitable(token.location),
+        : DerivedVisitable(token),
           type(token.type.cast<operator_t>()) {}
     operator_(const token& loc, operator_t type_)
-        : DerivedVisitable(loc.location),
+        : DerivedVisitable(loc),
           type(std::move(type_)) {}
     FORMAT_DECL_IMPL();
   };
@@ -184,7 +158,7 @@ namespace term {
   struct specifier : public DerivedVisitable<specifier, node> {
     token_t type;
     specifier(const token& token)
-        : DerivedVisitable(token.location),
+        : DerivedVisitable(token),
           type(token.type) {}
     FORMAT_DECL_IMPL();
   };
@@ -193,14 +167,11 @@ namespace term {
 
 namespace expr {
   struct expression : public DerivedVisitable<expression, statement> {
-    expression(const expression&)            = delete;
-    expression& operator=(const expression&) = delete;
-
-    template <typename... Ts>
-    expression(Ts... ts)
-        : DerivedVisitable(std::forward<Ts>(ts)...) {}
+    using DerivedVisitable::DerivedVisitable;
+    FORMAT_DECL_IMPL();
   };
 
+  static_assert(std::is_base_of_v<node, expression>);
   struct identifier : public DerivedVisitable<identifier, expression> {
     ast::term::identifier term;
     identifier(ast::term::identifier&& id);
@@ -219,11 +190,11 @@ namespace expr {
   };
 
   struct call : public DerivedVisitable<call, expression> {
-    using arguments = siblings<expression*>;
+    using arguments = siblings<const expression*>;
     const term::identifier& ident;
     arguments args;
 
-    call(decltype(ident)&& ident_, std::optional<arguments> args = {});
+    call(decltype(ident)&& ident_, arguments&& args = {});
     FORMAT_DECL_IMPL();
   };
 
@@ -252,20 +223,12 @@ namespace expr {
 }; // namespace expr
 
 namespace decl {
-  struct specifiers : public siblings<term::specifier*> {
-    using siblings::siblings;
-  };
+  using specifiers = siblings<const term::specifier&>;
 
-#define SIMPLE_DERIVED(NAME, BASE) \
-  struct NAME : public DerivedVisitable<NAME, BASE> { \
-    using DerivedVisitable::DerivedVisitable; \
-  }
-
-  SIMPLE_DERIVED(declaration, statement);
-  SIMPLE_DERIVED(global_declaration, declaration);
+  SIMPLE_NODE(DerivedVisitable, declaration, statement);
+  SIMPLE_NODE(DerivedVisitable, global_declaration, declaration);
 
   struct label : public DerivedVisitable<label, declaration> {
-    // term::keyword keyword;
     term::identifier term;
     label(const token&);
     FORMAT_DECL_IMPL();
@@ -273,6 +236,7 @@ namespace decl {
   static_assert(std::is_move_assignable<label>());
 
   struct variable : public DerivedVisitable<variable, global_declaration> {
+    using DerivedVisitable::DerivedVisitable;
     decl::specifiers specifiers;
     const term::identifier* ident; // Can be null, used for function parameters
     expr::expression* init;
@@ -286,16 +250,16 @@ namespace decl {
   };
 
   struct function : public DerivedVisitable<function, global_declaration> {
-    using parameters_t = siblings<variable*>;
+    using parameters_t = siblings<const variable&>;
 
     decl::specifiers specifiers;
     const term::identifier& ident;
     parameters_t parameters;
     compound* body;
 
-    function(struct specifiers,
+    function(decl::specifiers&&,
              decltype(ident),
-             decltype(parameters),
+             decltype(parameters)&&,
              compound* = nullptr);
     FORMAT_DECL_IMPL();
   };
@@ -304,7 +268,7 @@ namespace decl {
   static_assert(std::is_polymorphic_v<statement>);
   static_assert(std::is_polymorphic_v<variable>);
   static_assert(std::is_base_of_v<statement, variable>);
-  static_assert(std::is_convertible_v<variable*, statement*>);
+  DERIVE_OK(statement, variable);
   DERIVE_OK(global_declaration, function);
   DERIVE_OK(statement, variable);
   DERIVE_OK(statement, label);
@@ -339,7 +303,7 @@ namespace iteration {
   };
 
   struct while_ : public DerivedVisitable<while_, statement>,
-                  public identifiable_parent<while_>,
+                  // public identifiable_parent<while_>,
                   public iteration<while_> {
     term::keyword keyword;
     expr::expression& condition;
@@ -352,7 +316,7 @@ namespace iteration {
   static_assert(!std::is_abstract_v<while_>);
 
   struct for_ : public DerivedVisitable<for_, statement>,
-                public identifiable_parent<for_>,
+                // public identifiable_parent<for_>,
                 public iteration<for_> {
     term::keyword keyword;
     decl::variable* start;
@@ -408,15 +372,14 @@ namespace debug {
   // };
 } // namespace debug
 
-struct program : public refvector<decl::global_declaration>,
-                 public DerivedVisitable<program, node> {
-  using refvector::refvector;
+struct program : public siblings<const decl::global_declaration&> {
+  using siblings::siblings;
   [[nodiscard]] std::string format() const override {
     return ""; // std::format("{}", this->join(", "));
   }
 };
 
-DERIVE_OK(refvector<decl::global_declaration>, program);
+DERIVE_OK(siblings<const decl::global_declaration&>, program);
 
 #define TERM_TYPES \
   const ast::term::literal&, const ast::term::identifier&, \
@@ -494,6 +457,9 @@ DERIVE_OK(refvector<decl::global_declaration>, program);
 //   void visit(const ast::program& comp) override;
 // };
 
+static_assert(std::is_constructible_v<expr::call::arguments>);
+static_assert(Allocated<expr::call::arguments>);
+// static_assert(std::is_assignable_v<statement*, jump::goto_*>);
 } // namespace cmm::ast
 
 static_assert(std::is_base_of_v<cmm::ast::node, cmm::ast::term::identifier>);

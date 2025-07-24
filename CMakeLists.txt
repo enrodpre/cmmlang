@@ -20,7 +20,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/../cmake")
 
 # include(cmake/cmm-config.cmake)
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -43,17 +43,17 @@ find_package(Revisited REQUIRED)
 add_library(${PROJECT_NAME} ${sources})
 set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 add_compile_options(${PROJECT_NAME} PRIVATE
-  -std=c++23
+  -std=c++26
   -fdiagnostics-color=always
    -O0 -g3 -fno-inline
   ${COMPILE_ARGS}
 )
 
-target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_26)
 
 target_link_libraries(
   ${PROJECT_NAME} PUBLIC magic_enum::magic_enum cpptrace::cpptrace
-                         libassert::assert Revisited  $<$<BOOL:${MINGW}>:ws2_32>)
+                         libassert::assert Revisited frozen/frozen $<$<BOOL:${MINGW}>:ws2_32>)
 target_include_directories(
   ${PROJECT_NAME}
   PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

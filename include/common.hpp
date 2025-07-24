@@ -1,6 +1,7 @@
 #pragma once
 
 #include "fs.hpp"
+#include "macros.hpp"
 #include "os.hpp"
 #include "traits.hpp"
 #include <bits/version.h>
@@ -19,6 +20,7 @@
 #include <sys/types.h>
 #include <tuple>
 #include <type_traits>
+#include <typeindex>
 #include <utility>
 #include <utils.hpp>
 
@@ -55,11 +57,6 @@ namespace log {
 #define ERROR_LEVEL 1
 #define NONE_LEVEL  0
 
-#define PPCAT_NX(A, B)  A##B
-#define PPCAT_(A, B)    PPCAT_NX(A, B)
-#define STRINGIZE_NX(A) #A
-#define STRINGIZE(A)    STRINGIZE_NX(A)
-
 #define REGISTER_LOG(lvl, file, header_color, formatter_string, ...) \
   std::print(file, \
              "[{}:{} {}] ", \
@@ -70,7 +67,7 @@ namespace log {
 
 #if LOG_LEVEL >= ERROR_LEVEL
   #define REGISTER_ERROR(std_string, ...) \
-    REGISTER_LOG(STRINGIZE_NX(ERROR), \
+    REGISTER_LOG(STRINGIZE_IMPL(ERROR), \
                  stderr, \
                  log::style_t::RED, \
                  std_string, \
@@ -81,7 +78,7 @@ namespace log {
 
 #if LOG_LEVEL >= WARN_LEVEL
   #define REGISTER_WARN(std_string, ...) \
-    REGISTER_LOG(STRINGIZE_NX(WARN), \
+    REGISTER_LOG(STRINGIZE_IMPL(WARN), \
                  stdout, \
                  log::style_t::MAGENTA, \
                  std_string, \
@@ -92,7 +89,7 @@ namespace log {
 
 #if LOG_LEVEL >= INFO_LEVEL
   #define REGISTER_INFO(std_string, ...) \
-    REGISTER_LOG(STRINGIZE_NX(INFO), \
+    REGISTER_LOG(STRINGIZE_IMPL(INFO), \
                  stdout, \
                  log::style_t::GREEN, \
                  std_string, \
@@ -103,7 +100,7 @@ namespace log {
 
 #if LOG_LEVEL >= DEBUG_LEVEL
   #define REGISTER_DEBUG(std_string, ...) \
-    REGISTER_LOG(STRINGIZE_NX(DEBUG), \
+    REGISTER_LOG(STRINGIZE_IMPL(DEBUG), \
                  stdout, \
                  log::style_t::YELLOW, \
                  std_string, \
@@ -116,7 +113,7 @@ namespace log {
 #if LOG_LEVEL >= TRACE_LEVEL
   #if DEBUG_MEMORY
     #define MEMORY_TRACE(std_string, ...) \
-      REGISTER_LOG(STRINGIZE_NX(TRACE), \
+      REGISTER_LOG(STRINGIZE_IMPL(TRACE), \
                    stdout, \
                    std::color::white_smoke, \
                    std_string, \
@@ -125,7 +122,7 @@ namespace log {
     #define MEMORY_TRACE(std_string, ...)
   #endif
   #define REGISTER_TRACE(std_string, ...) \
-    REGISTER_LOG(STRINGIZE_NX(TRACE), \
+    REGISTER_LOG(STRINGIZE_IMPL(TRACE), \
                  stdout, \
                  log::style_t::WHITE, \
                  std_string, \
@@ -133,8 +130,7 @@ namespace log {
 #else
   #define REGISTER_TRACE(std_string, ...)
 #endif
-#define CMM_UNREACHABLE(stdstr, ...) \
-  UNREACHABLE(std::format(stdstr, ##__VA_ARGS__))
+
 #ifndef SAVE_PREPROCESSED
   #define SAVE_PREPROCESSED 0
 #endif
@@ -148,34 +144,6 @@ namespace log {
     return std::format(stdstr, __VA_ARGS__); \
   }
 
-#define MOVABLE_CLS(CLS) \
-  CLS(CLS&&)            = default; \
-  CLS& operator=(CLS&&) = default;
-
-#define COPYABLE_CLS(CLS) \
-  CLS(const CLS&)            = default; \
-  CLS& operator=(const CLS&) = default;
-
-#define DEFAULT_CLASS(CLS) \
-  CLS()  = default; \
-  ~CLS() = default; \
-  COPYABLE_CLS(CLS) \
-  MOVABLE_CLS(CLS)
-
-#define NOT_MOVABLE_CLS(CLS) \
-  CLS(CLS&&)            = delete; \
-  CLS& operator=(CLS&&) = delete;
-
-#define NOT_COPYABLE_CLS(CLS) \
-  CLS(const CLS&)            = delete; \
-  CLS& operator=(const CLS&) = delete;
-
-#define STATIC_CLS(CLS) \
-  CLS()  = delete; \
-  ~CLS() = delete; \
-  NOT_COPYABLE_CLS(CLS) \
-  NOT_MOVABLE_CLS(CLS)
-
 constexpr static uint8_t DATASIZE      = 8;
 constexpr static uint8_t MAX_ARGUMENTS = 6;
 constexpr static uint8_t WORD_LEN      = DATASIZE; // bytes
@@ -184,7 +152,20 @@ constexpr static uint8_t MEM_ADDR_LEN  = WORD_LEN; // bytes
 using ushort                           = unsigned short;
 using cstring                          = std::string_view;
 
-struct hashable {};
+struct hashable {
+  virtual ~hashable()                                = default;
+  bool operator==(const hashable&) const             = default;
+  [[nodiscard]] virtual size_t hash() const          = 0;
+  [[nodiscard]] virtual std::type_index type() const = 0;
+};
+
+struct TypeErasedHash {
+  size_t operator()(const std::unique_ptr<hashable>& obj) const {
+    return obj ? obj->hash() : 0;
+  }
+};
+
+// Custom equality function for type-erased objects
 
 struct formattable {
   constexpr virtual ~formattable() = default;
@@ -419,6 +400,18 @@ private:
 #define GET_TYPES_5(t1, n1, t2, n2, t3, n3, t4, n4, t5, ...) t1, t2, t3, t4, t5
 #define GET_TYPES_6(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, ...) \
   t1, t2, t3, t4, t5, t6
+#define GET_TYPES_7(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, ...) \
+  t1, t2, t3, t4, t5, t6, t7
+#define GET_TYPES_8(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8...) \
+  t1, t2, t3, t4, t5, t6, t7, t8
+#define GET_TYPES_9(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9...) \
+  t1, t2, t3, t4, t5, t6, t7, t8, t9
+#define GET_TYPES_10( \
+    t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9, t10...) \
+  t1, t2, t3, t4, t5, t6, t7, t8, t9, t10
+#define GET_TYPES_12( \
+    t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9, t10, t11, t12...) \
+  t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12
 
 // Helper macro to declare variables
 #define DECLARE_VARS_2(t1, n1) ENUM_PROPERTY(t1, n1, 0);
@@ -435,12 +428,29 @@ private:
   ENUM_PROPERTY(t2, n2, 1); \
   ENUM_PROPERTY(t3, n3, 2); \
   ENUM_PROPERTY(t4, n4, 3);
+#define DECLARE_VARS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
+  ENUM_PROPERTY(t1, n1, 0); \
+  ENUM_PROPERTY(t2, n2, 1); \
+  ENUM_PROPERTY(t3, n3, 2); \
+  ENUM_PROPERTY(t4, n4, 3); \
+  ENUM_PROPERTY(t5, n5, 4);
+#define DECLARE_VARS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
+  ENUM_PROPERTY(t1, n1, 0); \
+  ENUM_PROPERTY(t2, n2, 1); \
+  ENUM_PROPERTY(t3, n3, 2); \
+  ENUM_PROPERTY(t4, n4, 3); \
+  ENUM_PROPERTY(t5, n5, 4); \
+  ENUM_PROPERTY(t6, n6, 5);
 
 #define CTOR_PARAMS_2(t1, n1)                 t1 _##n1
 #define CTOR_PARAMS_4(t1, n1, t2, n2)         t1 _##n1, t2 _##n2
 #define CTOR_PARAMS_6(t1, n1, t2, n2, t3, n3) t1 _##n1, t2 _##n2, t3 _##n3
 #define CTOR_PARAMS_8(t1, n1, t2, n2, t3, n3, t4, n4) \
   t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4
+#define CTOR_PARAMS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
+  t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5
+#define CTOR_PARAMS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
+  t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5, t6 _##n6
 
 #define GET_VALUE(N)                  std::get<N>(element_type::properties_array().at(m_value))
 #define CTOR_ASSIGN_2(t1, n1)         n1(GET_VALUE(0))
@@ -449,11 +459,36 @@ private:
   n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2))
 #define CTOR_ASSIGN_8(t1, n1, t2, n2, t3, n3, t4, n4) \
   n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3))
+#define CTOR_ASSIGN_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
+  n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3)), \
+      n5(GET_VALUE(4))
+#define CTOR_ASSIGN_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
+  n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3)), \
+      n5(GET_VALUE(4)), n6(GET_VALUE(5))
 
 // Count arguments
 #define GET_ARG_COUNT(...) \
-  GET_ARG_COUNT_IMPL( \
-      __VA_ARGS__, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+  GET_ARG_COUNT_IMPL(__VA_ARGS__, \
+                     20, \
+                     19, \
+                     18, \
+                     17, \
+                     16, \
+                     15, \
+                     14, \
+                     13, \
+                     12, \
+                     11, \
+                     10, \
+                     9, \
+                     8, \
+                     7, \
+                     6, \
+                     5, \
+                     4, \
+                     3, \
+                     2, \
+                     1)
 #define GET_ARG_COUNT_IMPL(_1, \
                            _2, \
                            _3, \
@@ -470,17 +505,13 @@ private:
                            _14, \
                            _15, \
                            _16, \
+                           _17, \
+                           _18, \
+                           _19, \
+                           _20, \
                            N, \
                            ...) \
   N
-
-// Macro concatenation helpers
-#define CONCAT(a, b)      CONCAT_IMPL(a, b)
-#define CONCAT_IMPL(a, b) a##b
-
-// Additional helper for PPCAT
-#define PPCAT(a, b)      PPCAT_IMPL(a, b)
-#define PPCAT_IMPL(a, b) a##b
 
 #define CONSTRUCT_VARS_2(t1, n1) , n1()
 
@@ -505,9 +536,12 @@ private:
 #define PAIR_COUNT_12          6
 #define PAIR_COUNT_14          7
 #define PAIR_COUNT_16          8
+#define PAIR_COUNT_18          9
+#define PAIR_COUNT_20          10
+#define PAIR_COUNT_22          11
 
 #define BUILD_ENUMERATION(TYPE, ...) \
-  using value_type   = PPCAT(_, TYPE); \
+  using value_type   = CONCAT(_, TYPE); \
   using element_type = TYPE; \
   using enumeration<value_type>::enumeration; \
   using enum value_type; \
@@ -521,7 +555,7 @@ private:
         CTOR_ASSIGN(__VA_ARGS__) {}
 
 #define BUILD_ENUMERATION_CLASS(TYPE, ...) \
-  struct TYPE : public cmm::enumeration<PPCAT(_, TYPE)> { \
+  struct TYPE : public cmm::enumeration<CONCAT(_, TYPE)> { \
     BUILD_ENUMERATION(TYPE, __VA_ARGS__) \
   };
 
@@ -726,9 +760,6 @@ static_assert(cmm::Formattable<const range>);
 static_assert(cmm::Formattable<const range&>);
 static_assert(std::formattable<const range&, char>);
 static_assert(std::formattable<range, char>);
-// static_assert(std::formattable<range*, char>);
-// static_assert(std::formattable<std::unique_ptr<range>, char>);
-// static_assert(std::formattable<std::shared_ptr<range>, char>);
 
 static bool operator==(const range& r, const range& l) {
   return r.start == l.length && l.start == r.length;
@@ -748,6 +779,26 @@ struct location : public formattable {
 static bool operator==(const location& r, const location& l) {
   return r.rows == l.rows && l.cols == r.cols;
 }
+
+struct allocated {
+  cmm::location m_location;
+
+  allocated()          = default;
+  virtual ~allocated() = default;
+  allocated(cmm::location&&);
+  allocated(const cmm::location&);
+  [[nodiscard]] virtual const cmm::location& location() const;
+};
+
+template <typename T>
+concept Allocated = std::is_base_of_v<allocated, std::remove_reference_t<T>>;
+
+template <typename T>
+concept AllocatedPtr = std::is_base_of_v<allocated, std::remove_pointer_t<T>> &&
+                       std::is_pointer_v<T>;
+
+template <typename... Ts>
+constexpr bool EveryIsAllocated = (Allocated<Ts> && ...);
 
 #define GET_LOC(p) (p == nullptr ? location() : p->loc)
 
@@ -791,8 +842,12 @@ struct compilation_error : public cmm::error {
         : compilation_error( \
               STATUS, \
               loc, \
-              std::format(FMTSTR, std::forward<Args>(args)...)) {} \
-  }
+              std::format(FMTSTR, std::forward<Args>(args)...)) { \
+      static_assert((std::formattable<Args, char> && ...)); \
+    } \
+    template <Allocated T> NAME(const T& t) \
+        : compilation_error(STATUS, t.location(), std::format(FMTSTR, t)) {} \
+  } // namespace cmm
 
 CREATE_ERROR(generic_error, os::status::GENERIC_ERROR, "Generic error");
 CREATE_ERROR(invalid_continue,
@@ -997,49 +1052,120 @@ constexpr string_buffer& string_buffer::newline() noexcept {
   }
 }
 
+template <typename W>
+concept HasWrappers =
+    requires(W w, typename W::value_type v, typename W::element_type e) {
+      { w.wrap(v) } -> std::same_as<decltype(e)>;
+      { w.unwrap(e) } -> std::same_as<decltype(v)>;
+    };
+
+template <typename W>
+concept HasAliases = requires {
+  typename W::value_type;
+  typename W::element_type;
+};
+
 template <typename T>
-struct refvector {
-  using value_type       = T;
-  using element_type     = std::reference_wrapper<T>;
-  using container_type   = std::vector<element_type>;
-  using iterator         = typename container_type::iterator;
-  using const_iterator   = typename container_type::const_iterator;
-  using reverse_iterator = typename container_type::reverse_iterator;
+struct id_element {
+  using value_type   = T;
+  using element_type = T;
+  element_type wrap(value_type v) { return v; }
+  value_type unwrap(element_type e) { return e; }
+};
+
+template <typename T>
+struct ptr_element {
+  using value_type   = std::remove_pointer_t<T>;
+  using element_type = T;
+  element_type wrap(value_type v) { return v; }
+  value_type unwrap(element_type e) { return e; }
+};
+
+template <typename T>
+struct ref_element {
+  using value_type   = std::remove_reference_t<T>;
+  using element_type = std::reference_wrapper<value_type>;
+  element_type wrap(value_type v) {
+    if constexpr (std::is_const_v<T>) {
+      return std::cref(v);
+    }
+    return std::ref(v);
+  }
+  value_type unwrap(element_type e) { return e.get(); }
+};
+template <typename T>
+struct select_modifier {
+  using type = std::conditional_t<
+      Ptr<T>,
+      ptr_element<T>,
+      std::conditional_t<Ref<T>, ref_element<T>, id_element<T>>>;
+};
+
+template <typename T>
+using select_modifier_t = typename select_modifier<T>::type;
+
+template <typename T, template <typename> typename Modifier>
+struct vector_impl {
+  using value_type           = Modifier<T>::value_type;
+  using element_type         = Modifier<T>::element_type;
+  using pointer_type         = std::add_pointer_t<value_type>;
+  using const_pointer_type   = const pointer_type;
+  using reference_type       = std::add_lvalue_reference_t<value_type>;
+  using const_reference_type = const reference_type;
+  using rvalue_type          = std::add_rvalue_reference_t<value_type>;
+  using container_type       = std::vector<element_type>;
+  using iterator             = typename container_type::iterator;
+  using const_iterator       = typename container_type::const_iterator;
+  using reverse_iterator     = typename container_type::reverse_iterator;
   using const_reverse_iterator =
       typename container_type::const_reverse_iterator;
 
-  refvector() = default;
-  refvector(std::initializer_list<T> init);
-  virtual ~refvector()                   = default;
-  refvector(const refvector&)            = default;
-  refvector& operator=(const refvector&) = default;
-  refvector(refvector&&)                 = default;
-  refvector& operator=(refvector&&)      = default;
+  vector_impl() = default;
+  vector_impl(std::initializer_list<value_type> init);
+  virtual ~vector_impl()                     = default;
+  vector_impl(const vector_impl&)            = default;
+  vector_impl& operator=(const vector_impl&) = default;
+  vector_impl(vector_impl&&)                 = default;
+  vector_impl& operator=(vector_impl&&)      = default;
 
-  T& at(size_t);
-  const T& at(size_t) const;
-  const container_type& data() const;
+  reference_type at(size_t);
+  [[nodiscard]] const_reference_type at(size_t) const;
+  [[nodiscard]] const container_type& data() const;
+  reference_type front();
+  [[nodiscard]] const_reference_type front() const;
+  reference_type back();
+  [[nodiscard]] const_reference_type back() const;
   iterator begin();
   iterator end();
-  const_iterator begin() const;
-  const_iterator end() const;
-  const_iterator cbegin() const;
-  const_iterator cend() const;
+  [[nodiscard]] const_iterator begin() const;
+  [[nodiscard]] const_iterator end() const;
+  [[nodiscard]] const_iterator cbegin() const;
+  [[nodiscard]] const_iterator cend() const;
   reverse_iterator rbegin();
   reverse_iterator rend();
-  const_reverse_iterator rbegin() const;
-  const_reverse_iterator rend() const;
+  [[nodiscard]] const_reverse_iterator rbegin() const;
+  [[nodiscard]] const_reverse_iterator rend() const;
   [[nodiscard]] bool empty() const;
   [[nodiscard]] size_t size() const;
-  void push_back(T);
+  void push_back(const_reference_type);
+  void push_back(rvalue_type);
   template <typename Fn>
-  T* find(Fn);
+  pointer_type find(Fn);
   template <typename Fn>
-  const T* find(Fn) const;
+  const_pointer_type find(Fn) const;
 
 private:
   container_type m_data;
 };
+
+template <typename T>
+struct node {
+  node* next;
+  T value;
+};
+
+template <typename T>
+using vector = vector_impl<T, select_modifier_t>;
 
 } // namespace cmm
 

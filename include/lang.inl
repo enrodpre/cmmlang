@@ -1,15 +1,13 @@
 #pragma once
 
-#include "allocator.hpp"
 #include "lang.hpp"
-#include <ranges>
 
 #define TYPE_FORMAT_IMPL(TYPE, stdstr, ...) \
   constexpr std::string TYPE::format() const { \
     return std::format(stdstr, \
                        std::format("{}{}", \
-                                   base_type::const_ ? "const " : "", \
-                                   base_type::volatile_ ? "volatile " : ""), \
+                                   type_class::const_ ? "const " : "", \
+                                   type_class::volatile_ ? "volatile " : ""), \
                        ##__VA_ARGS__); \
   }
 #define CALL(op) op<T>(const_, volatile_, std::forward<Args>(args)...)
@@ -161,145 +159,118 @@ operator_t::properties_array() {
   return MAP;
 }
 
-namespace types {
+}; // namespace cmm
 
-  constexpr bool base_type::operator==(const base_type& other) const {
-    return typeid(*this) == typeid(other);
-  }
+struct type_id {
+  cmm::cstring name;
+};
 
-  constexpr bool indirection_t::operator==(const indirection_t& other) const {
-    return typeid(*this) == typeid(other) &&
-           typeid(type_) == typeid(other.type_);
-  }
+struct types_id {
+  cmm::cstring data;
+};
 
-  TYPE_FORMAT_IMPL(bool_t, "{}bool")
-  TYPE_FORMAT_IMPL(char_t, "{}char")
-  TYPE_FORMAT_IMPL(sint_t, "{}int")
-  TYPE_FORMAT_IMPL(uint_t, "{}unsigned int")
-  TYPE_FORMAT_IMPL(float_t, "{}float")
-  TYPE_FORMAT_IMPL(lvalue_ref_t, "{}{}&", type_->format())
-  TYPE_FORMAT_IMPL(rvalue_ref_t, "{}{}&&", type_->format())
-  TYPE_FORMAT_IMPL(pointer_t, "{}{}*", type_->format())
-  TYPE_FORMAT_IMPL(array_t, "{}array<{}>", length)
-  TYPE_FORMAT_IMPL(function_t, "{}function<{}()>", return_t->format())
+template <typename From, typename To>
+struct converter {
+  To operator()(const From&);
+};
 
-  template <typename T, typename... Args>
-  cv_type store::get_type(Args&&... args) {
-    return m_allocator.emplace<T>(std::forward<Args>(args)...);
-  }
+template <typename From, typename To>
+struct type_converter {
+  const converter<From, To>& from_to;
+  const converter<To, From>& to_from;
+};
 
-#ifdef TYPE_MAP_STORAGE
-  template <Type T, typename... Args>
-  type builder::store::get(bool const_,
-                           bool volatile_,
-                           Args&&... args) noexcept {
-    if (!CALL(contains)) {
-      CALL(add);
-    }
+// template <typename T, typename... Args>
+// cv_type store::get_type(Args&&... args) {
+//   return m_allocator.emplace<T>(std::forward<Args>(args)...);
+// }
 
-    return _store.at(HASH()).get();
-  }
-
-  template <Type T, typename... Args>
-  void builder::store::add(bool const_,
-                           bool volatile_,
-                           Args&&... args) noexcept {
-    _store.emplace(HASH(), CALL(std::make_unique));
-  }
-
-  template <Type T, typename... Args>
-  bool builder::store::contains(bool const_,
-                                bool volatile_,
-                                Args&&... args) noexcept {
-    return _store.contains(HASH());
-  }
-#endif
-
-  template <typename T, typename... Args>
-  types::type builder::build_step::base_type(Args&&... args) {
-    bool c = false;
-    bool v = false;
-    if (steps[steps.size() - 1] == step::volatile_) {
-      v = true;
-      steps.pop_back();
-    }
-    if (steps[steps.size() - 1] == step::const_) {
-      c = true;
-      steps.pop_back();
-    }
-    auto* current = GET_TYPE(T, c, v, std::forward<Args>(args)...);
-    c             = false;
-    v             = false;
-    return std::ranges::fold_left(
-        steps | std::views::reverse,
-        current,
-        [&c, &v](type curr, step next) -> type {
-          switch (next) {
-            case step::const_:
-              c = true;
-              break;
-            case step::volatile_:
-              v = true;
-              break;
-            case step::pointer:
-              {
-                const auto* ret = GET_TYPE(pointer_t, c, v, curr);
-                c               = false;
-                v               = false;
-                return ret;
-              }
-            case step::reference:
-              {
-                const auto* ret = GET_TYPE(lvalue_ref_t, c, v, curr);
-                c               = false;
-                v               = false;
-                return ret;
-              }
-            default:
-              UNREACHABLE();
-          }
-          return curr;
-        });
-  }
-
-  template <Type T>
-  constexpr type builder::create(bool const_, bool volatile_) noexcept {
-    return GET_TYPE(T, const_, volatile_);
-  }
-  template <typename... Args>
-  constexpr cv_type builder::create(type_t t,
-                                    bool const_,
-                                    bool volatile_,
-                                    Args&&...) {
-    switch (t) {
-      case type_t::void_t:
-        return types::builder::create<types::void_t>();
-      case type_t::nullptr_t:
-        return types::builder::create<types::nullptr_t>();
-      case type_t::bool_t:
-        return types::builder::create<types::bool_t>(const_, volatile_);
-      case type_t::char_t:
-        return types::builder::create<types::char_t>(const_, volatile_);
-      case type_t::byte_t:
-        return types::builder::create<types::char_t>(const_, volatile_);
-      case type_t::int_t:
-        return types::builder::create<types::sint_t>(const_, volatile_);
-      case type_t::short_t:
-        return types::builder::create<types::sint_t>(const_, volatile_);
-      case type_t::double_t:
-        return types::builder::create<types::float_t>(const_, volatile_);
-      case type_t::long_t:
-        return types::builder::create<types::sint_t>(const_, volatile_);
-      case type_t::float_t:
-        return types::builder::create<types::float_t>(const_, volatile_);
-      case type_t::class_t:
-      case type_t::struct_t:
-      case type_t::enum_t:
-      default:
-        return types::builder::create<types::float_t>(const_, volatile_);
-        // return types::builder::create<types::class_t>(
-        //     const_, volatile_, std::forward<Args>(args)...);
-    }
-  }
-} // namespace types
-} // namespace cmm
+// template <typename T, typename... Args>
+// types::type builder::build_step::type_class(Args&&... args) {
+//   bool c = false;
+//   bool v = false;
+//   if (steps[steps.size() - 1] == step::volatile_) {
+//     v = true;
+//     steps.pop_back();
+//   }
+//   if (steps[steps.size() - 1] == step::const_) {
+//     c = true;
+//     steps.pop_back();
+//   }
+//   auto* current = GET_TYPE(T, c, v, std::forward<Args>(args)...);
+//   c             = false;
+//   v             = false;
+//   return std::ranges::fold_left(steps | std::views::reverse,
+//                                 current,
+//                                 [&c, &v](type curr, step next) -> type {
+//                                   switch (next) {
+//                                     case step::const_:
+//                                       c = true;
+//                                       break;
+//                                     case step::volatile_:
+//                                       v = true;
+//                                       break;
+//                                     case step::pointer:
+//                                       {
+//                                         const auto* ret =
+//                                             GET_TYPE(pointer_t, c, v, curr);
+//                                         c = false;
+//                                         v = false;
+//                                         return ret;
+//                                       }
+//                                     case step::reference:
+//                                       {
+//                                         const auto* ret =
+//                                             GET_TYPE(lvalue_ref_t, c, v,
+//                                             curr);
+//                                         c = false;
+//                                         v = false;
+//                                         return ret;
+//                                       }
+//                                     default:
+//                                       UNREACHABLE();
+//                                   }
+//                                   return curr;
+//                                 });
+// }
+//
+// template <Type T>
+// constexpr type builder::create(bool const_, bool volatile_) noexcept {
+//   return GET_TYPE(T, const_, volatile_);
+// }
+// template <typename... Args>
+// constexpr cv_type builder::create(type_t t,
+//                                   bool const_,
+//                                   bool volatile_,
+//                                   Args&&...) {
+//   switch (t) {
+//     case type_t::void_t:
+//       return types::builder::create<types::void_t>();
+//     case type_t::nullptr_t:
+//       return types::builder::create<types::nullptr_t>();
+//     case type_t::bool_t:
+//       return types::builder::create<types::bool_t>(const_, volatile_);
+//     case type_t::char_t:
+//       return types::builder::create<types::char_t>(const_, volatile_);
+//     case type_t::byte_t:
+//       return types::builder::create<types::char_t>(const_, volatile_);
+//     case type_t::int_t:
+//       return types::builder::create<types::sint_t>(const_, volatile_);
+//     case type_t::short_t:
+//       return types::builder::create<types::sint_t>(const_, volatile_);
+//     case type_t::double_t:
+//       return types::builder::create<types::float_t>(const_, volatile_);
+//     case type_t::long_t:
+//       return types::builder::create<types::sint_t>(const_, volatile_);
+//     case type_t::float_t:
+//       return types::builder::create<types::float_t>(const_, volatile_);
+//     case type_t::class_t:
+//     case type_t::struct_t:
+//     case type_t::enum_t:
+//     default:
+//       return types::builder::create<types::float_t>(const_, volatile_);
+//       // return types::builder::create<types::class_t>(
+//       //     const_, volatile_, std::forward<Args>(args)...);
+//   }
+// }
+// } // namespace cmm

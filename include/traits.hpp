@@ -252,11 +252,13 @@
 #define ADD_PTR_PTR_COMMA(...)       , DEFER(ADD_PTR_PTR_IMPL)(__VA_ARGS__)
 #define ADD_POINTER_TO_POINTERS(...) EVAL(ADD_PTR_PTR_IMPL(__VA_ARGS__))
 
-// Helper template to check if a type is a pointer
 template <typename T>
-struct is_any_pointer {
-  static constexpr bool value = std::is_pointer_v<T>;
-};
+concept Ptr = std::is_pointer_v<T>;
+template <typename T>
+concept Ref = std::is_lvalue_reference_v<T>;
+
+template <typename T, typename... Ts>
+concept Every = (std::is_same_v<T, Ts> && ...);
 
 template <typename T>
 concept Str = std::is_convertible_v<T, std::string_view>;
@@ -265,23 +267,6 @@ template <typename T>
 concept StrSource =
     std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view> ||
     std::is_same_v<T, const char*>;
-
-// Variadic template to check if any type is a pointer
-template <typename... Args>
-struct any_pointer;
-
-// Base case: no types
-template <>
-struct any_pointer<> {
-  static constexpr bool value = false; // No types, so no pointers
-};
-
-// Recursive case: check the first type and recurse
-template <typename First, typename... Rest>
-struct any_pointer<First, Rest...> {
-  static constexpr bool value =
-      is_any_pointer<First>::value || any_pointer<Rest...>::value;
-};
 
 template <typename T, typename = void>
 struct ensure_pointer {
@@ -381,26 +366,6 @@ template <typename T>
 concept Hashable = requires(T t) {
   { std::hash<T>{}(t) };
 };
-
-template <template <typename> class Trait, typename... Args>
-struct all_of;
-
-// Base case: no types to check
-template <template <typename> class Trait>
-struct all_of<Trait> {
-  static constexpr bool value = true; // No types means "all are valid"
-};
-
-// Recursive case: check the first type and recurse
-template <template <typename> class Trait, typename First, typename... Rest>
-struct all_of<Trait, First, Rest...> {
-  static constexpr bool value =
-      Trait<First>::value && all_of<Trait, Rest...>::value;
-};
-
-template <bool...> struct all;
-template <bool... T> using all_true =
-    std::is_same<all<true, T...>, all<T..., true>>;
 
 template <typename T>
 concept IsSmartOrRawPointer = requires(T ptr) {

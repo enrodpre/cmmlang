@@ -1,12 +1,12 @@
 #pragma once
 
+#include "common.hpp"
+#include "types.hpp"
+#include <cstdint>
 #include <initializer_list>
 #include <ranges>
-#include <type_traits>
 #include <unordered_map>
 #include <utility>
-
-#include "lang.hpp"
 
 namespace cmm {
 
@@ -127,7 +127,7 @@ enum class _token_t : uint8_t {
 };
 #define IS_GROUP(FUNCNAME, NAME) \
   [[nodiscard]] bool FUNCNAME() const { \
-    return PPCAT(NAME, _begin) < m_value && m_value < PPCAT(NAME, _end); \
+    return CONCAT(NAME, _begin) < m_value && m_value < CONCAT(NAME, _end); \
   }
 struct token_t : public cmm::enumeration<_token_t> {
   struct properties {
@@ -166,17 +166,16 @@ struct token_t : public cmm::enumeration<_token_t> {
   }
 };
 
-struct token : public formattable {
+struct token : public formattable, public allocated {
   token_t type;
-  cmm::location location;
   cstring value;
 
-  token(token_t&& t, cmm::location loc)
-      : type(std::move(t)),
-        location(std::move(loc)) {}
-  token(token_t&& t, cmm::location loc, cmm::cstring value)
-      : type(std::move(t)),
-        location(std::move(loc)),
+  token(token_t&& t, cmm::location&& loc)
+      : allocated(std::move(loc)),
+        type(std::move(t)) {}
+  token(token_t&& t, cmm::location&& loc, cmm::cstring value)
+      : allocated(std::move(loc)),
+        type(std::move(t)),
         value(value) {}
   bool operator==(const token& other) const {
     return value == other.value && type == other.type;
