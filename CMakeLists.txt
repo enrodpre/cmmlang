@@ -26,7 +26,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_SHELL, "/usr/bin/zsh")
 set(CMAKE_CXX_FLAGS_DEBUG
-    "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g3 -fno-inline -fno-omit-frame-pointer"
+    "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -fno-eliminate-unused-debug-symbols -fno-inline -fno-omit-frame-pointer"
 )
 
 file(GLOB_RECURSE sources CONFIGURE_DEPENDS
@@ -35,10 +35,6 @@ file(GLOB_RECURSE sources CONFIGURE_DEPENDS
 find_package(magic_enum REQUIRED)
 find_package(cpptrace REQUIRED)
 find_package(libassert REQUIRED)
-
-CPMAddPackage("https://github.com/TheLartians/Revisited.git@2.3.1")
-
-find_package(Revisited REQUIRED)
 
 add_library(${PROJECT_NAME} ${sources})
 set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
@@ -53,31 +49,17 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_26)
 
 target_link_libraries(
   ${PROJECT_NAME} PUBLIC magic_enum::magic_enum cpptrace::cpptrace
-                         libassert::assert Revisited frozen/frozen $<$<BOOL:${MINGW}>:ws2_32>)
+                         libassert::assert $<$<BOOL:${MINGW}>:ws2_32>)
 target_include_directories(
   ${PROJECT_NAME}
   PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
          $<INSTALL_INTERFACE:include/${PROJECT_NAME}-${PROJECT_VERSION}>)
 
 
-CPMAddPackage("gh:TheLartians/PackageProject.cmake")
-
+include(CPack)
 string(TOLOWER ${PROJECT_NAME}/version.h VERSION_HEADER_LOCATION)
 
-packageproject(
-  NAME
-  ${PROJECT_NAME}
-  VERSION
-  ${PROJECT_VERSION}
-  NAMESPACE
-  ${PROJECT_NAME}
-  BINARY_DIR
-  ${PROJECT_BINARY_DIR}
-  INCLUDE_DIR
-  ${PROJECT_SOURCE_DIR}/include
-  INCLUDE_DESTINATION
-  include/${PROJECT_NAME}-${PROJECT_VERSION}
-  VERSION_HEADER
-  "${VERSION_HEADER_LOCATION} "
-  COMPATIBILITY
-  SameMajorVersion)
+set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
+set(CPACK_PACKAGE_VENDOR "enrodpre")
+set(CPACK_PACKAGE_VERSION "1.0.0")
+

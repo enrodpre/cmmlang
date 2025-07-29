@@ -1,5 +1,4 @@
-#include <iostream>
-#include <memory>
 int main() {
-  std::cout << sizeof(std::shared_ptr<int>) << std::endl;
+  enum class a { A, B };
+  a b[1];
 }

@@ -2,11 +2,23 @@
 
 #include "common.hpp"
 #include "macros.hpp"
+
 #include <array>
 #include <cstdint>
-#include <memory>
+#include <libassert/assert.hpp>
+#include <magic_enum/magic_enum.hpp>
+#include <type_traits>
+
+#define NOT_IMPLEMENTED UNREACHABLE("Not implemented method");
 
 namespace cmm {
+
+template <typename... Args>
+size_t hash_combine(const Args&... args) {
+  size_t seed = 0;
+  ((seed ^= typeid(args).hash_code() + 0x9e3779b9 + (seed << 6) + (seed >> 2)), ...);
+  return seed;
+}
 
 enum class _type_t : uint8_t {
   base_t,
@@ -47,90 +59,220 @@ BUILD_ENUMERATION_CLASS(type_t,
                         children);
 
 #define GROUP_TYPES \
-  type_t::fundamental_t, type_t::void_t, type_t::arithmetic_t, \
-      type_t::integral_t, type_t::compound_t, type_t::indirection_t, \
-      type_t::reference_t, type_t::enum_t,
+  type_t::fundamental_t, type_t::void_t, type_t::arithmetic_t, type_t::integral_t, \
+      type_t::compound_t, type_t::indirection_t, type_t::reference_t, type_t::enum_t,
 
 #define INSTANCIABLE_TYPES() \
-  type_t::nullptr_t, type_t::bool_t, type_t::char_t, type_t::uint_t, \
-      type_t::sint_t, type_t::float_t, type_t::lvalue_ref_t, \
-      type_t::rvalue_ref_t, type_t::pointer_t, type_t::arrayinstance_data_t, \
-      type_t::function_t, type_t::scoped_enum_t, type_t::unscoped_enum_t, \
-      type_t::class_t
+  type_t::nullptr_t, type_t::bool_t, type_t::char_t, type_t::uint_t, type_t::sint_t, \
+      type_t::float_t, type_t::lvalue_ref_t, type_t::rvalue_ref_t, type_t::pointer_t, \
+      type_t::arrayinstance_data_t, type_t::function_t, type_t::scoped_enum_t, \
+      type_t::unscoped_enum_t, type_t::class_t
 
 struct type_info {
   size_t value;
   type_info(size_t);
 };
 
-struct rtti;
+class type;
+using cv_type = const type*;
+
+class type : public formattable {
+public:
+  type(bool = false, bool = false);
+  ~type() override = default;
+
+  [[nodiscard]] std::string format() const noexcept override { return name(); }
+  [[nodiscard]] virtual std::string name() const noexcept;
+
+  [[nodiscard]] virtual bool is_same_as(cv_type) const noexcept;
+  [[nodiscard]] bool is_const() const noexcept { return m_const; }
+  [[nodiscard]] bool is_volatile() const noexcept { return m_volatile; }
+
+  [[nodiscard]] virtual size_t alignment() const noexcept              = 0;
+  [[nodiscard]] virtual cv_type underlying() const noexcept            = 0;
+  [[nodiscard]] virtual size_t size() const noexcept                   = 0;
+  [[nodiscard]] virtual size_t rank() const noexcept                   = 0;
+
+  [[nodiscard]] virtual bool is_complete() const noexcept              = 0;
+  [[nodiscard]] virtual bool is_scalar() const noexcept                = 0;
+  [[nodiscard]] virtual bool is_compound() const noexcept              = 0;
+  [[nodiscard]] virtual bool is_convertible_to(cv_type) const noexcept = 0;
+
+protected:
+  bool m_const : 1;
+  bool m_volatile : 1;
+
+private:
+};
+
+class fundamental_type : public type {
+public:
+  using type::type;
+  [[nodiscard]] size_t alignment() const noexcept override { return 0; }
+  [[nodiscard]] cv_type underlying() const noexcept override { return nullptr; }
+  [[nodiscard]] size_t rank() const noexcept override { return 0; }
+
+  [[nodiscard]] bool is_scalar() const noexcept override { return true; }
+  [[nodiscard]] bool is_compound() const noexcept override { return false; }
+  [[nodiscard]] bool is_convertible_to(cv_type) const noexcept override { NOT_IMPLEMENTED; }
+};
+
+class void_type final : public fundamental_type {
+public:
+  static type_t category() noexcept { return type_t::void_t; }
+  void_type(bool, bool);
+  [[nodiscard]] size_t size() const noexcept override { return 0; }
+
+  [[nodiscard]] bool is_complete() const noexcept override { return false; }
+  [[nodiscard]] bool is_convertible_to(cv_type) const noexcept override { NOT_IMPLEMENTED; }
+};
+
+class nullptr_type final : public fundamental_type {
+public:
+  using fundamental_type::fundamental_type;
+  static type_t category() noexcept { return type_t::nullptr_t; }
+  [[nodiscard]] bool is_complete() const noexcept override { return true; }
+  [[nodiscard]] size_t size() const noexcept override { return MEM_ADDR_LEN; }
+};
+class arithmetic_type : public fundamental_type {
+public:
+  using fundamental_type::fundamental_type;
+  [[nodiscard]] bool is_complete() const noexcept override { return true; };
+};
+class integral_type : public arithmetic_type {
+  using arithmetic_type::arithmetic_type;
+};
+class bool_type final : public integral_type {
+public:
+  static type_t category() noexcept { return type_t::bool_t; }
+  bool_type(bool, bool);
+  [[nodiscard]] size_t size() const noexcept override { return 1; }
+};
+class char_type final : public integral_type {
+public:
+  static type_t category() noexcept { return type_t::char_t; }
+  char_type(bool, bool);
+  [[nodiscard]] size_t size() const noexcept override { return 1; }
+};
+class sint_type final : public integral_type {
+public:
+  static type_t category() noexcept { return type_t::sint_t; }
+  sint_type(bool, bool);
+  [[nodiscard]] size_t size() const noexcept override { return 4; }
+};
+class uint_type final : public integral_type {
+public:
+  static type_t category() noexcept { return type_t::uint_t; }
+  uint_type(bool, bool);
+  [[nodiscard]] size_t size() const noexcept override { return 4; }
+};
+class float_type final : public arithmetic_type {
+public:
+  static type_t category() noexcept { return type_t::float_t; }
+  float_type(bool, bool);
+  [[nodiscard]] size_t size() const noexcept override { return 4; }
+};
+class compound_type : public type {
+public:
+  compound_type(bool, bool, cv_type);
+  [[nodiscard]] cv_type underlying() const noexcept override { return m_underlying; }
+  [[nodiscard]] size_t alignment() const noexcept override { return 0; }
+
+  [[nodiscard]] bool is_complete() const noexcept override { return true; };
+  [[nodiscard]] bool is_scalar() const noexcept override { return false; }
+  [[nodiscard]] bool is_compound() const noexcept override { return true; }
+  [[nodiscard]] bool is_convertible_to(cv_type) const noexcept override { NOT_IMPLEMENTED; }
+
+protected:
+  cv_type m_underlying;
+};
+class reference_type : public compound_type {
+public:
+  using compound_type::compound_type;
+  [[nodiscard]] size_t size() const noexcept override { return MEM_ADDR_LEN; }
+  [[nodiscard]] size_t rank() const noexcept override { return 1; }
+};
+class lvalue_ref_type final : public reference_type {
+public:
+  lvalue_ref_type(bool, bool, cv_type);
+  static type_t category() noexcept { return type_t::lvalue_ref_t; }
+};
+class rvalue_ref_type final : public reference_type {
+public:
+  rvalue_ref_type(bool, bool, cv_type);
+  static type_t category() noexcept { return type_t::rvalue_ref_t; }
+};
+class pointer_type final : public compound_type {
+public:
+  pointer_type(bool, bool, cv_type);
+  static type_t category() noexcept { return type_t::pointer_t; }
+  [[nodiscard]] size_t size() const noexcept override { return MEM_ADDR_LEN; }
+  [[nodiscard]] size_t rank() const noexcept override { return 1; }
+};
+class member_pointer_type final : public compound_type {
+public:
+  [[nodiscard]] size_t size() const noexcept override { return MEM_ADDR_LEN; }
+  [[nodiscard]] size_t rank() const noexcept override { return 1; }
+};
+class array_type final : public compound_type {
+public:
+  static type_t category() noexcept { return type_t::array_t; }
+  array_type(cv_type, size_t);
+  [[nodiscard]] size_t size() const noexcept override { return m_rank * m_underlying->size(); }
+  [[nodiscard]] size_t rank() const noexcept override { return m_rank; }
+
+private:
+  size_t m_rank;
+};
+class function_type final : public compound_type {
+public:
+  static type_t category() noexcept { return type_t::function_t; }
+  [[nodiscard]] size_t size() const noexcept override { NOT_IMPLEMENTED; }
+  [[nodiscard]] size_t rank() const noexcept override { NOT_IMPLEMENTED; }
+
+private:
+  // m_underlying is return type
+  std::vector<cv_type> m_parameters;
+};
+
+class enum_type : public compound_type {
+public:
+  [[nodiscard]] size_t size() const noexcept override { return m_underlying->size() * rank(); }
+  [[nodiscard]] size_t rank() const noexcept override { return m_elements.size(); }
+
+private:
+  std::vector<std::string> m_elements;
+};
+class unscoped_enum_type final : public enum_type {
+public:
+  static type_t category() noexcept { return type_t::unscoped_enum_t; }
+};
+class scoped_enum_type final : public enum_type {
+public:
+  static type_t category() noexcept { return type_t::scoped_enum_t; }
+};
+class class_type final : public compound_type {
+public:
+  static type_t category() noexcept { return type_t::class_t; }
+  [[nodiscard]] size_t size() const noexcept override { NOT_IMPLEMENTED; }
+  [[nodiscard]] size_t rank() const noexcept override { NOT_IMPLEMENTED; }
+};
 
 struct type_index {
   type_t type;
   size_t value;
 
   type_index(type_t, size_t);
-  [[nodiscard]] const rtti& get() const;
-};
-
-struct array_data {
-  type_t element_t;
-  size_t length;
-
-  array_data(type_t, size_t, bool, bool);
-};
-
-struct enum_data {
-  type_t underlying_t;
-  size_t length;
-};
-
-struct indirect_data {
-  type_index& obj;
+  [[nodiscard]] cv_type get() const;
 };
 
 #define OVERRIDE_HASHABLE(TYPE) \
-  std::type_index type() const override { \
-    return typeid(TYPE); \
-  } \
-  size_t hash() const override { \
-    return std::hash<std::string_view>()(type().name()); \
-  } \
+  std::type_index type() const override { return typeid(TYPE); } \
+  size_t hash() const override { return std::hash<std::string_view>()(type().name()); } \
   bool operator==(const TYPE&) const = default;
 
-using instance_data =
-    std::variant<std::monostate, array_data, enum_data, indirect_data>;
-
-struct rtti : public formattable {
-  const type_index identifier;
-  const type_t type;
-  bool c : 1;
-  bool v : 1;
-  instance_data data;
-
-  rtti(type_t&&, instance_data&&, bool = false, bool = false);
-  ~rtti() override = default;
-  NOT_COPYABLE_CLS(rtti);
-  NOT_MOVABLE_CLS(rtti);
-
-  operator const type_index&() const;
-  [[nodiscard]] std::string format() const override;
-};
-
-using cv_rtti = const rtti*;
-
 struct is_const_v {
-  constexpr static bool operator()(cv_rtti);
-};
-
-struct type_storage : default_singleton<type_storage> {
-  template <typename... Args>
-  const rtti* get(type_t, Args&&...) noexcept;
-  template <typename... Args>
-  const rtti* get(const std::type_index&) noexcept;
-
-private:
-  std::unordered_map<std::type_index, std::unique_ptr<rtti>> m_storage;
+  constexpr static bool operator()(cv_type);
 };
 
 struct builder {
@@ -142,8 +284,7 @@ public:
     build_step& volatile_qual();
     build_step& pointer_to();
     build_step& reference_of();
-    template <typename... Args>
-    rtti type_class(Args&&...);
+    template <typename... Args> cv_type type_class(Args&&...);
 
   private:
     enum class step : uint8_t { const_ = 0, volatile_, pointer, reference };
@@ -153,44 +294,101 @@ public:
   static build_step init();
 
   template <typename T>
-  constexpr static rtti& create(bool const_    = false,
-                                bool volatile_ = false) noexcept;
+  constexpr static cv_type create(bool const_ = false, bool volatile_ = false) noexcept;
   template <typename... Args>
-  constexpr static rtti& create(type_t,
-                                bool const_    = false,
-                                bool volatile_ = false,
-                                Args&&...);
+  constexpr static cv_type create(type_t, bool const_ = false, bool volatile_ = false, Args&&...);
 };
-} // namespace cmm
-template <>
-struct std::hash<cmm::rtti> {
-  std::size_t operator()(const cmm::rtti& k) const {
-    return ((hash<bool>()(k.c) ^
-             (hash<bool>()(k.v) ^ (std::hash<cmm::_type_t>()(k.type)))));
+
+static inline struct {
+  template <typename... Args> cv_type get(const std::type_index&) noexcept;
+
+  template <typename T, typename... Args>
+    requires(std::is_constructible_v<T, bool, bool, Args...> && std::is_base_of_v<type, T>)
+  cv_type get(bool c, bool v, Args&&... args) {
+    size_t hash_value = hash_combine(T::category(), c, v, std::forward<Args>(args)...);
+    if (!contains(hash_value)) {
+      m_storage.emplace(hash_value, std::make_unique<T>(c, v, std::forward<Args>(args)...));
+    }
+    return retrieve(T::category(), c, v, std::forward<Args>(args)...);
   }
-};
 
-namespace cmm {
+  template <typename... Args>
+  cv_type get(const type_t& t, Args&&... args) {
+    switch (t.inner()) {
+      case _type_t::bool_t:
+        return get<bool_type>(std::forward<Args>(args)...);
+      case _type_t::char_t:
+        return get<char_type>(std::forward<Args>(args)...);
+      case _type_t::uint_t:
+        return get<uint_type>(std::forward<Args>(args)...);
+      case _type_t::sint_t:
+        return get<sint_type>(std::forward<Args>(args)...);
+      case _type_t::float_t:
+        return get<float_type>(std::forward<Args>(args)...);
+      case _type_t::lvalue_ref_t:
+        return get<rvalue_ref_type>(std::forward<Args>(args)...);
+      case _type_t::rvalue_ref_t:
+        return get<rvalue_ref_type>(std::forward<Args>(args)...);
+      case _type_t::pointer_t:
+        return get<pointer_type>(std::forward<Args>(args)...);
+      case _type_t::array_t:
+        return get<array_type>(std::forward<Args>(args)...);
+      case _type_t::function_t:
+        return get<function_type>(std::forward<Args>(args)...);
+      case _type_t::scoped_enum_t:
+        return get<scoped_enum_type>(std::forward<Args>(args)...);
+      case _type_t::unscoped_enum_t:
+        return get<unscoped_enum_type>(std::forward<Args>(args)...);
+      case _type_t::class_t:
+        return get<class_type>(std::forward<Args>(args)...);
+      case _type_t::enum_t:
+      case _type_t::compound_t:
+      case _type_t::indirection_t:
+      case _type_t::reference_t:
+      case _type_t::base_t:
+      case _type_t::fundamental_t:
+      case _type_t::void_t:
+      case _type_t::nullptr_t:
+      case _type_t::arithmetic_t:
+      case _type_t::integral_t:
+        UNREACHABLE("Type not instanciable");
+    }
+  }
 
-template <typename T = rtti>
-using type_erased = std::unique_ptr<T>;
+  template <typename... Args>
+  cv_type retrieve(Args&&... args) const {
+    return m_storage.at(hash_combine(std::forward<Args>(args)...)).get();
+  }
 
-static inline type_storage type_store;
+private:
+  template <typename... Args>
+  bool contains(Args&&... args) const {
+    return contains(hash_combine(std::forward<Args>(args)...));
+  }
+
+  bool contains(size_t hash_value) const { return m_storage.contains(hash_value); }
+
+  template <typename T, typename... Args>
+    requires(std::is_constructible_v<T, Args...> && std::is_base_of_v<type, T>)
+  T create(Args&&... args) {
+    size_t hash_value = hash_combine(std::forward<Args>(args)...);
+  }
+
+  std::unordered_map<size_t, std::unique_ptr<type>> m_storage;
+} type_store;
 
 #define INDIR_STATIC_TYPE(NAME, CLS, TYPE, CONST_, VOLATILE_, ...) \
-  const static inline auto CONCAT(NAME, _T) = \
-      type_store.get(CLS, CONST_, VOLATILE_, TYPE);
+  const static inline cv_type CONCAT(NAME, _T) = type_store.get<CLS>(CONST_, VOLATILE_, TYPE);
 
 #define STATIC_TYPE(NAME, CLS, CONST_, VOLATILE_) \
-  const static inline auto CONCAT(NAME, _T) = \
-      type_store.get(CLS, CONST_, VOLATILE_);
+  const static inline cv_type CONCAT(NAME, _T) = type_store.get<CLS>(CONST_, VOLATILE_);
 
-STATIC_TYPE(UINT, type_t::uint_t, false, false);
-STATIC_TYPE(INT, type_t::sint_t, false, false);
-STATIC_TYPE(CHAR, type_t::char_t, false, false);
-STATIC_TYPE(FLOAT, type_t::float_t, false, false);
-INDIR_STATIC_TYPE(INTPTR, type_t::pointer_t, INT_T, false, false)
-INDIR_STATIC_TYPE(INTREF, type_t::lvalue_ref_t, INT_T, false, false)
+STATIC_TYPE(UINT, uint_type, false, false);
+STATIC_TYPE(INT, sint_type, false, false);
+STATIC_TYPE(CHAR, char_type, false, false);
+STATIC_TYPE(FLOAT, float_type, false, false);
+INDIR_STATIC_TYPE(INTPTR, pointer_type, INT_T, false, false)
+INDIR_STATIC_TYPE(INTREF, lvalue_ref_type, INT_T, false, false)
 } // namespace cmm
 
 #include "types.inl"

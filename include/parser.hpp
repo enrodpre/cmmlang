@@ -2,6 +2,7 @@
 
 #include "allocator.hpp"
 #include "ast.hpp"
+#include "common.hpp"
 #include <format>
 
 #include "token.hpp"
@@ -16,20 +17,16 @@ public:
   static constexpr std::string_view TEMPLATE = "parser Exception.\n{}. {}";
   parser_exception(const std::string& data)
       : message(std::format(TEMPLATE, data, libassert::stacktrace())) {}
-  [[nodiscard]] const char* what() const noexcept override {
-    return message.c_str();
-  }
+  [[nodiscard]] const char* what() const noexcept override { return message.c_str(); }
 };
 
 class no_token_matched_exception : public parser_exception {
-  ast::compound statements;
+  std::vector<ast::statement*> statements;
 
 public:
   no_token_matched_exception(const token& token, decltype(statements) stmts)
 
-      : parser_exception(
-            std::format("No token has been matched.\n Current token: {}\n",
-                        token)),
+      : parser_exception(std::format("No token has been matched.\n Current token: {}\n", token)),
         statements(std::move(stmts)) {}
 };
 
@@ -37,26 +34,22 @@ class parser {
 
 public:
   parser(tokens);
-  ~parser()                        = default;
-  parser(const parser&)            = delete;
-  parser(parser&&)                 = delete;
-  parser& operator=(const parser&) = delete;
-  parser& operator=(parser&&)      = delete;
+  ~parser() = default;
+  NOT_MOVABLE_CLS(parser);
+  NOT_COPYABLE_CLS(parser);
 
   ast::program parse();
   ast::program parse_program();
   ast::statement* parse_statement();
-  ast::compound& parse_compound();
+  ast::compound* parse_compound();
   ast::statement* parse_if();
   ast::statement* parse_goto();
   ast::statement* parse_label();
   ast::statement* parse_while();
   ast::statement* parse_for();
-  ast::decl::global_declaration& parse_declaration();
-  ast::decl::variable& parse_variable(ast::decl::specifiers&&,
-                                      const ast::term::identifier*);
-  ast::decl::function& parse_function(ast::decl::specifiers&&,
-                                      const ast::term::identifier&);
+  ast::global_statement* parse_declaration();
+  ast::decl::variable* parse_variable(ast::decl::specifiers&&, ast::term::identifier);
+  ast::decl::function* parse_function(ast::decl::specifiers&&, ast::term::identifier);
 
   // EXPRESSIONS
   ast::expr::expression* parse_primary();
@@ -67,17 +60,15 @@ public:
 
   // Terms
   ast::decl::specifiers parse_specifiers();
-  template <bool Optional = true>
-  ast::term::identifier* parse_identifier();
+  ast::term::identifier parse_identifier();
 
 private:
   tokens m_tokens;
   memory::Allocator m_arena;
   ast::program m_global;
-  cmm::stack<ast::compound> m_compound;
+  cmm::stack<std::vector<ast::statement*>> m_compound;
 
   ast::expr::expression* parse_lhs_expr();
-  void store_statement(ast::statement*);
   static void want(const token&, const token_t&, bool = false);
   void want(const token_t&, bool = false);
   bool need_semicolon_after_statement = true;

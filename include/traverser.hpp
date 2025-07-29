@@ -37,10 +37,8 @@ public:
 
   void generate_program(const ast::program&);
   void generate_statements(const ast::compound&);
-  void generate_statement(const ast::statement&);
-  operand* generate_expr(const ast::expr::expression&,
-                         ir::intents::intent_t,
-                         operand*);
+  void generate_statement(const ast::statement*);
+  operand* generate_expr(const ast::expr::expression&, ir::intents::intent_t, operand*);
   operand* generate_expr(const ast::expr::expression&, ir::intents::intent_t);
   operand* generate_expr(const ast::expr::expression&);
 
@@ -50,33 +48,33 @@ private:
 
   // Helpers
   template <bool IsGlobal>
-  void generate_variable_decl(const ast::decl::variable&);
+  void generate_variable_decl(const ast::decl::variable*);
   template <typename Jump>
   void generate_continue_break(const Jump&);
   instruction_t generate_condition(const ast::expr::expression&);
   void begin_scope(const ast::compound*);
   void end_scope();
-  operand* call_function(const ast::term::identifier&,
-                         ast::expr::call::arguments);
+  operand* call_function(const ast::term::identifier&, ast::expr::call::arguments);
   operand* call_operator(const ast::term::operator_&, ast::expr::expression&);
   operand* call_operator(const ast::term::operator_&,
                          ast::expr::expression&,
                          ast::expr::expression&);
-  [[nodiscard]] std::optional<std::tuple<std::string, std::string>>
-  get_label_interation_scope() const;
+  [[nodiscard]] std::optional<std::tuple<std::string, std::string>> get_label_interation_scope()
+      const;
 
   friend statement_visitor;
   friend expression_visitor;
   friend global_visitor;
 };
 
-struct global_visitor : public revisited::Visitor<GLOBAL_TYPES> {
+struct global_visitor : public const_visitor<GLOBAL_TYPES> {
   ast_traverser* gen;
   global_visitor(ast_traverser*);
   void visit(const ast::decl::variable&) override;
   void visit(const ast::decl::function&) override;
 };
-struct expression_visitor : public revisited::Visitor<EXPRESSION_TYPES> {
+
+struct expression_visitor : public const_visitor<EXPRESSION_TYPES> {
   ast_traverser* gen;
   operand* in;
   operand* out;
@@ -90,7 +88,7 @@ struct expression_visitor : public revisited::Visitor<EXPRESSION_TYPES> {
   void visit(const ast::expr::identifier&) override;
 };
 
-struct statement_visitor : public revisited::Visitor<STATEMENT_TYPES> {
+struct statement_visitor : public const_visitor<STATEMENT_TYPES> {
   ast_traverser* gen;
   statement_visitor(ast_traverser*);
 

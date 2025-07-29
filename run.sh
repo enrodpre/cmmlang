@@ -19,7 +19,7 @@ if [[ "$1" == "test" ]]; then
 else
   echo '---- COMPILING'
 
-  [ -L CmmLang ] || ln -s ./build/standalone/CmmLang CmmLang
+  [ -L CmmLang ] || ln -s ./build/CmmLang CmmLang
 
   # Clear old files
   [ -f "$FILENAME".preprocessed ] && rip "$FILENAME".preprocessed

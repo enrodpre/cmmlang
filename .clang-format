@@ -9,7 +9,7 @@ AlignConsecutiveMacros:
 AlignEscapedNewlines: DontAlign
 AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortBlocksOnASingleLine: Empty
-AllowShortFunctionsOnASingleLine: Inline
+AllowShortFunctionsOnASingleLine: All
 AlwaysBreakTemplateDeclarations: Yes
 BasedOnStyle: LLVM
 BinPackArguments: false
@@ -21,7 +21,7 @@ BraceWrapping:
   SplitEmptyRecord: false
 BreakConstructorInitializers: BeforeColon
 BreakTemplateDeclarations: Leave
-ColumnLimit: 80
+ColumnLimit: 100
 IndentCaseBlocks: true
 IndentCaseLabels: true
 IndentPPDirectives: BeforeHash

@@ -1,6 +1,5 @@
 #include "ast.hpp"
 #include "common.hpp"
-#include <type_traits>
 #include <utility>
 
 namespace cmm::ast {
@@ -8,6 +7,7 @@ namespace cmm::ast {
 namespace {
   template <typename>
   inline constexpr bool always_false = false;
+  auto extract_location() { return location(); }
   template <typename T>
   auto extract_location(T&& t) {
     if constexpr (Allocated<T>) {
@@ -25,9 +25,6 @@ namespace {
     return (extract_location(std::forward<Ts>(ts)) + ...);
   }
 } // namespace
-template <typename... Ts>
-node::node(Ts&&... ts)
-    : allocated(sum_locations(std::forward<Ts>(ts)...)) {}
 
 static_assert(AllocatedPtr<const term::identifier*>);
 
@@ -39,9 +36,7 @@ FORMAT_IMPL(term::specifier, "{}", type);
 FORMAT_IMPL(expr::identifier, "{}", term.value);
 FORMAT_IMPL(expr::literal, "{}", term.value);
 FORMAT_IMPL(expr::call, "{}()", ident); // args.join(", "));
-FORMAT_IMPL(expr::unary_operator,
-            "Unary operator_t:\n  {}\n  {}",
-            operator_,
+FORMAT_IMPL(expr::unary_operator, "Unary operator_t:\n  {}\n  {}", operator_,
             ""); // expr);
 FORMAT_IMPL(expr::binary_operator,
             "Binary operator_t:\n  {}\n  {}\n  {}",
@@ -60,46 +55,49 @@ FORMAT_IMPL(jump::continue_, "{}", "Continue");
 FORMAT_IMPL(jump::return_, "{}: DerivedVisitable{}", "Return: ", *expr);
 FORMAT_IMPL(jump::goto_, "Goto({})", term);
 
+compound::compound(std::vector<statement*>&& v)
+    : siblings(std::move(v)),
+      visitable() {}
 expr::identifier::identifier(ast::term::identifier&& id)
-    : DerivedVisitable(id),
-      term(std::move(id)) {}
+    : term(std::move(id)) {}
+cmm::location expr::identifier::location() const { return term.location(); }
 expr::literal::literal(const token& token)
-    : DerivedVisitable(token),
-      term(token),
+    : term(token),
       type(token.type.get_properties().type.value()) {}
 
+cmm::location expr::literal::location() const { return term.location(); }
 expr::call::call(decltype(ident)&& ident_, decltype(args)&& args)
-    : DerivedVisitable(ident_, args),
-      ident(ident_),
+    : ident(ident_),
       args(std::move(args)) {
   // ident.set_parent(this);
   args.set_parent(this);
 }
+cmm::location expr::call::location() const { return ident.location() + args.location(); }
 
-expr::unary_operator::unary_operator(expression& expression,
-                                     term::operator_&& op)
-    : DerivedVisitable(expression, op),
-      expr(expression),
+expr::unary_operator::unary_operator(expression& expression, term::operator_&& op)
+    : expr(expression),
       operator_(std::move(op)) {
   expr.set_parent(this);
   operator_.set_parent(this);
 }
+cmm::location expr::unary_operator::location() const {
+  return expr.location() + operator_.location();
+}
+cmm::location expr::binary_operator::location() const {
+  return left.location() + operator_.location() + right.location();
+}
 using namespace decl;
 
 label::label(const token& label_)
-    : DerivedVisitable(label_),
-      term(label_) {}
+    : term(label_) {}
 
-variable::variable(decl::specifiers&& mods,
-                   decltype(ident) id,
-                   decltype(init) i)
-    : DerivedVisitable<variable, global_declaration>(mods, id, i),
-      specifiers(std::move(mods)),
+variable::variable(decl::specifiers&& mods, decltype(ident) id, decltype(init) i)
+    : specifiers(std::move(mods)),
       ident(id),
       init(i) {
   specifiers.set_parent(this);
   if (ident != nullptr) {
-    ident->parent = this;
+    ident->set_parent(this);
   }
   if (init != nullptr) {
     init->set_parent(this);
@@ -109,19 +107,14 @@ function::function(decl::specifiers&& mods,
                    decltype(ident) ident_,
                    decltype(parameters)&& args,
                    compound* body_)
-    : DerivedVisitable<function, global_declaration>(std::move(mods),
-                                                     ident_,
-                                                     std::move(args),
-                                                     body_),
+    : visitable(std::move(mods), ident_, std::move(args), body_),
       specifiers(std::move(mods)),
       ident(ident_),
       parameters(std::move(args)),
       body(body_) {}
 
-expr::binary_operator::binary_operator(expression& left,
-                                       expression& right,
-                                       term::operator_&& op)
-    : DerivedVisitable(left, right, op),
+expr::binary_operator::binary_operator(expression& left, expression& right, term::operator_&& op)
+    : visitable(left, right, op),
       left(left),
       right(right),
       operator_(std::move(op)) {
@@ -133,7 +126,7 @@ selection::if_::if_(term::keyword k,
                     decltype(condition) condition,
                     decltype(block) block_,
                     decltype(else_) else_)
-    : DerivedVisitable(k, condition, block_, else_),
+    : visitable(k, condition, block_, else_),
       keyword(k),
       condition(condition),
       block(block_),
@@ -157,10 +150,8 @@ std::string iteration::iteration<It>::exit_label() const {
   return std::format("exit_{}", static_cast<const It*>(this)->format());
 }
 
-iteration::while_::while_(term::keyword k,
-                          expr::expression& condition_,
-                          statement* block)
-    : DerivedVisitable(k, condition_, block),
+iteration::while_::while_(term::keyword k, expr::expression& condition_, statement* block)
+    : visitable(k, condition_, block),
       keyword(k),
       condition(condition_),
       body(block) {
@@ -176,7 +167,7 @@ iteration::for_::for_(term::keyword k,
                       expr::expression* condition_,
                       expr::expression* step_,
                       statement* block)
-    : DerivedVisitable(k, start_, condition_, step_, block),
+    : visitable(k, start_, condition_, step_, block),
       keyword(k),
       start(start_),
       condition(condition_),
@@ -198,22 +189,22 @@ iteration::for_::for_(term::keyword k,
 }
 
 jump::goto_::goto_(const token& token)
-    : DerivedVisitable(token),
+    : visitable(token),
       term(token) {
   term.set_parent(this);
 }
 jump::break_::break_(const token& token)
-    : DerivedVisitable(token),
+    : visitable(token),
       keyword(token) {
   keyword.set_parent(this);
 }
 jump::continue_::continue_(const token& token)
-    : DerivedVisitable(token),
+    : visitable(token),
       keyword(token) {
   keyword.set_parent(this);
 }
 jump::return_::return_(term::keyword k, expr::expression* expr_)
-    : DerivedVisitable(k, expr_),
+    : visitable(k, expr_),
       keyword(std::move(k)),
       expr(expr_) {
   keyword.set_parent(this);

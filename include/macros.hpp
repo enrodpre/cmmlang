@@ -48,8 +48,7 @@
 
 #define RUN3(code, val1, val2) \
   RUN1(code); \
-  std::cout << "[RESULT] " << #val1 << ": " << val1 << " and " << #val2 \
-            << ": " << val2 << '\n'
+  std::cout << "[RESULT] " << #val1 << ": " << val1 << " and " << #val2 << ": " << val2 << '\n'
 
 /// @brief   Preprocessor trickery to allow for macros that can be overloaded by
 /// the number of passed arguments.
@@ -65,8 +64,7 @@
 
 /// @brief ARG_COUNT(...) expands to the count of its arguments e.g.
 /// ARG_COUNT(x,y,z) will expands to 3.
-#define ARG_COUNT(...) \
-  ARG_COUNT_IMPL(__VA_ARGS__ __VA_OPT__(, ) 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
+#define ARG_COUNT(...)                                                 ARG_COUNT_IMPL(__VA_ARGS__ __VA_OPT__(, ) 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
 #define ARG_COUNT_IMPL(_1, _2, _3, _4, _5, _6, _7, _8, _9, count, ...) count
 
 /// @brief Compiler name & version as a string -- occasionally useful to have
@@ -75,11 +73,9 @@
 /// https://github.com/cpredef/predef/blob/master/Compilers.md)
 #if defined(__clang__)
   #define COMPILER_NAME \
-    "clang " VERSION_STRING( \
-        __clang_major__, __clang_minor__, __clang_patchlevel__)
+    "clang " VERSION_STRING(__clang_major__, __clang_minor__, __clang_patchlevel__)
 #elif defined(__GNUC__)
-  #define COMPILER_NAME \
-    "gcc " VERSION_STRING(__GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__)
+  #define COMPILER_NAME "gcc " VERSION_STRING(__GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__)
 #else
   #define COMPILER_NAME "Unidentified Compiler"
 #endif

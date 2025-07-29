@@ -13,9 +13,7 @@ namespace cmm {
 
 using namespace fs;
 
-compiler::compiler(const config& config_,
-                   const fs::path& input,
-                   const std::string& output)
+compiler::compiler(const config& config_, const fs::path& input, const std::string& output)
     : m_config(config_),
       m_source_code(input),
       m_output_filename(output) {}
@@ -50,13 +48,14 @@ ofile compiler::compile(const source_code& src) {
 
   // exit(1);
   // ast::validator::validate(compound);
-  auto& cunit = ir::compilation_unit::instance(&compound, src);
+  ir::compilation_unit cunit;
+  auto& fn = compound.at(0);
 
   fs::ofile asm_file(m_output_filename);
   asm_file = asm_file.replace_extension("asm");
 
   try {
-    auto asm_code = cunit.compile(compound);
+    auto asm_code = cunit.compile(compound, &src);
     asm_file.write(asm_code);
     return asm_file;
   } catch (const compilation_error& e) {
@@ -91,9 +90,8 @@ fs::ofile compiler::run() {
   auto obj_file     = assemble(asm_file);
   const auto binary = link(obj_file);
 
-  REGISTER_INFO("Succesfully compiled {} into {}",
-                m_source_code.get_filename(),
-                binary.path().string());
+  REGISTER_INFO(
+      "Succesfully compiled {} into {}", m_source_code.get_filename(), binary.path().string());
 
   if (m_config.dump_memory) {
     // memory::Allocator::get().report_statistics();
@@ -106,25 +104,18 @@ void compiler::throw_linking_error(const std::string& err) {
   cmm::os::error(os::status::LINKING_ERROR);
 }
 
-void compiler::throw_compilation_error(std::string_view err,
-                                       const location& loc) {
-  auto text_header          = std::format("{}:{}:{}:",
-                                 m_source_code.get_filename(),
-                                 loc.rows.start,
-                                 loc.cols.start);
-  auto styled_text_header   = log::apply(text_header, log::style_t::HEADER);
-  auto first_line           = std::format("{} {} {}",
-                                styled_text_header,
-                                log::apply("error: ", log::style_t::ERROR),
-                                err);
+void compiler::throw_compilation_error(std::string_view err, const location& loc) {
+  auto text_header =
+      std::format("{}:{}:{}:", m_source_code.get_filename(), loc.rows.start, loc.cols.start);
+  auto styled_text_header = log::apply(text_header, log::style_t::HEADER);
+  auto first_line =
+      std::format("{} {} {}", styled_text_header, log::apply("error: ", log::style_t::ERROR), err);
 
   auto [left, error, right] = m_source_code.get_line_chunked(loc);
   auto formatted_error      = log::apply(error, log::style_t::ERROR);
-  auto formatter_error_line =
-      std::format("{}{}{}\n", left, formatted_error, right);
-  auto second_line =
-      std::format("   {} |    {}", loc.rows.start, formatter_error_line);
-  auto formatted_msg = std::format("{}\n{}", first_line, second_line);
+  auto formatter_error_line = std::format("{}{}{}\n", left, formatted_error, right);
+  auto second_line          = std::format("   {} |    {}", loc.rows.start, formatter_error_line);
+  auto formatted_msg        = std::format("{}\n{}", first_line, second_line);
 
   std::cout << formatted_msg;
 }

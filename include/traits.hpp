@@ -399,3 +399,38 @@ concept EntryLike = requires(T t) {
   typename std::remove_cvref_t<decltype(t)>::key_type;
   typename std::remove_cvref_t<decltype(t)>::mapped_type;
 };
+
+template <typename Func, typename... Args>
+struct get_return_type : std::invoke_result_t<Func, Args...> {};
+
+template <typename Func, typename... Args>
+concept ReturnsVoid = std::is_same_v<get_return_type<Func, Args...>, void>;
+
+template <typename T>
+struct OptionalChecker {
+  using type = std::remove_cv_t<std::remove_reference_t<T>>;
+
+  static constexpr bool is_optional = requires(type opt) {
+    { opt.has_value() } -> std::convertible_to<bool>;
+    { opt.value() } -> std::same_as<typename type::value_type&>;
+  };
+
+  static constexpr bool is_empty(const T& opt) {
+    if constexpr (is_optional) {
+      return !opt.has_value();
+    } else {
+      return false;
+    }
+  }
+};
+template <typename Base, typename Derived>
+struct polymorphic_traits {
+  static constexpr bool is_base_polymorphic    = std::is_polymorphic_v<Base>;
+  static constexpr bool is_derived_polymorphic = std::is_polymorphic_v<Derived>;
+  static constexpr bool is_base_of     = std::is_base_of_v<Base, Derived>;
+  static constexpr bool is_convertible = std::is_convertible_v<Derived*, Base*>;
+  static constexpr bool value = is_base_polymorphic && is_derived_polymorphic &&
+                                is_base_of && is_convertible;
+};
+#define DERIVE_OK(BASE, DERIVED) \
+  static_assert(polymorphic_traits<BASE, DERIVED>::value);

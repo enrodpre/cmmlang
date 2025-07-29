@@ -181,9 +181,6 @@ struct type_converter {
 };
 
 // template <typename T, typename... Args>
-// cv_type store::get_type(Args&&... args) {
-//   return m_allocator.emplace<T>(std::forward<Args>(args)...);
-// }
 
 // template <typename T, typename... Args>
 // types::type builder::build_step::type_class(Args&&... args) {

@@ -1,5 +1,6 @@
 #include "lexer.hpp"
 
+#include <algorithm>
 #include <ranges>
 #include <regex>
 #include <string>
@@ -57,7 +58,7 @@ tokens lexer::tokenize() {
 }
 
 auto constexpr lexer::single_patterns() {
-  return token_t::properties_array() | std::views::filter([](auto pair) {
+  return token_t::properties_array() | std::views::filter([](const auto& pair) {
            const auto& [type, prop] = pair;
            return prop.pattern_type ==
                   token_t::properties::pattern_t::SINGLE_CHAR;
@@ -65,7 +66,8 @@ auto constexpr lexer::single_patterns() {
 }
 
 auto constexpr lexer::multi_patterns() {
-  return cmm::token_t::properties_array() | std::views::filter([](auto pair) {
+  return cmm::token_t::properties_array() |
+         std::views::filter([](const auto& pair) {
            const auto& [type, prop] = pair;
            return prop.pattern_type ==
                   token_t::properties::pattern_t::MULTI_CHAR;

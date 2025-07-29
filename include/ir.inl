@@ -87,7 +87,7 @@ void compilation_unit::instruction(const instruction_t& ins, Args&&... args) {
 
 namespace {
   constexpr assembly::operand* load_parameter(compilation_unit& v,
-                                              cv_rtti type,
+                                              cv_type type,
                                               const ast::expr::expression* expr,
                                               assembly::reg* to) {
 
@@ -104,7 +104,7 @@ namespace builtin {
       template <size_t N>
       constexpr auto SIMPLE_LOADING =
           [](compilation_unit&,
-             const builtin_function::parameters_t&,
+             const ast::decl::function::parameters_t&,
              const ast::expr::call::arguments&) { UNREACHABLE(""); };
       template <>
       inline constexpr auto SIMPLE_LOADING<1> =
@@ -112,7 +112,7 @@ namespace builtin {
              builtin_function::parameters_t param_t,
              const ast::expr::call::arguments& arg) {
             auto* to = load_parameter(
-                v, param_t.at(0), &arg.at(0), v.regs.parameters.at(0));
+                v, param_t.at(0), arg.at(0), v.regs.parameters.at(0));
             return std::vector<operand*>{to};
           };
       template <>
@@ -121,9 +121,9 @@ namespace builtin {
              builtin_function::parameters_t params,
              const ast::expr::call::arguments& args) {
             auto* to = load_parameter(
-                v, params.at(0), &args.at(0), v.regs.parameters.at(0));
+                v, params.at(0), args.at(0), v.regs.parameters.at(0));
             auto* from = load_parameter(
-                v, params.at(1), &args.at(1), v.regs.parameters.at(1));
+                v, params.at(1), args.at(1), v.regs.parameters.at(1));
             return std::vector<operand*>{to, from};
           };
     } // namespace preprocessors
@@ -197,9 +197,9 @@ namespace builtin {
     }; // namespace postprocessors
   }; // namespace function
   constexpr void provider::create_builtin_function(
-      std::optional<cv_rtti> ret,
+      std::optional<cv_type> ret,
       std::string name,
-      const std::vector<cv_rtti>& args,
+      const std::vector<cv_type>& args,
       builtin_function::preprocess_t pre,
       builtin_function::body_t body,
       builtin_function::postprocess_t post) {
@@ -212,9 +212,9 @@ namespace builtin {
         false);
   }
   constexpr void provider::create_builtin_operator(
-      cv_rtti ret,
+      cv_type ret,
       const operator_t& op,
-      const std::vector<cv_rtti>& args,
+      const std::vector<cv_type>& args,
       builtin_function::preprocess_t pre,
       builtin_function::body_t body,
       builtin_function::postprocess_t post) {
@@ -227,7 +227,7 @@ namespace builtin {
   }
   template <_instruction_t Ins, size_t N>
   constexpr void provider::create_simple_operator(const operator_t& op,
-                                                  cv_rtti type) {
+                                                  cv_type type) {
     if constexpr (N == 1) {
       create_builtin_operator(type,
                               op,
@@ -298,7 +298,7 @@ namespace builtin {
   }
 
   constexpr void provider::provide_functions() {
-    create_builtin_function(std::nullopt,
+    create_builtin_function({},
                             "exit",
                             {UINT_T},
                             function::preprocessors::SIMPLE_LOADING<1>,

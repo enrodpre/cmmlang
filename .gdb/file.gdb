@@ -1,1 +1,1 @@
-set args examples/binop.cmm
+set args examples/return.1.cmm

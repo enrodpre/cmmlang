@@ -58,53 +58,33 @@ namespace log {
 #define NONE_LEVEL  0
 
 #define REGISTER_LOG(lvl, file, header_color, formatter_string, ...) \
-  std::print(file, \
-             "[{}:{} {}] ", \
-             __FILE_NAME__, \
-             __LINE__, \
-             log::apply(lvl, header_color)); \
+  std::print(file, "[{}:{} {}] ", __FILE_NAME__, __LINE__, log::apply(lvl, header_color)); \
   std::println(file, formatter_string, ##__VA_ARGS__)
 
 #if LOG_LEVEL >= ERROR_LEVEL
   #define REGISTER_ERROR(std_string, ...) \
-    REGISTER_LOG(STRINGIZE_IMPL(ERROR), \
-                 stderr, \
-                 log::style_t::RED, \
-                 std_string, \
-                 ##__VA_ARGS__)
+    REGISTER_LOG(STRINGIZE_IMPL(ERROR), stderr, log::style_t::RED, std_string, ##__VA_ARGS__)
 #else
   #define REGISTER_ERROR(std_string, ...)
 #endif
 
 #if LOG_LEVEL >= WARN_LEVEL
   #define REGISTER_WARN(std_string, ...) \
-    REGISTER_LOG(STRINGIZE_IMPL(WARN), \
-                 stdout, \
-                 log::style_t::MAGENTA, \
-                 std_string, \
-                 ##__VA_ARGS__)
+    REGISTER_LOG(STRINGIZE_IMPL(WARN), stdout, log::style_t::MAGENTA, std_string, ##__VA_ARGS__)
 #else
   #define REGISTER_WARN(std_string, ...)
 #endif
 
 #if LOG_LEVEL >= INFO_LEVEL
   #define REGISTER_INFO(std_string, ...) \
-    REGISTER_LOG(STRINGIZE_IMPL(INFO), \
-                 stdout, \
-                 log::style_t::GREEN, \
-                 std_string, \
-                 ##__VA_ARGS__)
+    REGISTER_LOG(STRINGIZE_IMPL(INFO), stdout, log::style_t::GREEN, std_string, ##__VA_ARGS__)
 #else
   #define REGISTER_INFO(std_string, ...)
 #endif
 
 #if LOG_LEVEL >= DEBUG_LEVEL
   #define REGISTER_DEBUG(std_string, ...) \
-    REGISTER_LOG(STRINGIZE_IMPL(DEBUG), \
-                 stdout, \
-                 log::style_t::YELLOW, \
-                 std_string, \
-                 ##__VA_ARGS__)
+    REGISTER_LOG(STRINGIZE_IMPL(DEBUG), stdout, log::style_t::YELLOW, std_string, ##__VA_ARGS__)
 
 #else
   #define REGISTER_DEBUG(std_string, ...)
@@ -113,20 +93,13 @@ namespace log {
 #if LOG_LEVEL >= TRACE_LEVEL
   #if DEBUG_MEMORY
     #define MEMORY_TRACE(std_string, ...) \
-      REGISTER_LOG(STRINGIZE_IMPL(TRACE), \
-                   stdout, \
-                   std::color::white_smoke, \
-                   std_string, \
-                   ##__VA_ARGS__)
+      REGISTER_LOG( \
+          STRINGIZE_IMPL(TRACE), stdout, std::color::white_smoke, std_string, ##__VA_ARGS__)
   #else
     #define MEMORY_TRACE(std_string, ...)
   #endif
   #define REGISTER_TRACE(std_string, ...) \
-    REGISTER_LOG(STRINGIZE_IMPL(TRACE), \
-                 stdout, \
-                 log::style_t::WHITE, \
-                 std_string, \
-                 ##__VA_ARGS__)
+    REGISTER_LOG(STRINGIZE_IMPL(TRACE), stdout, log::style_t::WHITE, std_string, ##__VA_ARGS__)
 #else
   #define REGISTER_TRACE(std_string, ...)
 #endif
@@ -140,9 +113,7 @@ namespace log {
 
 #define FORMAT_DECL_IMPL() std::string format() const override;
 #define FORMAT_IMPL(TYPE, stdstr, ...) \
-  std::string TYPE::format() const { \
-    return std::format(stdstr, __VA_ARGS__); \
-  }
+  std::string TYPE::format() const { return std::format(stdstr, __VA_ARGS__); }
 
 constexpr static uint8_t DATASIZE      = 8;
 constexpr static uint8_t MAX_ARGUMENTS = 6;
@@ -160,9 +131,7 @@ struct hashable {
 };
 
 struct TypeErasedHash {
-  size_t operator()(const std::unique_ptr<hashable>& obj) const {
-    return obj ? obj->hash() : 0;
-  }
+  size_t operator()(const std::unique_ptr<hashable>& obj) const { return obj ? obj->hash() : 0; }
 };
 
 // Custom equality function for type-erased objects
@@ -175,16 +144,13 @@ struct formattable {
 
 template <typename T>
 concept Formattable =
-    std::is_base_of_v<cmm::formattable,
-                      std::remove_cv_t<std::remove_reference_t<T>>>;
+    std::is_base_of_v<cmm::formattable, std::remove_cv_t<std::remove_reference_t<T>>>;
 
 template <typename T>
 concept FormattablePtr =
-    std::is_base_of_v<cmm::formattable,
-                      std::remove_cv_t<std::remove_pointer_t<T>>>;
+    std::is_base_of_v<cmm::formattable, std::remove_cv_t<std::remove_pointer_t<T>>>;
 
-constexpr static inline auto format_func =
-    [](const auto& _formattable) -> std::string {
+constexpr static inline auto format_func = [](const auto& _formattable) -> std::string {
   if constexpr (std::is_pointer_v<decltype(_formattable)>) {
     return _formattable->format();
   } else {
@@ -393,24 +359,20 @@ private:
 
 // Helper macro to extract types (every odd-positioned argument: 1st, 3rd, 5th,
 // etc.)
-#define GET_TYPES_1(t1, ...)                                 t1
-#define GET_TYPES_2(t1, n1, t2, ...)                         t1, t2
-#define GET_TYPES_3(t1, n1, t2, n2, t3, ...)                 t1, t2, t3
-#define GET_TYPES_4(t1, n1, t2, n2, t3, n3, t4, ...)         t1, t2, t3, t4
-#define GET_TYPES_5(t1, n1, t2, n2, t3, n3, t4, n4, t5, ...) t1, t2, t3, t4, t5
-#define GET_TYPES_6(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, ...) \
-  t1, t2, t3, t4, t5, t6
-#define GET_TYPES_7(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, ...) \
-  t1, t2, t3, t4, t5, t6, t7
+#define GET_TYPES_1(t1, ...)                                             t1
+#define GET_TYPES_2(t1, n1, t2, ...)                                     t1, t2
+#define GET_TYPES_3(t1, n1, t2, n2, t3, ...)                             t1, t2, t3
+#define GET_TYPES_4(t1, n1, t2, n2, t3, n3, t4, ...)                     t1, t2, t3, t4
+#define GET_TYPES_5(t1, n1, t2, n2, t3, n3, t4, n4, t5, ...)             t1, t2, t3, t4, t5
+#define GET_TYPES_6(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, ...)     t1, t2, t3, t4, t5, t6
+#define GET_TYPES_7(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, ...) t1, t2, t3, t4, t5, t6, t7
 #define GET_TYPES_8(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8...) \
   t1, t2, t3, t4, t5, t6, t7, t8
 #define GET_TYPES_9(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9...) \
   t1, t2, t3, t4, t5, t6, t7, t8, t9
-#define GET_TYPES_10( \
-    t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9, t10...) \
+#define GET_TYPES_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9, t10...) \
   t1, t2, t3, t4, t5, t6, t7, t8, t9, t10
-#define GET_TYPES_12( \
-    t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9, t10, t11, t12...) \
+#define GET_TYPES_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9, t10, t11, t12...) \
   t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12
 
 // Helper macro to declare variables
@@ -442,53 +404,31 @@ private:
   ENUM_PROPERTY(t5, n5, 4); \
   ENUM_PROPERTY(t6, n6, 5);
 
-#define CTOR_PARAMS_2(t1, n1)                 t1 _##n1
-#define CTOR_PARAMS_4(t1, n1, t2, n2)         t1 _##n1, t2 _##n2
-#define CTOR_PARAMS_6(t1, n1, t2, n2, t3, n3) t1 _##n1, t2 _##n2, t3 _##n3
-#define CTOR_PARAMS_8(t1, n1, t2, n2, t3, n3, t4, n4) \
-  t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4
+#define CTOR_PARAMS_2(t1, n1)                         t1 _##n1
+#define CTOR_PARAMS_4(t1, n1, t2, n2)                 t1 _##n1, t2 _##n2
+#define CTOR_PARAMS_6(t1, n1, t2, n2, t3, n3)         t1 _##n1, t2 _##n2, t3 _##n3
+#define CTOR_PARAMS_8(t1, n1, t2, n2, t3, n3, t4, n4) t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4
 #define CTOR_PARAMS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
   t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5
 #define CTOR_PARAMS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
   t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5, t6 _##n6
 
-#define GET_VALUE(N)                  std::get<N>(element_type::properties_array().at(m_value))
-#define CTOR_ASSIGN_2(t1, n1)         n1(GET_VALUE(0))
-#define CTOR_ASSIGN_4(t1, n1, t2, n2) n1(GET_VALUE(0)), n2(GET_VALUE(1))
-#define CTOR_ASSIGN_6(t1, n1, t2, n2, t3, n3) \
-  n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2))
+#define GET_VALUE(N)                          std::get<N>(element_type::properties_array().at(m_value))
+#define CTOR_ASSIGN_2(t1, n1)                 n1(GET_VALUE(0))
+#define CTOR_ASSIGN_4(t1, n1, t2, n2)         n1(GET_VALUE(0)), n2(GET_VALUE(1))
+#define CTOR_ASSIGN_6(t1, n1, t2, n2, t3, n3) n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2))
 #define CTOR_ASSIGN_8(t1, n1, t2, n2, t3, n3, t4, n4) \
   n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3))
 #define CTOR_ASSIGN_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
-  n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3)), \
-      n5(GET_VALUE(4))
+  n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3)), n5(GET_VALUE(4))
 #define CTOR_ASSIGN_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
-  n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3)), \
-      n5(GET_VALUE(4)), n6(GET_VALUE(5))
+  n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3)), n5(GET_VALUE(4)), \
+      n6(GET_VALUE(5))
 
 // Count arguments
 #define GET_ARG_COUNT(...) \
-  GET_ARG_COUNT_IMPL(__VA_ARGS__, \
-                     20, \
-                     19, \
-                     18, \
-                     17, \
-                     16, \
-                     15, \
-                     14, \
-                     13, \
-                     12, \
-                     11, \
-                     10, \
-                     9, \
-                     8, \
-                     7, \
-                     6, \
-                     5, \
-                     4, \
-                     3, \
-                     2, \
-                     1)
+  GET_ARG_COUNT_IMPL( \
+      __VA_ARGS__, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
 #define GET_ARG_COUNT_IMPL(_1, \
                            _2, \
                            _3, \
@@ -516,14 +456,10 @@ private:
 #define CONSTRUCT_VARS_2(t1, n1) , n1()
 
 // Dispatch macros
-#define DECLARE_VARS(...) \
-  CONCAT(DECLARE_VARS_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
-#define GET_TYPES(...) \
-  CONCAT(GET_TYPES_, GET_PAIR_COUNT(__VA_ARGS__))(__VA_ARGS__)
-#define CTOR_PARAMS(...) \
-  CONCAT(CTOR_PARAMS_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
-#define CTOR_ASSIGN(...) \
-  CONCAT(CTOR_ASSIGN_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
+#define DECLARE_VARS(...) CONCAT(DECLARE_VARS_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
+#define GET_TYPES(...)    CONCAT(GET_TYPES_, GET_PAIR_COUNT(__VA_ARGS__))(__VA_ARGS__)
+#define CTOR_PARAMS(...)  CONCAT(CTOR_PARAMS_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
+#define CTOR_ASSIGN(...)  CONCAT(CTOR_ASSIGN_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
 
 // Calculate number of pairs (divide arg count by 2)
 #define GET_PAIR_COUNT(...)    GET_PAIR_COUNT_IMPL(GET_ARG_COUNT(__VA_ARGS__))
@@ -546,9 +482,8 @@ private:
   using enumeration<value_type>::enumeration; \
   using enum value_type; \
   DECLARE_VARS(__VA_ARGS__) \
-  using member_types = std::tuple<GET_TYPES(__VA_ARGS__)>; \
-  using properties_map = \
-      magic_enum::containers::array<value_type, member_types>; \
+  using member_types   = std::tuple<GET_TYPES(__VA_ARGS__)>; \
+  using properties_map = magic_enum::containers::array<value_type, member_types>; \
   [[nodiscard]] static constexpr const properties_map& properties_array(); \
   constexpr TYPE(value_type e) \
       : enumeration<value_type>(e), \
@@ -560,8 +495,7 @@ private:
   };
 
 template <typename T, template <typename> class BaseTemplate>
-concept DerivedFromTemplate =
-    std::is_base_of_v<BaseTemplate<typename T::value_type>, T>;
+concept DerivedFromTemplate = std::is_base_of_v<BaseTemplate<typename T::value_type>, T>;
 
 template <typename T> class stack {
 public:
@@ -606,6 +540,7 @@ public:
   void push(const T& t) noexcept;
   void push(T&& t) noexcept;
   void pop();
+  T&& pop_move();
   T pop_return();
   void clear() noexcept;
   void swap(stack& other) noexcept;
@@ -629,10 +564,9 @@ template <typename Base, typename Derived>
 struct is_direct_child_of {
   static constexpr bool value =
       std::is_base_of_v<Base, Derived> && !std::is_same_v<Base, Derived> &&
-      !std::is_base_of_v<
-          Base,
-          typename std::remove_pointer_t<decltype(static_cast<void*>(
-              static_cast<Base*>(static_cast<Derived*>(nullptr))))>>;
+      !std::is_base_of_v<Base,
+                         typename std::remove_pointer_t<decltype(static_cast<void*>(
+                             static_cast<Base*>(static_cast<Derived*>(nullptr))))>>;
 };
 
 template <typename Cls, typename Parent = void, typename... Parents>
@@ -645,10 +579,9 @@ struct identifiable {
   [[nodiscard]] virtual std::string id() const;
   [[nodiscard]] size_t id_n() const;
 
-  using return_type =
-      std::conditional_t<std::is_void_v<Parent>, std::nullptr_t, const Parent*>;
+  using return_type = std::conditional_t<std::is_void_v<Parent>, std::nullptr_t, const Parent*>;
 
-  virtual return_type parent() const = 0;
+  virtual return_type parent() const;
 
   static id_type constructed();
   static id_type destructed();
@@ -668,13 +601,9 @@ struct identifiable_child : public identifiable<T, Ts...> {
 template <typename T>
 struct identifiable_parent : public identifiable<T> {
   using identifiable<T>::identifiable;
-  [[nodiscard]] std::nullptr_t parent() const override;
+  [[nodiscard]] identifiable<T>::return_type parent() const final { return nullptr; };
   // std::nullptr_t parent() override { return nullptr; }
 };
-template <typename T>
-inline std::nullptr_t identifiable_parent<T>::parent() const {
-  return nullptr;
-}
 
 struct mangable {
   std::string mangled;
@@ -740,8 +669,8 @@ struct range : public formattable {
   [[nodiscard]] constexpr auto tie() const { return std::tie(start, length); }
 
   constexpr range operator+(const range& other) const {
-    size_t start = std::min(start, other.start);
-    size_t end = std::max(start, other.start) + std::max(length, other.length);
+    size_t start  = std::min(start, other.start);
+    size_t end    = std::max(start, other.start) + std::max(length, other.length);
     size_t length = end - start;
 
     return {start, length};
@@ -781,21 +710,25 @@ static bool operator==(const location& r, const location& l) {
 }
 
 struct allocated {
-  cmm::location m_location;
+  virtual ~allocated()                                 = default;
+  [[nodiscard]] virtual cmm::location location() const = 0;
+};
 
-  allocated()          = default;
-  virtual ~allocated() = default;
-  allocated(cmm::location&&);
-  allocated(const cmm::location&);
-  [[nodiscard]] virtual const cmm::location& location() const;
+struct self_allocated : public allocated {
+  self_allocated(cmm::location&&);
+  self_allocated(const cmm::location&);
+  [[nodiscard]] cmm::location location() const override { return m_location; }
+
+private:
+  cmm::location m_location;
 };
 
 template <typename T>
 concept Allocated = std::is_base_of_v<allocated, std::remove_reference_t<T>>;
 
 template <typename T>
-concept AllocatedPtr = std::is_base_of_v<allocated, std::remove_pointer_t<T>> &&
-                       std::is_pointer_v<T>;
+concept AllocatedPtr =
+    std::is_base_of_v<allocated, std::remove_pointer_t<T>> && std::is_pointer_v<T>;
 
 template <typename... Ts>
 constexpr bool EveryIsAllocated = (Allocated<Ts> && ...);
@@ -808,9 +741,7 @@ struct error : public std::exception {
   error(std::string_view msg)
       : message(msg) {}
 
-  [[nodiscard]] constexpr const char* what() const noexcept override {
-    return message.data();
-  }
+  [[nodiscard]] constexpr const char* what() const noexcept override { return message.data(); }
 
 protected:
   std::string message;
@@ -825,9 +756,7 @@ struct compilation_error : public cmm::error {
   cmm::os::status status;
   const location loc;
 
-  compilation_error(cmm::os::status status,
-                    location loc,
-                    const std::string& msg)
+  compilation_error(cmm::os::status status, location loc, const std::string& msg)
       : error(std::move(msg)),
         status(status),
         loc(std::move(loc)) {
@@ -839,10 +768,7 @@ struct compilation_error : public cmm::error {
   struct NAME : public compilation_error { \
     template <typename... Args> \
     NAME(cmm::location loc, Args&&... args) \
-        : compilation_error( \
-              STATUS, \
-              loc, \
-              std::format(FMTSTR, std::forward<Args>(args)...)) { \
+        : compilation_error(STATUS, loc, std::format(FMTSTR, std::forward<Args>(args)...)) { \
       static_assert((std::formattable<Args, char> && ...)); \
     } \
     template <Allocated T> NAME(const T& t) \
@@ -853,42 +779,22 @@ CREATE_ERROR(generic_error, os::status::GENERIC_ERROR, "Generic error");
 CREATE_ERROR(invalid_continue,
              os::status::INVALID_CONTINUE,
              "continue statement not within loop or switch");
-CREATE_ERROR(invalid_break,
-             os::status::INVALID_BREAK,
-             "break statement not within loop or switch");
-CREATE_ERROR(undeclared_symbol,
-             os::status::UNDECLARED_SYMBOL,
-             "{} not declared");
-CREATE_ERROR(already_declared_symbol,
-             os::status::ALREADY_DECLARED_SYMBOL,
-             "{} already declared");
-CREATE_ERROR(label_in_global,
-             os::status::LABEL_IN_GLOBAL,
-             "Label {} in global scope");
-CREATE_ERROR(return_in_global,
-             os::status::RETURN_IN_GLOBAL,
-             "Return in global scope");
-CREATE_ERROR(bad_function_call,
-             os::status::BAD_FUNCTION_CALL,
-             "Label {} in global scope");
+CREATE_ERROR(invalid_break, os::status::INVALID_BREAK, "break statement not within loop or switch");
+CREATE_ERROR(undeclared_symbol, os::status::UNDECLARED_SYMBOL, "{} not declared");
+CREATE_ERROR(already_declared_symbol, os::status::ALREADY_DECLARED_SYMBOL, "{} already declared");
+CREATE_ERROR(label_in_global, os::status::LABEL_IN_GLOBAL, "Label {} in global scope");
+CREATE_ERROR(return_in_global, os::status::RETURN_IN_GLOBAL, "Return in global scope");
+CREATE_ERROR(bad_function_call, os::status::BAD_FUNCTION_CALL, "Label {} in global scope");
 CREATE_ERROR(wrong_function_argument,
              os::status::WRONG_FUNCTION_ARGUMENT,
              "Wrong argument. Declared {} but provided {}");
-CREATE_ERROR(unexpected_token,
-             os::status::UNEXPECTED_TOKEN,
-             "Unexpected token {}");
+CREATE_ERROR(unexpected_token, os::status::UNEXPECTED_TOKEN, "Unexpected token {}");
 CREATE_ERROR(incompatible_token,
              os::status::INCOMPATIBLE_TOKEN,
              "Incompatible token {}. Already declared {}");
-CREATE_ERROR(required_type,
-             os::status::REQUIRED_TYPE,
-             "Required type in specifiers");
-CREATE_ERROR(too_many_types,
-             os::status::UNEXPECTED_TOKEN,
-             "More than one type in specifiers");
-CREATE_ERROR(missing_entry_point,
-             os::status::MISSING_ENTRY_POINT,
-             "Main function not found");
+CREATE_ERROR(required_type, os::status::REQUIRED_TYPE, "Required type in specifiers");
+CREATE_ERROR(too_many_types, os::status::UNEXPECTED_TOKEN, "More than one type in specifiers");
+CREATE_ERROR(missing_entry_point, os::status::MISSING_ENTRY_POINT, "Main function not found");
 
 template <typename T>
 struct default_singleton {
@@ -912,9 +818,8 @@ public:
   // Get instance with initialization parameters (only works on first call)
   template <typename... Args>
   static T& instance(Args&&... args) {
-    std::call_once(initialized_flag, [&]() {
-      instance_ptr = std::make_unique<T>(std::forward<Args>(args)...);
-    });
+    std::call_once(initialized_flag,
+                   [&]() { instance_ptr = std::make_unique<T>(std::forward<Args>(args)...); });
     return *instance_ptr;
   }
 
@@ -955,8 +860,7 @@ std::once_flag singleton<T>::initialized_flag;
 inline uint8_t string_hash(const std::string& str) {
   unsigned long hash = 0;
   for (char c : str) {
-    hash = hash * 31 + static_cast<unsigned char>(
-                           c); // Multiply by 31 and add the character
+    hash = hash * 31 + static_cast<unsigned char>(c); // Multiply by 31 and add the character
   }
   return hash;
 }
@@ -985,8 +889,8 @@ public:
   [[nodiscard]] bool is_valid(const location&) const;
   [[nodiscard]] std::string get_line(size_t) const;
   [[nodiscard]] std::string get_chunk(const location&) const;
-  [[nodiscard]] std::tuple<std::string, std::string, std::string>
-  get_line_chunked(const location&) const;
+  [[nodiscard]] std::tuple<std::string, std::string, std::string> get_line_chunked(
+      const location&) const;
 
 private:
   std::string m_code;
@@ -1011,8 +915,7 @@ public:
 
   // Main generators
   template <size_t, typename... Args>
-  constexpr string_buffer& write(std::format_string<Args...>,
-                                 Args&&...) noexcept;
+  constexpr string_buffer& write(std::format_string<Args...>, Args&&...) noexcept;
   template <size_t>
   constexpr string_buffer& newline() noexcept;
 
@@ -1032,9 +935,8 @@ private:
 };
 
 template <size_t IndentLvl = 0, typename... Args>
-constexpr string_buffer& string_buffer::write(
-    std::format_string<Args...> std_string,
-    Args&&... args) noexcept {
+constexpr string_buffer& string_buffer::write(std::format_string<Args...> std_string,
+                                              Args&&... args) noexcept {
   if constexpr (IndentLvl > 0) {
     active() << std::format("{:{}}", "", IndentLvl);
   }
@@ -1052,85 +954,29 @@ constexpr string_buffer& string_buffer::newline() noexcept {
   }
 }
 
-template <typename W>
-concept HasWrappers =
-    requires(W w, typename W::value_type v, typename W::element_type e) {
-      { w.wrap(v) } -> std::same_as<decltype(e)>;
-      { w.unwrap(e) } -> std::same_as<decltype(v)>;
-    };
+template <typename T> struct vector {
+  using value_type             = T;
+  using element_type           = T;
+  using pointer_type           = std::add_pointer_t<value_type>;
+  using const_pointer_type     = const pointer_type;
+  using reference_type         = std::add_lvalue_reference_t<value_type>;
+  using const_reference_type   = const reference_type;
+  using rvalue_type            = std::add_rvalue_reference_t<value_type>;
+  using container_type         = std::vector<element_type, std::allocator<element_type>>;
+  using iterator               = typename container_type::iterator;
+  using const_iterator         = typename container_type::const_iterator;
+  using reverse_iterator       = typename container_type::reverse_iterator;
+  using const_reverse_iterator = typename container_type::const_reverse_iterator;
 
-template <typename W>
-concept HasAliases = requires {
-  typename W::value_type;
-  typename W::element_type;
-};
+  vector()                     = default;
+  vector(std::initializer_list<value_type> init);
+  vector(const container_type&);
+  vector(container_type&&);
+  virtual ~vector() = default;
 
-template <typename T>
-struct id_element {
-  using value_type   = T;
-  using element_type = T;
-  element_type wrap(value_type v) { return v; }
-  value_type unwrap(element_type e) { return e; }
-};
-
-template <typename T>
-struct ptr_element {
-  using value_type   = std::remove_pointer_t<T>;
-  using element_type = T;
-  element_type wrap(value_type v) { return v; }
-  value_type unwrap(element_type e) { return e; }
-};
-
-template <typename T>
-struct ref_element {
-  using value_type   = std::remove_reference_t<T>;
-  using element_type = std::reference_wrapper<value_type>;
-  element_type wrap(value_type v) {
-    if constexpr (std::is_const_v<T>) {
-      return std::cref(v);
-    }
-    return std::ref(v);
-  }
-  value_type unwrap(element_type e) { return e.get(); }
-};
-template <typename T>
-struct select_modifier {
-  using type = std::conditional_t<
-      Ptr<T>,
-      ptr_element<T>,
-      std::conditional_t<Ref<T>, ref_element<T>, id_element<T>>>;
-};
-
-template <typename T>
-using select_modifier_t = typename select_modifier<T>::type;
-
-template <typename T, template <typename> typename Modifier>
-struct vector_impl {
-  using value_type           = Modifier<T>::value_type;
-  using element_type         = Modifier<T>::element_type;
-  using pointer_type         = std::add_pointer_t<value_type>;
-  using const_pointer_type   = const pointer_type;
-  using reference_type       = std::add_lvalue_reference_t<value_type>;
-  using const_reference_type = const reference_type;
-  using rvalue_type          = std::add_rvalue_reference_t<value_type>;
-  using container_type       = std::vector<element_type>;
-  using iterator             = typename container_type::iterator;
-  using const_iterator       = typename container_type::const_iterator;
-  using reverse_iterator     = typename container_type::reverse_iterator;
-  using const_reverse_iterator =
-      typename container_type::const_reverse_iterator;
-
-  vector_impl() = default;
-  vector_impl(std::initializer_list<value_type> init);
-  virtual ~vector_impl()                     = default;
-  vector_impl(const vector_impl&)            = default;
-  vector_impl& operator=(const vector_impl&) = default;
-  vector_impl(vector_impl&&)                 = default;
-  vector_impl& operator=(vector_impl&&)      = default;
-
-  reference_type at(size_t);
-  [[nodiscard]] const_reference_type at(size_t) const;
   [[nodiscard]] const container_type& data() const;
+  T& at(size_t);
+  [[nodiscard]] const T& at(size_t) const;
   reference_type front();
   [[nodiscard]] const_reference_type front() const;
   reference_type back();
@@ -1147,8 +993,11 @@ struct vector_impl {
   [[nodiscard]] const_reverse_iterator rend() const;
   [[nodiscard]] bool empty() const;
   [[nodiscard]] size_t size() const;
-  void push_back(const_reference_type);
-  void push_back(rvalue_type);
+  template <typename... Args>
+    requires(std::is_constructible_v<T, Args...>)
+  void emplace_back(Args&&...);
+  void push_back(T&&);
+  void push_back(const T&);
   template <typename Fn>
   pointer_type find(Fn);
   template <typename Fn>
@@ -1163,9 +1012,6 @@ struct node {
   node* next;
   T value;
 };
-
-template <typename T>
-using vector = vector_impl<T, select_modifier_t>;
 
 } // namespace cmm
 

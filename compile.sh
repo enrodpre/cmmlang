@@ -6,9 +6,6 @@ flags=(-DSAVE_PREPROCESSED=0 -DSAVE_ASSEMBLY=1 -DDEBUG_AST=0)
 
 while getopts "ad:ptr" opt; do
   case "$opt" in
-  a)
-    TARGET="all"
-    ;;
   d)
     case "$OPTARG" in
     src | source)
@@ -61,13 +58,8 @@ export CMAKE_CUSTOM_FLAGS=$(
 shift $((OPTIND - 1))
 
 # echo "---- BUILDING $TARGET"
-if [[ "$TARGET" == "all" ]]; then
-  BUILD_DIR="build"
-  SOURCE_DIR="all"
-else
-  BUILD_DIR="build/$TARGET"
-  SOURCE_DIR="$TARGET"
-fi
+BUILD_DIR="build"
+SOURCE_DIR="$TARGET"
 
 cmake -B "$BUILD_DIR" -S "$SOURCE_DIR"
 cmake --build "$BUILD_DIR" -j

@@ -156,30 +156,25 @@ struct token_t : public cmm::enumeration<_token_t> {
   IS_GROUP(is_modifier, modifier);
   IS_GROUP(is_literal, literal);
 
-  [[nodiscard]] bool is_specifier() const {
-    return is_storage() || is_modifier() || is_type();
-  }
+  [[nodiscard]] bool is_specifier() const { return is_storage() || is_modifier() || is_type(); }
 
   [[nodiscard]] bool is_from_expression() const {
-    return is_literal() || is(ident) || is_operator() || is(o_paren) ||
-           is(c_paren);
+    return is_literal() || is(ident) || is_operator() || is(o_paren) || is(c_paren);
   }
 };
 
-struct token : public formattable, public allocated {
+struct token : public formattable, public self_allocated {
   token_t type;
   cstring value;
 
   token(token_t&& t, cmm::location&& loc)
-      : allocated(std::move(loc)),
+      : self_allocated(std::move(loc)),
         type(std::move(t)) {}
   token(token_t&& t, cmm::location&& loc, cmm::cstring value)
-      : allocated(std::move(loc)),
+      : self_allocated(std::move(loc)),
         type(std::move(t)),
         value(value) {}
-  bool operator==(const token& other) const {
-    return value == other.value && type == other.type;
-  }
+  bool operator==(const token& other) const { return value == other.value && type == other.type; }
   [[nodiscard]] std::string format() const override;
 };
 

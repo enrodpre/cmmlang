@@ -14,22 +14,19 @@ using namespace ast;
 // using namespace messaging;
 
 parser::parser(tokens tokens)
-    : m_tokens(std::move(tokens)) {
-  m_compound.emplace_back();
-}
+    : m_tokens(std::move(tokens)) {}
 
-program parser::parser::parse() {
-  return parse_program();
-}
+program parser::parser::parse() { return parse_program(); }
 
 ast::program parser::parser::parse_program() {
   while (m_tokens.has_next()) {
-    m_global.push_back(parse_declaration());
+    auto* decl = parse_declaration();
+    m_global.push_back(decl);
   }
   return m_global;
 }
 
-compound& parser::parse_compound() {
+compound* parser::parse_compound() {
   m_compound.emplace_back();
   want(token_t::o_curly);
 
@@ -37,18 +34,16 @@ compound& parser::parse_compound() {
     if (m_tokens.peek().type == token_t::c_curly) {
       m_tokens.advance();
       need_semicolon_after_statement = false;
-      auto stmts                     = m_compound.pop_return();
-      return *m_arena.emplace<compound>(stmts);
+      return m_arena.emplace<compound>(m_compound.pop_move());
     }
 
-    store_statement(parse_statement());
+    auto* stmt = parse_statement();
+    // stmt->set_parent(&m_compound.top());
+    m_compound.top().push_back(stmt);
   }
 
   auto tok = m_tokens.peek();
   throw unexpected_token(tok);
-
-  auto stmts = m_compound.pop_return();
-  return *m_arena.emplace<compound>(stmts);
 }
 
 statement* parser::parse_statement() {
@@ -65,7 +60,7 @@ statement* parser::parse_statement() {
   }
   if (next.type.is_specifier()) {
     // It's a decl
-    return &parse_declaration();
+    return parse_declaration();
   }
 
   if (next.type.is_operator()) {
@@ -138,7 +133,7 @@ statement* parser::parse_statement() {
       }
     case token_t::o_curly:
       {
-        auto* scope                    = &parse_compound();
+        auto* scope                    = parse_compound();
         need_semicolon_after_statement = false;
         return scope;
       }
@@ -147,20 +142,20 @@ statement* parser::parse_statement() {
   throw no_token_matched_exception(next, m_compound.top());
 }
 
-ast::decl::global_declaration& parser::parse_declaration() {
+ast::global_statement* parser::parse_declaration() {
   if (!m_tokens.peek().type.is_specifier()) {
     throw std::exception();
   }
-  auto mods         = parse_specifiers();
-  const auto* ident = parse_identifier();
+  auto mods  = parse_specifiers();
+  auto ident = parse_identifier();
   if (m_tokens.peek().type == token_t::o_paren) {
     // Function
-    auto& funcdecl                 = parse_function(std::move(mods), *ident);
+    auto* funcdecl                 = parse_function(std::move(mods), ident);
     need_semicolon_after_statement = false;
     return funcdecl;
   }
 
-  auto& vardecl = parse_variable(std::move(mods), ident);
+  auto* vardecl = parse_variable(std::move(mods), ident);
   want_semicolon();
   return vardecl;
 }
@@ -218,14 +213,12 @@ expr::expression* parser::parse_expr(uint8_t min_prec) {
 
     m_tokens.advance();
 
-    int next_min_prec =
-        curr_op.type.assoc == cmm::associativity_t::L2R ? prec + 1 : prec;
+    int next_min_prec     = curr_op.type.assoc == cmm::associativity_t::L2R ? prec + 1 : prec;
 
     expr::expression* rhs = parse_expr(next_min_prec);
 
-    auto* next_lhs =
-        m_arena.emplace<expr::binary_operator>(*lhs, *rhs, std::move(curr_op));
-    lhs = next_lhs;
+    auto* next_lhs        = m_arena.emplace<expr::binary_operator>(*lhs, *rhs, std::move(curr_op));
+    lhs                   = next_lhs;
   }
 
   return lhs;
@@ -240,7 +233,7 @@ expr::expression* parser::parse_call(const term::identifier& ident) {
     return m_arena.emplace<expr::call>(ident);
   }
 
-  expr::call::arguments args;
+  std::vector<ast::expr::expression*> args;
 
   while (true) {
     expr::expression* expr = parse_expr();
@@ -261,60 +254,54 @@ expr::expression* parser::parse_call(const term::identifier& ident) {
 ast::decl::specifiers parser::parse_specifiers() {
   ast::decl::specifiers specs;
   while (m_tokens.peek().type.is_specifier()) {
-    specs.push_back(*m_arena.emplace<term::specifier>(m_tokens.next()));
+    specs.emplace_back(m_tokens.next());
   }
   return specs;
 }
 
-template <bool Optional>
-term::identifier* parser::parse_identifier() {
+term::identifier parser::parse_identifier() {
   if (const auto& next = m_tokens.peek(); next.type == token_t::ident) {
-    DEBUG_ASSERT(!next.value.empty(),
-                 std::format("Identifier must have a value. token: {}", next));
+    DEBUG_ASSERT(!next.value.empty(), std::format("Identifier must have a value. token: {}", next));
     m_tokens.advance();
-    return m_arena.emplace<term::identifier>(next);
-  }
-  if constexpr (!Optional) {
-    throw unexpected_token(m_tokens.peek());
+    return {next};
   }
 
-  return nullptr;
+  throw unexpected_token(m_tokens.peek());
 }
 
-decl::variable& parser::parse_variable(ast::decl::specifiers&& mods,
-                                       const ast::term::identifier* id) {
+decl::variable* parser::parse_variable(ast::decl::specifiers&& mods, ast::term::identifier id) {
   expr::expression* init = nullptr;
   if (m_tokens.peek().type == cmm::token_t::assign) {
     m_tokens.advance();
     init = parse_expr();
   }
 
-  return *m_arena.emplace<decl::variable>(std::move(mods), id, init);
+  const auto* id_ptr = m_arena.emplace<term::identifier>(id);
+  return m_arena.emplace<decl::variable>(std::move(mods), id_ptr, init);
 }
 
-decl::function& parser::parse_function(decl::specifiers&& mods,
-                                       const term::identifier& id) {
+decl::function* parser::parse_function(decl::specifiers&& mods, term::identifier id) {
   want(cmm::token_t::o_paren);
 
-  ast::decl::function::parameters_t siblings;
+  ast::decl::function::parameters_t args;
 
   if (m_tokens.peek().type != token_t::c_paren) {
     while (true) {
-      decl::specifiers specs    = parse_specifiers();
-      const token* next_        = &m_tokens.next();
-      ast::term::identifier* id = nullptr;
-      if (next_->type == token_t::ident) {
-        id    = m_arena.emplace<ast::term::identifier>(*next_);
-        next_ = &m_tokens.next();
-      }
-      expr::expression* e = nullptr;
+      decl::specifiers specs = parse_specifiers();
+      const token* next_     = &m_tokens.next();
 
+      term::identifier* id   = nullptr;
+      if (auto token = m_tokens.peek(); token.type == token_t::ident) {
+        m_tokens.advance();
+        id = m_arena.emplace<term::identifier>(token);
+      }
+
+      expr::expression* e = nullptr;
       if (next_->type == token_t::eq) {
         e = parse_expr();
       }
 
-      auto* var = m_arena.emplace<ast::decl::variable>(std::move(specs), id, e);
-      siblings.push_back(*var);
+      args.emplace_back(std::move(specs), id, e);
 
       if (next_->type == cmm::token_t::c_paren) {
         break;
@@ -331,11 +318,11 @@ decl::function& parser::parse_function(decl::specifiers&& mods,
   // Block parsing
   compound* compound_ = nullptr;
   if (m_tokens.peek().type == token_t::o_curly) {
-    compound_ = m_arena.emplace<compound>(parse_compound());
+    compound_ = parse_compound();
   }
 
-  return *m_arena.emplace<decl::function>(
-      std::move(mods), id, std::move(siblings), compound_);
+  auto* func = m_arena.emplace<decl::function>(std::move(mods), id, std::move(args), compound_);
+  return func;
 }
 
 expr::expression* parser::parser::parse_condition() {
@@ -358,9 +345,9 @@ statement* parser::parser::parse_for() {
   // If has start statement (var decl for now)
   decl::variable* start = nullptr;
   if (m_tokens.peek().type != token_t::semicolon) {
-    auto mods      = parse_specifiers();
-    const auto* id = parse_identifier();
-    start          = &parse_variable(std::move(mods), id);
+    auto mods = parse_specifiers();
+    auto id   = parse_identifier();
+    start     = parse_variable(std::move(mods), id);
   }
   want_semicolon();
 
@@ -377,8 +364,7 @@ statement* parser::parser::parse_for() {
   want(token_t::c_paren);
 
   auto* for_stmt = parse_statement();
-  return m_arena.emplace<iteration::for_>(
-      token, start, condition, step, for_stmt);
+  return m_arena.emplace<iteration::for_>(token, start, condition, step, for_stmt);
 }
 
 statement* parser::parser::parse_if() {
@@ -393,22 +379,12 @@ statement* parser::parser::parse_if() {
     else_block = parse_statement();
   }
 
-  return m_arena.emplace<selection::if_>(
-      term::keyword(token), *condition, if_block, else_block);
+  return m_arena.emplace<selection::if_>(term::keyword(token), *condition, if_block, else_block);
 }
 
-void parser::parser::store_statement(ast::statement* stmt) {
-  DEBUG_ASSERT(!m_compound.empty(), "Compound stack should not be empty");
-  stmt->set_parent(&m_compound.top());
-  m_compound.top().push_back(*stmt);
-}
-
-void parser::parser::want(const token& token,
-                          const cmm::token_t& type,
-                          bool needed_value) {
+void parser::parser::want(const token& token, const cmm::token_t& type, bool needed_value) {
   if (token.type != type) {
-    throw parser_exception(
-        std::format("Wrong type. Wanted {}\n{}", type, token));
+    throw parser_exception(std::format("Wrong type. Wanted {}\n{}", type, token));
   }
 
   if (needed_value && !token.value.empty()) {

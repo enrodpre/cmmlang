@@ -22,16 +22,8 @@ template <typename T, typename... Ts>
 concept IsAnyType = (std::is_same_v<T, Ts> || ...);
 
 namespace intents {
-  enum class address_intent_t : uint8_t {
-    HAVING_VALUE = 0,
-    HAVING_ADDRESS,
-    CARENT
-  };
-  enum class address_mode_intent_t : uint8_t {
-    COPY = 0,
-    ADDRESS_MEMORY,
-    LOAD_ADDRESS
-  };
+  enum class address_intent_t : uint8_t { HAVING_VALUE = 0, HAVING_ADDRESS, CARENT };
+  enum class address_mode_intent_t : uint8_t { COPY = 0, ADDRESS_MEMORY, LOAD_ADDRESS };
 
   template <auto... Ts>
   struct intent {};
@@ -101,23 +93,14 @@ struct local_scope;
 struct variable : public symbol<ast::decl::variable> {
   linkage_t linkage;
   storage_t storage;
-  cv_rtti type;
+  cv_type type;
   scope& scope_ref;
-  variable(scope&,
-           const ast::decl::variable*,
-           address_t,
-           linkage_t,
-           storage_t,
-           decltype(type));
+  variable(scope&, const ast::decl::variable*, address_t, linkage_t, storage_t, decltype(type));
   [[nodiscard]] std::string format() const override;
 };
 
 struct local_variable : public variable {
-  local_variable(local_scope&,
-                 const ast::decl::variable*,
-                 operand*,
-                 storage_t,
-                 decltype(type));
+  local_variable(local_scope&, const ast::decl::variable*, operand*, storage_t, decltype(type));
 };
 
 struct auto_local_variable : public local_variable {
@@ -136,29 +119,20 @@ struct arg_local_variable : public local_variable {
 };
 
 struct global_variable : public variable {
-  global_variable(scope&,
-                  const ast::decl::variable*,
-                  assembly::label_memory*,
-                  decltype(type));
+  global_variable(scope&, const ast::decl::variable*, assembly::label_memory*, decltype(type));
 };
 
 struct function : public symbol<ast::decl::function> {
-  using return_t = std::optional<cv_rtti>;
+  using return_t = std::optional<cv_type>;
   std::string identifier;
   linkage_t linkage;
   return_t return_type;
   bool inlined;
-  function(const ast::decl::function*,
-           address_t,
-           std::string,
-           linkage_t,
-           return_t,
-           bool);
+  function(const ast::decl::function*, address_t, std::string, linkage_t, return_t, bool);
   [[nodiscard]] std::string format() const override;
-  virtual address_t run(compilation_unit&,
-                        ast::expr::call::arguments = {}) const          = 0;
-  virtual address_t run(compilation_unit&, std::vector<operand*>) const = 0;
-  [[nodiscard]] virtual bool is_defined() const                         = 0;
+  virtual address_t run(compilation_unit&, ast::expr::call::arguments = {}) const = 0;
+  virtual address_t run(compilation_unit&, std::vector<operand*>) const           = 0;
+  [[nodiscard]] virtual bool is_defined() const                                   = 0;
 };
 
 class mangled_name {
@@ -170,8 +144,8 @@ public:
   static mangled_name free_unary_operator(const operator_t&, cstring);
   static mangled_name free_binary_operator(const operator_t&, cstring, cstring);
   static mangled_name free_function(const ast::decl::function*);
-  static mangled_name builtin_function(value_type, const std::vector<cv_rtti>&);
-  static std::string types(const std::vector<cv_rtti>&);
+  static mangled_name builtin_function(value_type, const std::vector<cv_type>&);
+  static std::string types(const std::vector<cv_type>&);
 
   [[nodiscard]] const value_type& str() const;
   operator std::string() const;
@@ -181,24 +155,19 @@ private:
 };
 
 struct builtin_function : public function {
-  using return_t = address_t;
-  using body_t =
-      std::function<return_t(compilation_unit&, std::vector<address_t>)>;
-  using parameters_t = std::vector<cv_rtti>;
-  using preprocess_t =
-      std::function<std::vector<address_t>(compilation_unit&,
-                                           parameters_t,
-                                           ast::expr::call::arguments)>;
-  using postprocess_t = std::function<address_t(compilation_unit&, return_t)>;
+  using return_t     = std::optional<address_t>;
+  using parameters_t = std::vector<cv_type>;
+  using preprocess_t = std::function<
+      std::vector<address_t>(compilation_unit&, parameters_t, ast::expr::call::arguments)>;
+  using body_t        = std::function<operand*(compilation_unit&, std::vector<address_t>)>;
+  using postprocess_t = std::function<return_t(compilation_unit&, address_t)>;
 
   struct descriptor_t {
     preprocess_t preprocess;
     body_t body;
     postprocess_t postprocess;
 
-    descriptor_t(preprocess_t preprocess,
-                 body_t body,
-                 postprocess_t postprocess)
+    descriptor_t(preprocess_t preprocess, body_t body, postprocess_t postprocess)
         : preprocess(std::move(preprocess)),
           body(std::move(body)),
           postprocess(std::move(postprocess)) {}
@@ -206,11 +175,7 @@ struct builtin_function : public function {
 
   parameters_t parameters;
   descriptor_t descriptor;
-  builtin_function(std::string,
-                   std::optional<cv_rtti>,
-                   parameters_t,
-                   descriptor_t,
-                   bool = false);
+  builtin_function(std::string, std::optional<cv_type>, parameters_t, descriptor_t, bool = false);
 
   address_t run(compilation_unit&, ast::expr::call::arguments) const override;
   address_t run(compilation_unit&, std::vector<operand*> = {}) const override;
@@ -222,19 +187,14 @@ struct user_function : public function {
   using body_t = ast::compound*;
   body_t body;
   ast::decl::function::parameters_t parameters;
-  user_function(const ast::decl::function*,
-                address_t,
-                linkage_t,
-                cv_rtti,
-                bool = false);
+  user_function(const ast::decl::function*, address_t, linkage_t, cv_type, bool = false);
 
   address_t run(compilation_unit&, ast::expr::call::arguments) const override;
   address_t run(compilation_unit&, std::vector<operand*> = {}) const override;
   [[nodiscard]] bool is_defined() const override;
 };
 
-class variable_store
-    : public formattable_range<std::unordered_map<std::string, variable>> {
+class variable_store : public formattable_range<std::unordered_map<std::string, variable>> {
 public:
   using key_type   = std::string;
   using value_type = variable;
@@ -256,8 +216,7 @@ private:
 };
 
 class function_store
-    : public formattable_range<
-          std::unordered_map<std::string, std::unique_ptr<function>>> {
+    : public formattable_range<std::unordered_map<std::string, std::unique_ptr<function>>> {
 public:
   using key_type   = mangled_name::value_type;
   using value_type = std::unique_ptr<function>;
@@ -268,12 +227,11 @@ public:
   std::vector<value_type::pointer> get(cstring) const;
 
   const function* emplace_builtin(const mangled_name&,
-                                  std::optional<cv_rtti>,
-                                  const std::vector<cv_rtti>&,
+                                  std::optional<cv_type>,
+                                  const std::vector<cv_type>&,
                                   const builtin_function::descriptor_t&,
                                   bool = false);
-  const function* emplace_user_provided(const ast::decl::function*,
-                                        bool = false);
+  const function* emplace_user_provided(const ast::decl::function*, bool = false);
   void clear();
 
 private:
@@ -284,7 +242,7 @@ namespace builtin {
   struct provider;
 }
 
-struct frame : public identifiable_parent<frame> {
+struct frame {
   // Struct for tracking ASM stack
   struct assembly_stack {
     // assembly_stack() = default;
@@ -323,18 +281,17 @@ struct scope {
   variable_store variables;
 };
 
-struct global_scope : public scope, public identifiable_parent<global_scope> {
+struct global_scope : public scope {
   operand* emplace_static(const ast::decl::variable*);
 };
 
-struct local_scope : public scope,
-                     public identifiable_child<local_scope, frame> {
+struct local_scope : public scope {
   operand* emplace_argument(const ast::decl::variable*, assembly::reg*);
   operand* emplace_automatic(const ast::decl::variable*);
   cref<frame> frame_ref;
   cref<ast::compound> compound;
   local_scope(const frame&, const ast::compound&);
-  [[nodiscard]] const frame* parent() const override;
+  // [[nodiscard]] const frame* parent() const override;
 };
 
 static_assert(!std::is_abstract_v<global_scope>);
@@ -343,7 +300,7 @@ static_assert(!std::is_abstract_v<local_scope>);
 struct symbol_table : public cmm::formattable {
   using identifier_type = const ast::term::identifier&;
 
-  symbol_table(const ast::program*);
+  symbol_table();
 
   void clear() noexcept;
   [[nodiscard]] frame& active_frame() noexcept;
@@ -409,12 +366,12 @@ namespace builtin::function {
   [[nodiscard]] std::string mangle();
 }; // namespace builtin::function
 
-class compilation_unit : public singleton<compilation_unit> {
+class compilation_unit : public default_singleton<compilation_unit> {
 public:
-  compilation_unit(const ast::program* p, const source_code&);
+  compilation_unit();
 
   ast_traverser runner;
-  std::string compile(ast::program&);
+  std::string compile(ast::program&, const source_code*);
 
   /////////// OBJECTS //////////
 
@@ -431,8 +388,8 @@ public:
   Phase current_phase = Phase::STOPPED;
   symbol_table table;
   location src_location;
-  cmm::ast::statement* current_statement{};
-  const source_code& source;
+  const cmm::ast::statement* current_statement{};
+  const source_code* source = nullptr;
   assembly::registers regs;
 
   cmm::assembly::asmgen asmgen;
@@ -446,11 +403,10 @@ public:
   const variable* declare_variable(const ast::decl::variable&, operand*);
   const variable* declare_global_variable(const ast::decl::variable&, operand*);
   void declare_label(const ast::decl::label&);
-  [[nodiscard]] operand* get_variable_address(
-      const ast::term::identifier&) const;
+  [[nodiscard]] operand* get_variable_address(const ast::term::identifier&) const;
   void save_variable(const variable*, operand*);
   void reserve_memory(cstring, cstring, cstring);
-  cv_rtti get_expression_type(const ast::expr::expression&);
+  cv_type get_expression_type(const ast::expr::expression&);
   operand* call_builtin(const std::string&, std::vector<operand*>);
 
   template <typename... Args>
@@ -483,21 +439,21 @@ private:
 namespace builtin {
   struct provider {
     symbol_table& table;
-    constexpr void create_builtin_function(std::optional<cv_rtti>,
+    constexpr void create_builtin_function(std::optional<cv_type>,
                                            std::string,
-                                           const std::vector<cv_rtti>&,
+                                           const std::vector<cv_type>&,
                                            builtin_function::preprocess_t,
                                            builtin_function::body_t,
                                            builtin_function::postprocess_t);
-    constexpr void create_builtin_operator(cv_rtti,
+    constexpr void create_builtin_operator(cv_type,
                                            const operator_t&,
-                                           const std::vector<cv_rtti>&,
+                                           const std::vector<cv_type>&,
                                            builtin_function::preprocess_t,
                                            builtin_function::body_t,
                                            builtin_function::postprocess_t);
 
     template <_instruction_t Ins, size_t = instruction_t(Ins).n_params>
-    constexpr void create_simple_operator(const operator_t& op, cv_rtti type);
+    constexpr void create_simple_operator(const operator_t& op, cv_type type);
     constexpr void provide_operators();
     constexpr void provide_functions();
     constexpr void provide();

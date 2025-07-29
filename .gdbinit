@@ -1,4 +1,4 @@
-file /home/kike/dev/cmm/build/standalone/CmmLang
+file /home/kike/.local/bin/CmmLang
 
 source .gdb/pp.py
 source .gdb/breakpoints.gdb

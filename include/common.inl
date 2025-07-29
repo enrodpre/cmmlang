@@ -54,10 +54,9 @@ static_assert(EntryLike<std::unordered_map<int, int>>);
 
 template <std::ranges::range T>
 template <class Delim>
-[[nodiscard]] constexpr std::string formattable_range<T>::join(
-    Delim&& d) const {
-  return m_range | std::ranges::views::transform(element_merger()) |
-         std::views::join_with(d) | std::ranges::to<std::string>();
+[[nodiscard]] constexpr std::string formattable_range<T>::join(Delim&& d) const {
+  return m_range | std::ranges::views::transform(element_merger()) | std::views::join_with(d) |
+         std::ranges::to<std::string>();
 }
 
 template <std::ranges::range T>
@@ -65,13 +64,9 @@ auto formattable_range<T>::element_merger() const {
   if constexpr (ScalarLike<T>) {
     return [](const auto& el) { return el.format(); };
   } else if constexpr (PairLike<T>) {
-    return [](const auto& pair) {
-      return std::format("{}, {}", pair.first, pair.second);
-    };
+    return [](const auto& pair) { return std::format("{}, {}", pair.first, pair.second); };
   } else {
-    return [](const auto& pair) {
-      return std::format("{}, {}", pair.key, pair.value);
-    };
+    return [](const auto& pair) { return std::format("{}, {}", pair.key, pair.value); };
   }
 }
 
@@ -127,10 +122,7 @@ template <typename Derived, typename P, typename... Parents>
 size_t identifiable<Derived, P, Parents...>::active() {
   return m_constructions - m_destructions;
 }
-constexpr location::location(size_t row,
-                             size_t row_len,
-                             size_t col,
-                             size_t col_length)
+constexpr location::location(size_t row, size_t row_len, size_t col, size_t col_length)
     : rows({row, static_cast<size_t>(row_len - 1)}),
       cols({col, static_cast<size_t>(col_length - 1)}) {}
 constexpr location::location(range a, range b)
@@ -163,24 +155,20 @@ template <typename To>
 To enumeration<From>::cast() const {
   auto to_enum = name();
   if constexpr (Enumerable<To>) {
-    if (auto to = magic_enum::enum_cast<typename To::value_type>(
-            to_enum, magic_enum::case_insensitive)) {
+    if (auto to =
+            magic_enum::enum_cast<typename To::value_type>(to_enum, magic_enum::case_insensitive)) {
       return to.value();
     }
 
-    REGISTER_ERROR("Shouldnt cast {} to {} if it is not castable",
-                   name(),
-                   To::type_name());
+    REGISTER_ERROR("Shouldnt cast {} to {} if it is not castable", name(), To::type_name());
     assert(false);
   } else {
-    if (auto to =
-            magic_enum::enum_cast<To>(to_enum, magic_enum::case_insensitive)) {
+    if (auto to = magic_enum::enum_cast<To>(to_enum, magic_enum::case_insensitive)) {
       return to.value();
     }
 
-    REGISTER_ERROR("Shouldnt cast {} to {} if it is not castable",
-                   name(),
-                   magic_enum::enum_type_name<To>());
+    REGISTER_ERROR(
+        "Shouldnt cast {} to {} if it is not castable", name(), magic_enum::enum_type_name<To>());
     assert(false);
   }
 }
@@ -218,12 +206,8 @@ bool stack<T>::operator!=(const stack& other) const noexcept {
   return m_data != other.m_data;
 }
 
-template <typename T> stack<T>::iterator stack<T>::begin() noexcept {
-  return m_data.rbegin();
-}
-template <typename T> stack<T>::iterator stack<T>::end() noexcept {
-  return m_data.rend();
-}
+template <typename T> stack<T>::iterator stack<T>::begin() noexcept { return m_data.rbegin(); }
+template <typename T> stack<T>::iterator stack<T>::end() noexcept { return m_data.rend(); }
 template <typename T>
 [[nodiscard]] stack<T>::const_iterator stack<T>::begin() const noexcept {
   return m_data.rbegin();
@@ -241,13 +225,11 @@ template <typename T>
   return m_data.crend();
 }
 template <typename T>
-[[nodiscard]] stack<T>::const_reverse_iterator stack<T>::crbegin()
-    const noexcept {
+[[nodiscard]] stack<T>::const_reverse_iterator stack<T>::crbegin() const noexcept {
   return m_data.cbegin();
 }
 template <typename T>
-[[nodiscard]] stack<T>::const_reverse_iterator stack<T>::crend()
-    const noexcept {
+[[nodiscard]] stack<T>::const_reverse_iterator stack<T>::crend() const noexcept {
   return m_data.cend();
 }
 
@@ -279,8 +261,7 @@ std::optional<size_t> stack<T>::find_position(Func func) const {
 }
 
 template <typename T>
-template <typename Func> stack<T>::const_iterator stack<T>::find_all(
-    Func func) const {
+template <typename Func> stack<T>::const_iterator stack<T>::find_all(Func func) const {
   return m_data | std::ranges::views::filter(func);
 }
 template <typename T>
@@ -326,6 +307,13 @@ T stack<T>::pop_return() {
   ASSERT(false, "T is not movable either copyable");
 }
 template <typename T>
+T&& stack<T>::pop_move() {
+  auto&& ret = std::move(m_data.back());
+  m_data.pop_back();
+  return std::move(ret);
+}
+
+template <typename T>
 void stack<T>::pop() {
   m_data.pop_back();
 }
@@ -350,112 +338,112 @@ template <typename T>
   return m_data.empty();
 }
 
-template <typename T, template <typename> class Modifier>
-vector_impl<T, Modifier>::vector_impl(
-    std::initializer_list<vector_impl<T, Modifier>::value_type> init)
-    : m_data(init | std::transform(Modifier<T>::wrap) |
-             std::ranges::to<std::vector>()) {}
-// formattable_range<container_type>(&m_data) {}
+template <typename T>
+vector<T>::vector(std::initializer_list<vector<T>::value_type> init)
+    : m_data(init) {}
 
-template <typename T, template <typename> class Modifier>
-inline vector_impl<T, Modifier>::reference_type vector_impl<T, Modifier>::at(
-    size_t i) {
-  return Modifier<T>::unwrap(m_data.at(i));
+template <typename T>
+vector<T>::vector(const container_type& t)
+    : m_data(t) {}
+
+template <typename T>
+vector<T>::vector(container_type&& t)
+    : m_data(std::move(t)) {}
+
+template <typename T>
+inline T& vector<T>::at(size_t i) {
+  return m_data.at(i);
 }
 
-template <typename T, template <typename> class Modifier>
-inline vector_impl<T, Modifier>::const_reference_type
-vector_impl<T, Modifier>::at(size_t i) const {
-  return Modifier<T>::unwrap(m_data.at(i));
+template <typename T>
+inline const T& vector<T>::at(size_t i) const {
+  return m_data.at(i);
 }
 
-template <typename T, template <typename> class Modifier>
-const vector_impl<T, Modifier>::container_type& vector_impl<T, Modifier>::data()
-    const {
+template <typename T>
+const vector<T>::container_type& vector<T>::data() const {
   return m_data;
 }
 
-template <typename T, template <typename> class Modifier>
-vector_impl<T, Modifier>::iterator vector_impl<T, Modifier>::begin() {
+template <typename T>
+vector<T>::iterator vector<T>::begin() {
   return m_data.begin();
 }
 
-template <typename T, template <typename> class Modifier>
-vector_impl<T, Modifier>::iterator vector_impl<T, Modifier>::end() {
+template <typename T>
+vector<T>::iterator vector<T>::end() {
   return m_data.end();
 }
-template <typename T, template <typename> class Modifier>
-vector_impl<T, Modifier>::const_iterator vector_impl<T, Modifier>::begin()
-    const {
+template <typename T>
+vector<T>::const_iterator vector<T>::begin() const {
   return m_data.begin();
 }
 
-template <typename T, template <typename> class Modifier>
-vector_impl<T, Modifier>::const_iterator vector_impl<T, Modifier>::end() const {
+template <typename T>
+vector<T>::const_iterator vector<T>::end() const {
   return m_data.end();
 }
 
-template <typename T, template <typename> class Modifier>
-vector_impl<T, Modifier>::const_iterator vector_impl<T, Modifier>::cbegin()
-    const {
+template <typename T>
+vector<T>::const_iterator vector<T>::cbegin() const {
   return m_data.cbegin();
 }
 
-template <typename T, template <typename> class Modifier>
-vector_impl<T, Modifier>::const_iterator vector_impl<T, Modifier>::cend()
-    const {
+template <typename T>
+vector<T>::const_iterator vector<T>::cend() const {
   return m_data.cend();
 }
 
-template <typename T, template <typename> class Modifier>
-vector_impl<T, Modifier>::reverse_iterator vector_impl<T, Modifier>::rbegin() {
+template <typename T>
+vector<T>::reverse_iterator vector<T>::rbegin() {
   return m_data.rbegin();
 }
-template <typename T, template <typename> class Modifier>
-vector_impl<T, Modifier>::reverse_iterator vector_impl<T, Modifier>::rend() {
+template <typename T>
+vector<T>::reverse_iterator vector<T>::rend() {
   return m_data.rend();
 }
-template <typename T, template <typename> class Modifier>
-vector_impl<T, Modifier>::const_reverse_iterator
-vector_impl<T, Modifier>::rbegin() const {
+template <typename T>
+vector<T>::const_reverse_iterator vector<T>::rbegin() const {
   return m_data.rbegin();
 }
-template <typename T, template <typename> class Modifier>
-vector_impl<T, Modifier>::const_reverse_iterator
-vector_impl<T, Modifier>::rend() const {
+template <typename T>
+vector<T>::const_reverse_iterator vector<T>::rend() const {
   return m_data.rend();
 }
 
-template <typename T, template <typename> class Modifier>
-[[nodiscard]] bool vector_impl<T, Modifier>::empty() const {
+template <typename T>
+[[nodiscard]] bool vector<T>::empty() const {
   return m_data.empty();
 }
 
-template <typename T, template <typename> class Modifier>
-[[nodiscard]] size_t vector_impl<T, Modifier>::size() const {
+template <typename T>
+[[nodiscard]] size_t vector<T>::size() const {
   return m_data.size();
 }
-template <typename T, template <typename> class Modifier>
-void vector_impl<T, Modifier>::push_back(
-    vector_impl<T, Modifier>::rvalue_type t) {
-  m_data.push_back(Modifier<T>::wrap(std::move(t)));
+template <typename T>
+void vector<T>::push_back(T&& t) {
+  m_data.push_back(std::move(t));
 }
-template <typename T, template <typename> class Modifier>
-void vector_impl<T, Modifier>::push_back(
-    vector_impl<T, Modifier>::const_reference_type t) {
-  m_data.push_back(Modifier<T>::wrap(t));
+template <typename T>
+void vector<T>::push_back(const T& t) {
+  m_data.push_back(t);
 }
-template <typename T, template <typename> class Modifier>
+template <typename T>
 template <typename Fn>
-vector_impl<T, Modifier>::pointer_type vector_impl<T, Modifier>::find(Fn fn) {
+vector<T>::pointer_type vector<T>::find(Fn fn) {
   return *(m_data | std::ranges::find_if(fn));
 }
 
-template <typename T, template <typename> class Modifier>
+template <typename T>
 template <typename Fn>
-vector_impl<T, Modifier>::const_pointer_type vector_impl<T, Modifier>::find(
-    Fn fn) const {
+vector<T>::const_pointer_type vector<T>::find(Fn fn) const {
   return *(m_data | std::ranges::find_if(fn));
 }
 
+template <typename T>
+template <typename... Args>
+  requires(std::is_constructible_v<T, Args...>)
+void vector<T>::emplace_back(Args&&... args) {
+  m_data.emplace_back(std::forward<Args>(args)...);
+}
 }; // namespace cmm

@@ -172,12 +172,12 @@ struct object;
 
 struct typeof {
   STATIC_CLS(typeof);
-  constexpr static type_t operator()(cv_rtti);
+  constexpr static type_t operator()(cv_type);
 };
 
 struct sizeof_ {
   STATIC_CLS(sizeof_);
-  constexpr static size_t operator()(cv_rtti);
+  constexpr static size_t operator()(cv_type);
   constexpr static size_t operator()(const type_t&);
   constexpr static size_t operator()(const object&);
 };
@@ -188,7 +188,7 @@ struct object {
   std::string name;
   align alignment;
   storage_t storage;
-  cv_rtti type;
+  cv_type type;
   cmm::value* value;
 };
 } // namespace cmm

@@ -4,8 +4,7 @@
 
 namespace cmm {
 
-[[nodiscard]] constexpr const type_t::properties_map&
-type_t::properties_array() {
+[[nodiscard]] constexpr const type_t::properties_map& type_t::properties_array() {
   using enum _type_t;
   static constexpr properties_map MAP{
       {{{
@@ -47,18 +46,7 @@ type_t::properties_array() {
         {class_t, "{}class {}", compound_t, {}}}}};
   return MAP;
 }
-type_index::type_index(type_t t, size_t s)
-    : type(std::move(t)),
-      value(s) {}
 
-rtti::rtti(type_t&& t, instance_data&& data, bool c, bool v)
-    : identifier(t, std::hash<rtti>()(*this)),
-      type(std::move(t)),
-      c(c),
-      v(v),
-      data(std::move(data)) {}
+constexpr bool is_const_v::operator()(cv_type t) { return t->is_const(); }
 
-constexpr bool is_const_v::operator()(cv_rtti t) {
-  return t->c;
-}
 } // namespace cmm
