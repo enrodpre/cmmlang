@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 
-TARGET="standalone"
+TESTS="OFF"
 
 flags=(-DSAVE_PREPROCESSED=0 -DSAVE_ASSEMBLY=1 -DDEBUG_AST=0)
 
@@ -43,7 +43,7 @@ while getopts "ad:ptr" opt; do
     esac
     ;;
   t)
-    export TARGET="test"
+    export TESTS="ON"
     ;;
   esac
 done
@@ -59,9 +59,8 @@ shift $((OPTIND - 1))
 
 # echo "---- BUILDING $TARGET"
 BUILD_DIR="build"
-SOURCE_DIR="$TARGET"
 
-cmake -B "$BUILD_DIR" -S "$SOURCE_DIR"
+cmake -B "$BUILD_DIR" -DBUILD_TESTS="$TESTS"
 cmake --build "$BUILD_DIR" -j
 
 if [[ $? -eq 0 ]]; then

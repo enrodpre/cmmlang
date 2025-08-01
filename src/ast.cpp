@@ -66,7 +66,7 @@ expr::literal::literal(const token& token)
 
 cmm::location expr::literal::location() const { return term.location(); }
 expr::call::call(decltype(ident)&& ident_, decltype(args)&& args)
-    : ident(ident_),
+    : ident(std::move(ident_)),
       args(std::move(args)) {
   // ident.set_parent(this);
   args.set_parent(this);

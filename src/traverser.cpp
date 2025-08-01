@@ -108,8 +108,8 @@ operand* ast_traverser::call_function(const ast::term::identifier& id, expr::cal
 }
 
 operand* ast_traverser::call_operator(const term::operator_& op, ast::expr::expression& expr) {
-  const auto* expr_t   = m_context.get_expression_type(expr);
-  auto mangled         = mangled_name::free_unary_operator(op.type, expr_t->format());
+  auto expr_t          = m_context.get_expression_type(expr);
+  auto mangled         = mangled_name::free_unary_operator(op.type, expr_t.format());
   const function* func = m_context.table.get_function(mangled);
   ASSERT(func->is_defined(), mangled.str());
   return func->run(m_context, {&expr});
@@ -118,9 +118,9 @@ operand* ast_traverser::call_operator(const term::operator_& op, ast::expr::expr
 operand* ast_traverser::call_operator(const term::operator_& op,
                                       ast::expr::expression& l,
                                       ast::expr::expression& r) {
-  const auto* left_t  = m_context.get_expression_type(l);
-  const auto* right_t = m_context.get_expression_type(r);
-  auto mangled = mangled_name::free_binary_operator(op.type, left_t->format(), right_t->format());
+  auto left_t  = m_context.get_expression_type(l);
+  auto right_t = m_context.get_expression_type(r);
+  auto mangled = mangled_name::free_binary_operator(op.type, left_t.format(), right_t.format());
   const function* func = m_context.table.get_function(mangled);
   ASSERT(func->is_defined(), mangled.str());
   return func->run(m_context, ast::expr::call::arguments{&l, &r});
@@ -206,9 +206,8 @@ void global_visitor::visit(const ast::decl::function& func) {
 
   REGISTER_TRACE("Generating function {}", func.ident.value);
   if (func.ident.value == "main") {
+    // Call main
     gen->m_context.table.link_entry_point(&func);
-    // REGISTER_DEBUG("{}", gen->m_context.table)
-    // Call entry point
     gen->m_context.current_phase = Phase::EXECUTING;
     gen->m_context.table.get_entry_point()->run(gen->m_context);
   } else {
@@ -272,7 +271,10 @@ void expression_visitor::visit(const expr::identifier& ident) {
 }
 
 statement_visitor::statement_visitor(ast_traverser* gen_)
-    : gen(gen_) {}
+    : expression_visitor(gen_,
+                         gen_->m_context.regs.get(registers::ACCUMULATOR),
+                         intent_t::LOAD_VARIABLE_ADDRESS),
+      gen(gen_) {}
 
 void statement_visitor::visit(const compound& scope) {
   // Create scope

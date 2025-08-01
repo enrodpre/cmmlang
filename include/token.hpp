@@ -148,7 +148,7 @@ struct token_t : public cmm::enumeration<_token_t> {
     return properties_array().at(m_value);
   };
 
-  [[nodiscard]] bool is(const token_t& t) const { return m_value == t; }
+  [[nodiscard]] bool is(const token_t& t) const { return m_value == t.m_value; }
 
   IS_GROUP(is_type, types)
   IS_GROUP(is_operator, operator)
@@ -165,7 +165,7 @@ struct token_t : public cmm::enumeration<_token_t> {
 
 struct token : public formattable, public self_allocated {
   token_t type;
-  cstring value;
+  std::string value;
 
   token(token_t&& t, cmm::location&& loc)
       : self_allocated(std::move(loc)),
@@ -194,6 +194,7 @@ public:
   [[nodiscard]] size_t size() const noexcept;
   [[nodiscard]] bool empty() const noexcept;
   [[nodiscard]] bool has_next() const noexcept;
+  [[nodiscard]] bool next_is(const token_t&) const noexcept;
   [[nodiscard]] RCtoken next();
   void advance(size_t = 1);
   RCtoken peek(short = 0);

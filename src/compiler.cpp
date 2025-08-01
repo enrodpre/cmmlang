@@ -5,7 +5,7 @@
 #include "lexer.hpp"
 #include "os.hpp"
 #include "parser.hpp"
-#include <basic.hpp>
+#include <cpptrace/basic.hpp>
 #include <iostream>
 #include <string>
 
@@ -48,8 +48,8 @@ ofile compiler::compile(const source_code& src) {
 
   // exit(1);
   // ast::validator::validate(compound);
-  ir::compilation_unit cunit;
-  auto& fn = compound.at(0);
+  ir::compilation_unit& cunit = ir::compilation_unit::instance();
+  auto& fn                    = compound.at(0);
 
   fs::ofile asm_file(m_output_filename);
   asm_file = asm_file.replace_extension("asm");

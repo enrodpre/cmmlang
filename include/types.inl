@@ -1,6 +1,7 @@
 #pragma once
 
 #include "types.hpp"
+#include <type_traits>
 
 namespace cmm {
 
@@ -47,44 +48,53 @@ namespace cmm {
   return MAP;
 }
 
-template <typename... Args>
-std::string mangler::type(type_t t, bool c, bool v, Args... args) {
-  switch (t.inner()) {
-    case _type_t::bool_t:
-      return boolean(c, v);
-    case _type_t::char_t:
-      return character(c, v);
-    case _type_t::uint_t:
-      return uint(c, v);
-    case _type_t::sint_t:
-      return sint(c, v);
-    case _type_t::float_t:
-      return floating(c, v);
-    case _type_t::lvalue_ref_t:
-      return lvalue(c, v, std::forward<Args>(args)...);
-    case _type_t::rvalue_ref_t:
-      return rvalue(c, v, std::forward<Args>(args)...);
-    case _type_t::pointer_t:
-      return pointer(c, v, std::forward<Args>(args)...);
-    case _type_t::array_t:
-    case _type_t::function_t:
-    case _type_t::enum_t:
-    case _type_t::scoped_enum_t:
-    case _type_t::unscoped_enum_t:
-    case _type_t::class_t:
-    case _type_t::base_t:
-    case _type_t::compound_t:
-    case _type_t::indirection_t:
-    case _type_t::reference_t:
-    case _type_t::fundamental_t:
-    case _type_t::void_t:
-    case _type_t::nullptr_t:
-    case _type_t::arithmetic_t:
-    case _type_t::integral_t:
-      break;
+constexpr std::string type::format() const {
+  switch (category) {
+    case category_t::void_t:
+      return "void";
+    case category_t::nullptr_t:
+      return "nullptr_t";
+    case category_t::bool_t:
+      return std::format("{}{}bool", c ? "c" : "", v ? "v" : "");
+    case category_t::char_t:
+      return std::format("{}{}char", c ? "c" : "", v ? "v" : "");
+    case category_t::uint_t:
+      return std::format("{}{}uint", c ? "c" : "", v ? "v" : "");
+    case category_t::sint_t:
+      return std::format("{}{}sint", c ? "c" : "", v ? "v" : "");
+    case category_t::float_t:
+      return std::format("{}{}float", c ? "c" : "", v ? "v" : "");
+    case category_t::lvalue_ref_t:
+      return std::format("{}&{}", *underlying, c ? "c" : "", v ? "v" : "");
+    case category_t::rvalue_ref_t:
+      return std::format("{}&&{}", *underlying, c ? "c" : "", v ? "v" : "");
+    case category_t::pointer_t:
+      return std::format("{}*{}", *underlying, c ? "c" : "", v ? "v" : "");
+    case category_t::array_t:
+      return std::format("<{}, {}>", *underlying, rank);
+    case category_t::scoped_enum_t:
+    case category_t::unscoped_enum_t:
+      return std::format("<{}, {}>", underlying, rank);
+    case category_t::class_t:
+      return std::format("{}", *underlying);
+    case category_t::function_t:
+    default:
+      NOT_IMPLEMENTED;
   }
 }
 
-constexpr bool is_const_v::operator()(cv_type t) { return t->is_const(); }
+constexpr bool is_const_v::operator()(const type& t) { return t.c; }
+constexpr type type_factory::create_fundamental(category_t cat, bool b, bool v) {
+  static_assert(std::is_constant_evaluated());
+  return type{cat, b, v};
+}
+constexpr type type_factory::create_pointer(const type& t, bool b, bool v) {
+  static_assert(std::is_constant_evaluated());
+  return type{category_t::pointer_t, t, b, v};
+}
+constexpr type type_factory::create_lvalue(const type& t, bool b, bool v) {
+  static_assert(std::is_constant_evaluated());
+  return type{category_t::lvalue_ref_t, t, b, v};
+}
 
 } // namespace cmm

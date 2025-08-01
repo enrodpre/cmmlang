@@ -3,8 +3,6 @@
 #define TYPE_INDEX(cls) std::type_index(typeid(cls))
 namespace cmm {
 
-formattable::operator std::string() const { return format(); }
-
 self_allocated::self_allocated(cmm::location&& loc)
     : m_location(std::move(loc)) {}
 self_allocated::self_allocated(const cmm::location& loc)

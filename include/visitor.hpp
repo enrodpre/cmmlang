@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdexcept>
+#include <utils.hpp>
 namespace cmm {
 
 template <class... Ts>
@@ -33,8 +34,9 @@ namespace detail {
   struct dummy {};
   template <class T>
   inline void accept(visitor<>& v, T&) {
-    throw std::domain_error(std::string(typeid(v).name()) + " does not implement any visitor for " +
-                            typeid(T).name());
+    throw std::domain_error(cpptrace::demangle(typeid(v).name()) +
+                            " does not implement any visitor for " +
+                            cpptrace::demangle(typeid(T).name()));
   }
   template <class T, class X, class... Z>
   inline void accept(visitor<>& v, T& p) {

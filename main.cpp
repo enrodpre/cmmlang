@@ -1,5 +1,6 @@
 #include "common.hpp"
 #include "compiler.hpp"
+#include "traits.hpp"
 #include <cstdlib>
 #include <cxxopts.hpp>
 #include <execinfo.h>
@@ -12,21 +13,16 @@
 using namespace cmm;
 
 int main(int argc, char* argv[]) {
-  constexpr static std::string INPUT_ARG = "input";
+  std::string INPUT_ARG               = "input";
+  std::string DEFAULT_OUTPUT_FILENAME = "res";
 
   cxxopts::Options options("CmmLang", "Compiler for cmm language");
   options.add_options()("h,help", "Show help")(
-      "o,out",
-      "Compiled file path",
-      cxxopts::value<std::string>()->default_value(
-          compiler::DEFAULT_OUTPUT_FILENAME))(
-      ADD_DUMP_OPT("dump-ast", "Dump ast nodes"))(
-      ADD_DUMP_OPT("dump-memory", "Dump memory statistics"))(
-      ADD_DUMP_OPT("dump-state", "Dump state"))(
-      "dump-tokens", "Dump tokens", cxxopts::value<bool>());
+      "o,out", "Compiled file path", cxxopts::value<std::string>())("dump-ast", "Dump ast nodes")(
+      "dump-memory", "Dump memory statistics")("dump-state", "Dump state")("dump-tokens",
+                                                                           "Dump tokens");
 
-  options.add_options("Positional")(
-      INPUT_ARG, "Input file", cxxopts::value<std::string>());
+  options.add_options("Positional")(INPUT_ARG, "Input file", cxxopts::value<std::string>());
   options.parse_positional({INPUT_ARG});
   auto result        = options.parse(argc, argv);
 
@@ -43,6 +39,10 @@ int main(int argc, char* argv[]) {
     input_file = result[INPUT_ARG].as<std::string>();
   } else if (default_file != nullptr) {
     input_file.emplace(default_file);
+  }
+  std::string output_name = DEFAULT_OUTPUT_FILENAME;
+  if (result.contains("out")) {
+    output_name = result["out"].as<std::string>();
   }
 
   if (!input_file.has_value()) {
@@ -64,10 +64,7 @@ int main(int argc, char* argv[]) {
 
   config conf{dump_tokens, dump_ast, dump_state, dump_memory};
 
-  compiler compiler_instance{
-      conf,
-      input_path,
-  };
+  compiler compiler_instance{conf, input_path, output_name};
   compiler_instance.run();
 
   return EXIT_SUCCESS;

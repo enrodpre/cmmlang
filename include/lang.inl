@@ -233,7 +233,7 @@ struct type_converter {
 //   return GET_TYPE(T, const_, volatile_);
 // }
 // template <typename... Args>
-// constexpr cv_type builder::create(type_t t,
+// constexpr type builder::create(type_t t,
 //                                   bool const_,
 //                                   bool volatile_,
 //                                   Args&&...) {

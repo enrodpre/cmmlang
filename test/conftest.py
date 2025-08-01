@@ -101,14 +101,3 @@ def pytest_configure(config):
 def pytest_collection_modifyitems(config, items):
     """Suppress collection output"""
     pass
-
-
-def pytest_terminal_summary(terminalreporter, exitstatus, config):
-    """Override terminal summary to prevent default output"""
-    # This prevents the default summary from being printed
-    pass
-
-
-def pytest_report_header(config):
-    """Suppress pytest header"""
-    return None

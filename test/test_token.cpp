@@ -16,10 +16,10 @@ struct test_token : public ::testing::Test {
 
   template <typename... Args>
   tokens create_tokens(Args&&... args) {
-    auto vec = std::array{std::forward<Args>(args)...} |
-               std::views::transform([this](token_t t) {
-                 return token(std::move(t), create_loc());
-               }) |
+    auto vec =
+        std::array{std::forward<Args>(args)...} |
+        std::views::transform([this](token_t t) { return token(std::move(t), create_loc()); }) |
+        std::ranges::to<std::vector>();
     return tokens(vec);
   }
 };
@@ -29,9 +29,9 @@ TEST_F(test_token, tokens) {
   token_t third  = token_t::total;
   tokens t       = create_tokens(first, second, third);
 
-  EXPECT_EQ(first, t.peek(0));
-  EXPECT_EQ(first, t.next());
-  EXPECT_EQ(second, t.peek(0));
-  EXPECT_EQ(first, t.peek(-1));
-  EXPECT_EQ(third, t.peek(1));
+  EXPECT_EQ(first, t.peek(0).type);
+  EXPECT_EQ(first, t.next().type);
+  EXPECT_EQ(second, t.peek(0).type);
+  EXPECT_EQ(first, t.peek(-1).type);
+  EXPECT_EQ(third, t.peek(1).type);
 }

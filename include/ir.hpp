@@ -93,7 +93,7 @@ struct local_scope;
 struct variable : public symbol<ast::decl::variable> {
   linkage_t linkage;
   storage_t storage;
-  cv_type type;
+  cmm::type type;
   scope& scope_ref;
   variable(scope&, const ast::decl::variable*, address_t, linkage_t, storage_t, decltype(type));
   [[nodiscard]] std::string format() const override;
@@ -123,10 +123,19 @@ struct global_variable : public variable {
 };
 
 struct function : public symbol<ast::decl::function> {
-  using return_t = std::optional<cv_type>;
+  using return_t = std::optional<type>;
+  struct builtin_body {
+    preprocess_t preprocess;
+    body_t body;
+    postprocess_t postprocess;
+  };
+  using parameters_t = std::vector<ast::decl::variable>;
+  using body_t       = std::variant<const ast::compound*, builtin_body>;
+
   std::string identifier;
   linkage_t linkage;
   return_t return_type;
+  parameters_t parameters;
   bool inlined;
   function(const ast::decl::function*, address_t, std::string, linkage_t, return_t, bool);
   [[nodiscard]] std::string format() const override;
@@ -134,6 +143,10 @@ struct function : public symbol<ast::decl::function> {
   virtual address_t run(compilation_unit&, std::vector<operand*>) const           = 0;
   [[nodiscard]] virtual bool is_defined() const                                   = 0;
 };
+
+namespace builtin::function {
+  struct header_t;
+}
 
 class mangled_name {
 public:
@@ -144,8 +157,9 @@ public:
   static mangled_name free_unary_operator(const operator_t&, cstring);
   static mangled_name free_binary_operator(const operator_t&, cstring, cstring);
   static mangled_name free_function(const ast::decl::function*);
-  static mangled_name builtin_function(value_type, const std::vector<cv_type>&);
-  static std::string types(const std::vector<cv_type>&);
+  static mangled_name builtin_function(const builtin::function::header_t&);
+  static mangled_name builtin_function(std::string_view, const std::vector<type>&);
+  static std::string types(const std::vector<type>&);
 
   [[nodiscard]] const value_type& str() const;
   operator std::string() const;
@@ -156,7 +170,7 @@ private:
 
 struct builtin_function : public function {
   using return_t     = std::optional<address_t>;
-  using parameters_t = std::vector<cv_type>;
+  using parameters_t = std::vector<type>;
   using preprocess_t = std::function<
       std::vector<address_t>(compilation_unit&, parameters_t, ast::expr::call::arguments)>;
   using body_t        = std::function<operand*(compilation_unit&, std::vector<address_t>)>;
@@ -175,7 +189,7 @@ struct builtin_function : public function {
 
   parameters_t parameters;
   descriptor_t descriptor;
-  builtin_function(std::string, std::optional<cv_type>, parameters_t, descriptor_t, bool = false);
+  builtin_function(std::string, std::optional<type>, parameters_t, descriptor_t, bool = false);
 
   address_t run(compilation_unit&, ast::expr::call::arguments) const override;
   address_t run(compilation_unit&, std::vector<operand*> = {}) const override;
@@ -186,7 +200,7 @@ struct builtin_function : public function {
 struct user_function : public function {
   const ast::compound* body;
   ast::decl::function::parameters_t parameters;
-  user_function(const ast::decl::function*, address_t, linkage_t, cv_type, bool = false);
+  user_function(const ast::decl::function*, address_t, linkage_t, type, bool = false);
 
   address_t run(compilation_unit&, ast::expr::call::arguments) const override;
   address_t run(compilation_unit&, std::vector<operand*> = {}) const override;
@@ -226,8 +240,8 @@ public:
   std::vector<value_type::pointer> get(cstring) const;
 
   const function* emplace_builtin(const mangled_name&,
-                                  std::optional<cv_type>,
-                                  const std::vector<cv_type>&,
+                                  std::optional<type>,
+                                  const std::vector<type>&,
                                   const builtin_function::descriptor_t&,
                                   bool = false);
   const function* emplace_user_provided(const ast::decl::function*, bool = false);
@@ -367,8 +381,6 @@ namespace builtin::function {
 
 class compilation_unit : public default_singleton<compilation_unit> {
 public:
-  compilation_unit();
-
   ast_traverser runner;
   std::string compile(ast::program&, const source_code*);
 
@@ -393,10 +405,7 @@ public:
 
   cmm::assembly::asmgen asmgen;
 
-private:
   //////////// OBJECTS ///////////
-
-public:
   [[nodiscard]] std::string current_line() const;
 
   const variable* declare_variable(const ast::decl::variable&, operand*);
@@ -405,8 +414,8 @@ public:
   [[nodiscard]] operand* get_variable_address(const ast::term::identifier&) const;
   void save_variable(const variable*, operand*);
   void reserve_memory(cstring, cstring, cstring);
-  cv_type get_expression_type(const ast::expr::expression&);
-  operand* call_builtin(const std::string&, std::vector<operand*>);
+  type get_expression_type(const ast::expr::expression&);
+  operand* call_builtin(const builtin::function::header_t&, const std::vector<operand*>&);
 
   template <typename... Args>
   void instruction(const instruction_t&, Args&&...);
@@ -423,12 +432,17 @@ public:
   void cmp(cstring, cstring);
   void call(cstring);
   void exit(operand*);
-  void exit(size_t);
+  void exit_successfully();
   void syscall();
   void syscall(cstring);
   void ret();
   void label(cstring);
   void comment(cstring);
+
+  friend default_singleton<compilation_unit>;
+
+protected:
+  compilation_unit();
 
 private:
   void start();
@@ -436,23 +450,28 @@ private:
 };
 
 namespace builtin {
+  namespace function {
+    enum class _header_t : uint8_t { EXIT };
+    using header_arguments_t = std::vector<type>;
+    BUILD_ENUMERATION_CLASS(header_t, std::string_view, function_name, header_arguments_t, args);
+  }; // namespace function
   struct provider {
     symbol_table& table;
-    constexpr void create_builtin_function(std::optional<cv_type>,
-                                           std::string,
-                                           const std::vector<cv_type>&,
+    constexpr void create_builtin_function(std::optional<type>,
+                                           const std::string&,
+                                           const std::vector<type>&,
                                            builtin_function::preprocess_t,
                                            builtin_function::body_t,
                                            builtin_function::postprocess_t);
-    constexpr void create_builtin_operator(cv_type,
+    constexpr void create_builtin_operator(type,
                                            const operator_t&,
-                                           const std::vector<cv_type>&,
+                                           const std::vector<type>&,
                                            builtin_function::preprocess_t,
                                            builtin_function::body_t,
                                            builtin_function::postprocess_t);
 
     template <_instruction_t Ins, size_t = instruction_t(Ins).n_params>
-    constexpr void create_simple_operator(const operator_t& op, cv_type type);
+    constexpr void create_simple_operator(const operator_t& op, type type);
     constexpr void provide_operators();
     constexpr void provide_functions();
     constexpr void provide();

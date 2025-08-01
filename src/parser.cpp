@@ -162,16 +162,21 @@ ast::global_statement* parser::parse_declaration() {
 }
 // FIXME
 ast::expr::expression* parser::parse_lhs_expr() {
-  const auto token = m_tokens.peek();
+  const auto& token = m_tokens.peek();
 
   if (token.type.is_literal()) {
     m_tokens.advance();
     return m_arena.emplace<expr::literal>(token);
   }
 
+  expr::expression* expr = nullptr;
   if (token.type.is(token_t::ident)) {
-    m_tokens.advance();
-    return m_arena.emplace<expr::identifier>(token);
+    auto ident = parse_identifier();
+    if (m_tokens.next_is(token_t::o_paren)) {
+      return parse_call(ident);
+    }
+
+    return m_arena.emplace<expr::identifier>(std::move(ident));
   }
 
   if (token.type.is(token_t::o_paren)) {
@@ -226,26 +231,9 @@ expr::expression* parser::parse_expr(uint8_t min_prec) {
 }
 
 expr::expression* parser::parse_call(term::identifier ident) {
-  want(token_t::o_paren);
-
-  if (m_tokens.peek().type == token_t::c_paren) {
-    m_tokens.advance();
-    // Zero parameters
-    return m_arena.emplace<expr::call>(ident);
-  }
-
-  std::vector<ast::expr::expression*> args;
-
-  while (true) {
-    expr::expression* expr = parse_expr();
-    args.push_back(expr);
-
-    if (m_tokens.peek().type == cmm::token_t::c_paren) {
-      m_tokens.advance();
-      break;
-    }
-    want(cmm::token_t::comma);
-  }
+  auto p = [this]() { return this->parse_expr(); };
+  auto args =
+      parse_varargs<expr::expression*>(p, token_t::o_paren, token_t::comma, token_t::c_paren);
 
   // No more parameters
   // but dont capture semicolon just jet
@@ -261,9 +249,9 @@ ast::decl::specifiers parser::parse_specifiers() {
 }
 
 term::identifier parser::parse_identifier() {
-  if (const auto& next = m_tokens.peek(); next.type == token_t::ident) {
+  if (m_tokens.next_is(token_t::ident)) {
+    const auto& next = m_tokens.next();
     DEBUG_ASSERT(!next.value.empty(), std::format("Identifier must have a value. token: {}", next));
-    m_tokens.advance();
     return {next};
   }
 
@@ -281,39 +269,51 @@ decl::variable* parser::parse_variable(ast::decl::specifiers&& mods, ast::term::
   return m_arena.emplace<decl::variable>(std::move(mods), id_ptr, init);
 }
 
-decl::function* parser::parse_function(decl::specifiers&& mods, term::identifier id) {
-  want(cmm::token_t::o_paren);
-
-  std::vector<decl::variable> args;
-
-  if (m_tokens.peek().type != token_t::c_paren) {
-    while (true) {
-      decl::specifiers specs = parse_specifiers();
-      const token* next_     = &m_tokens.next();
-
-      term::identifier* id   = nullptr;
-      if (auto token = m_tokens.peek(); token.type == token_t::ident) {
-        m_tokens.advance();
-        id = m_arena.emplace<term::identifier>(token);
-      }
-
-      expr::expression* e = nullptr;
-      if (next_->type == token_t::eq) {
-        e = parse_expr();
-      }
-
-      args.emplace_back(std::move(specs), id, e);
-
-      if (next_->type == cmm::token_t::c_paren) {
-        break;
-      }
-
-      want(*next_, cmm::token_t::comma);
-    }
-  } else {
-    // Closing paren
+template <typename T, typename Func>
+std::vector<T> parser::parse_varargs(Func&& inner,
+                                     const token_t& opener,
+                                     const token_t& delim,
+                                     const token_t& closer) {
+  std::vector<T> res;
+  want(opener);
+  if (m_tokens.next_is(closer)) {
     m_tokens.advance();
+    return res;
   }
+
+  while (true) {
+    res.push_back(inner());
+
+    if (m_tokens.next_is(closer)) {
+      break;
+    }
+
+    want(delim);
+  }
+  m_tokens.advance();
+
+  return res;
+}
+
+decl::function* parser::parse_function(decl::specifiers&& mods, term::identifier id) {
+  auto p = [this]() -> decl::variable {
+    decl::specifiers specs = parse_specifiers();
+
+    term::identifier* id   = nullptr;
+    if (m_tokens.next_is(token_t::ident)) {
+      id = m_arena.emplace<term::identifier>(m_tokens.next());
+    }
+
+    expr::expression* e = nullptr;
+    if (m_tokens.next_is(token_t::eq)) {
+      e = parse_expr();
+    }
+
+    return {std::move(specs), id, e};
+  };
+
+  auto params =
+      parse_varargs<decl::variable>(p, token_t::o_paren, token_t::comma, token_t::c_paren);
 
   // No more var decls
   // Block parsing
@@ -323,7 +323,7 @@ decl::function* parser::parse_function(decl::specifiers&& mods, term::identifier
   }
 
   auto* func =
-      m_arena.emplace<decl::function>(std::move(mods), std::move(id), std::move(args), compound_);
+      m_arena.emplace<decl::function>(std::move(mods), std::move(id), std::move(params), compound_);
   return func;
 }
 

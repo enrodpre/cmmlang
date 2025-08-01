@@ -1,32 +1,28 @@
 # ---- Project ----
 cmake_minimum_required(VERSION 3.20)
 
-include(../cmake/cmm-config.cmake)
+set(TESTSNAME
+    CmmTests
+    CACHE INTERNAL "")
+
 message(STATUS "CWD: ${CMAKE_CURRENT_SOURCE_DIR}")
 
-project(${TESTS} LANGUAGES CXX)
+project(${TESTSNAME} LANGUAGES CXX)
 
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
 
 # ---- Dependencies ----
-include(../cmake/CPM.cmake)
+# include(../cmake/CPM.cmake)
 
-find_package(GTest REQUIRED)
+find_package(GTest REQUIRED QUIET)
 
-cpmaddpackage(NAME ${LIBRARY} SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/.. PREFIX
-              ${CMAKE_BINARY_DIR})
-
-set(TEST_TARGET unit_tests)
-
-enable_testing()
-
-include(GoogleTest)
+# include(GoogleTest)
 
 # ---- Unit test function ----
 function(add_unit_test file)
   set(name unit_${file})
   add_executable(${name} "${CMAKE_CURRENT_SOURCE_DIR}/test_${file}.cpp")
-  target_link_libraries(${name} ${LIBRARY} GTest::gtest_main)
+  target_link_libraries(${name} CmmLib gtest gtest_main)
   gtest_discover_tests(${name})
 endfunction()
 
@@ -50,34 +46,26 @@ function(create_symlink file)
   )
 endfunction()
 
-create_symlink(conftest.py)
+# create_symlink(conftest.py)
 create_symlink(e2e.py)
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/../examples
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
-set(PYTEST_ARGS
-  --quiet
-  --tb=no
-  --disable-warnings
-  --no-header
-  --no-summary
-  -rN
-)
+# set(PYTEST_ARGS
+#   --quiet
+#   --tb=no
+#   --disable-warnings
+#   --no-header
+#   --no-summary
+#   -rN
+# )
 
-add_custom_target(
-  e2e
-  COMMAND ${CMAKE_COMMAND} -E echo "Running Python tests e2e"
-  COMMAND pytest ${PYTEST_ARGS} ${CMAKE_CURRENT_BINARY_DIR}/e2e.py
-  # DEPENDS CmmLang
+add_test(NAME e2e
+  COMMAND pytest e2e.py
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-  COMMENT "Running end-to-end tests"
 )
-
-add_dependencies(e2e CmmLang)
-
-find_package(Python3 REQUIRED)
 
 # ---- code coverage ----
 if(ENABLE_TEST_COVERAGE)

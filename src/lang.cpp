@@ -7,17 +7,17 @@
 // }
 namespace cmm {
 [[nodiscard]] std::string operator_t::caller_function() const {
-  return std::format("operator{}", value());
+  return std::format("operator{}", repr);
 }
 
 [[nodiscard]] std::string operator_t::format() const { return std::format("operator{}", repr); }
 
-constexpr type_t typeof ::operator()(cv_type) { return type_t::nullptr_t; }
+// constexpr type_t typeof ::operator()(type) { return type_t::nullptr_t; }
 
-constexpr size_t sizeof_::operator()(cv_type t) { return t->size(); }
-constexpr size_t sizeof_::operator()(const type_t& t) {
-  using enum _type_t;
-  switch (t.inner()) {
+// constexpr category_t typeof ::operator()(const type& t) { return t.category; }
+constexpr size_t sizeof_::operator()(const type& t) {
+  using enum category_t;
+  switch (t.category) {
     case lvalue_ref_t:
     case rvalue_ref_t:
     case nullptr_t:
@@ -34,22 +34,12 @@ constexpr size_t sizeof_::operator()(const type_t& t) {
       return 8;
     case array_t:
     case function_t:
-    case enum_t:
-    case base_t:
-    case compound_t:
-    case indirection_t:
-    case reference_t:
-    case fundamental_t:
     case void_t:
-    case arithmetic_t:
-    case integral_t:
     case scoped_enum_t:
     case unscoped_enum_t:
     case class_t:
       return 0;
   }
 }
-constexpr size_t sizeof_::operator()(const object& o) {
-  return sizeof_::operator()(typeof ::operator()(o.type));
-}
+constexpr size_t sizeof_::operator()(const object& o) { return sizeof_::operator()(o.type); }
 } // namespace cmm

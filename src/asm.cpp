@@ -9,25 +9,16 @@
 
 namespace cmm::assembly {
 
-std::string operand::format() const {
-  return value();
-}
-[[nodiscard]] std::optional<operand::symbol_container> operand::content()
-    const {
-  return m_symbol;
-}
+std::string operand::format() const { return value(); }
+[[nodiscard]] std::optional<operand::symbol_container> operand::content() const { return m_symbol; }
 
-[[nodiscard]] operand::content_t operand::variable() const {
-  return m_symbol.value().content;
-}
+[[nodiscard]] operand::content_t operand::variable() const { return m_symbol.value().content; }
 
 operand::symbol_container::symbol_container(content_t cont, symbol_attr attr)
     : content(cont),
       attribute(attr) {}
 
-bool operand::symbol_container::is_address() const {
-  return attribute == symbol_attr::ADDRESS;
-}
+bool operand::symbol_container::is_address() const { return attribute == symbol_attr::ADDRESS; }
 operand* operand::hold_value(content_t obj) {
   m_symbol.emplace(obj, symbol_container::symbol_attr::VALUE);
   return this;
@@ -37,13 +28,9 @@ operand* operand::hold_address(content_t obj) {
   return this;
 }
 
-[[nodiscard]] bool operand::empty() const {
-  return !m_symbol.has_value();
-}
+[[nodiscard]] bool operand::empty() const { return !m_symbol.has_value(); }
 
-void operand::release() {
-  m_symbol.reset();
-}
+void operand::release() { m_symbol.reset(); }
 
 reg::reg(std::string name)
     : m_name(std::move(name)) {}
@@ -99,17 +86,19 @@ reg_memory::reg_memory(std::string base, int64_t offset)
     : reg(std::move(base)),
       m_offset(offset) {}
 
-std::string reg_memory::value() const {
-  return format_addr(m_name, m_offset);
-}
+std::string reg_memory::value() const { return format_addr(m_name, m_offset); }
 
 stack_memory::stack_memory(int64_t offset)
     : reg_memory("rsp", offset) {}
 
 std::string stack_memory::value() const {
-  const auto& v = ir::compilation_unit::instance();
-  auto current_casted =
-      static_cast<int64_t>(v.table.active_frame().local_stack.size());
+  const auto& v          = ir::compilation_unit::instance();
+  int64_t current_casted = 0;
+  if (v.table.is_global_scope()) {
+    current_casted = static_cast<int64_t>(v.table.active_scope().variables.size());
+  } else {
+    current_casted = static_cast<int64_t>(v.table.active_frame().local_stack.size());
+  }
   auto offset = calculate_offset(m_offset, current_casted);
   return format_addr(m_name, offset);
 }
@@ -129,9 +118,7 @@ label::label(std::string name)
   return m_name;
 }
 
-[[nodiscard]] std::string label_memory::value() const {
-  return std::format("[{}]", m_name);
-}
+[[nodiscard]] std::string label_memory::value() const { return std::format("[{}]", m_name); }
 
 registers::registers()
     : m_registers(initialize_registers()),
@@ -169,9 +156,7 @@ assembly_instruction1::assembly_instruction1(instruction_t ins, operand* l)
   return std::format("{} {}", instruction, *left);
 }
 
-assembly_instruction2::assembly_instruction2(instruction_t ins,
-                                             operand* l,
-                                             operand* r)
+assembly_instruction2::assembly_instruction2(instruction_t ins, operand* l, operand* r)
     : instruction(std::move(ins)),
       left(l),
       right(r) {}
@@ -179,17 +164,12 @@ assembly_instruction2::assembly_instruction2(instruction_t ins,
   return std::format("{} {}, {}", instruction, *left, *right);
 }
 
-[[nodiscard]] std::string assembly_empty_line::format() const {
-  return "";
-}
+[[nodiscard]] std::string assembly_empty_line::format() const { return ""; }
 
 assembly_comment_line::assembly_comment_line(std::string str)
     : comment(std::move(str)) {}
-std::string assembly_comment_line::format() const {
-  return std::format("; {}", comment);
-}
-assembly_code_line::assembly_code_line(decltype(instruction)&& ins,
-                                       decltype(comment) comm)
+std::string assembly_comment_line::format() const { return std::format("; {}", comment); }
+assembly_code_line::assembly_code_line(decltype(instruction)&& ins, decltype(comment) comm)
     : instruction(std::move(ins)),
       comment(std::move(comm)) {}
 
@@ -232,10 +212,7 @@ std::string asmgen::end() {
   return res.dump();
 }
 
-void asmgen::add_section_data(Section section_enum,
-                              cstring ident,
-                              cstring type,
-                              cstring size) {
+void asmgen::add_section_data(Section section_enum, cstring ident, cstring type, cstring size) {
   switch (section_enum) {
     case Section::DATA:
       m_sections.data.emplace_back(std::format("{} {} {}", ident, type, size));
@@ -253,37 +230,25 @@ void asmgen::register_labeled_code_block(cstring name, std::string&& asm_code) {
   m_sections.procedures.emplace_back(name, std::move(asm_code));
 }
 
-void asmgen::create_delay() {
-  m_text.create();
-}
+void asmgen::create_delay() { m_text.create(); }
 
-[[nodiscard]] std::string asmgen::dump_delayed() {
-  return m_text.dump();
-}
+[[nodiscard]] std::string asmgen::dump_delayed() { return m_text.dump(); }
 void asmgen::stop_delay() {
   m_text.save();
   m_text.create();
 }
 
-void asmgen::load_delayed() {
-  m_text.load();
-}
+void asmgen::load_delayed() { m_text.load(); }
 
-void asmgen::write_label(cstring label) {
-  m_text.newline().write("{}:\n", label);
-}
+void asmgen::write_label(cstring label) { m_text.newline().write("{}:\n", label); }
 
-void asmgen::write_comment(cstring comment) noexcept {
-  m_text.write(";; {}\n", comment);
-}
+void asmgen::write_comment(cstring comment) noexcept { m_text.write(";; {}\n", comment); }
 
 comment_block::comment_block(asmgen& gen, std::string name)
     : m_asmgen(gen),
       m_name(std::move(name)) {}
 
-comment_block::~comment_block() {
-  end();
-}
+comment_block::~comment_block() { end(); }
 
 void comment_block::end() {
   if (!m_ended) {

@@ -88,7 +88,7 @@ struct expression_visitor : public const_visitor<EXPRESSION_TYPES> {
   void visit(const ast::expr::identifier&) override;
 };
 
-struct statement_visitor : public const_visitor<STATEMENT_TYPES> {
+struct statement_visitor : public expression_visitor, public const_visitor<STATEMENT_TYPES> {
   ast_traverser* gen;
   statement_visitor(ast_traverser*);
 

@@ -2,7 +2,6 @@
 
 #include "common.hpp"
 #include <type_traits>
-#include <utils.hpp>
 
 namespace cmm {
 
@@ -69,6 +68,8 @@ auto formattable_range<T>::element_merger() const {
     return [](const auto& pair) { return std::format("{}, {}", pair.key, pair.value); };
   }
 }
+
+constexpr formattable::operator std::string() const { return format(); }
 
 template <typename Derived, typename P, typename... Parents>
 identifiable<Derived, P, Parents...>::identifiable()

@@ -66,7 +66,8 @@ private:
   tokens m_tokens;
   memory::Allocator m_arena;
   std::vector<ast::global_statement*> m_global;
-
+  template <typename T, typename Func>
+  std::vector<T> parse_varargs(Func&&, const token_t&, const token_t&, const token_t&);
   ast::expr::expression* parse_lhs_expr();
   static void want(const token&, const token_t&, bool = false);
   void want(const token_t&, bool = false);

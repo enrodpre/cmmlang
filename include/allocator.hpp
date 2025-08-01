@@ -2,10 +2,10 @@
 
 #include "common.hpp"
 #include "traits.hpp"
+#include <cpptrace/exceptions.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <exceptions.hpp>
 #include <memory>
 #include <new>
 #include <utility>
@@ -49,10 +49,10 @@ struct Allocator {
     }
 
     m_offset = static_cast<std::byte*>(aligned_address) + element_size;
-    REGISTER_INFO("Allocated {} for {} type in {}",
-                  element_size,
-                  cpptrace::demangle(typeid(T).name()),
-                  aligned_address);
+    // REGISTER_INFO("Allocated {} for {} type in {}",
+    //               element_size,
+    //               cpptrace::demangle(typeid(T).name()),
+    //               aligned_address);
     return static_cast<T*>(aligned_address);
   }
 

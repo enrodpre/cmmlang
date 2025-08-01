@@ -124,13 +124,7 @@ enum class attribute : uint8_t {
 };
 
 enum class linkage_t : uint8_t { normal = 0, internal, external };
-enum class storage_t : uint8_t {
-  normal = 0,
-  static_,
-  extern_,
-  mutable_,
-  register_
-};
+enum class storage_t : uint8_t { normal = 0, static_, extern_, mutable_, register_ };
 
 enum class modifier_t : uint8_t {
   friend_,
@@ -170,15 +164,14 @@ struct composite_value : public value {
 };
 struct object;
 
-struct typeof {
-  STATIC_CLS(typeof);
-  constexpr static type_t operator()(cv_type);
-};
+// struct typeof {
+//   STATIC_CLS(typeof);
+//   constexpr static category_t operator()(const type&);
+// };
 
 struct sizeof_ {
   STATIC_CLS(sizeof_);
-  constexpr static size_t operator()(cv_type);
-  constexpr static size_t operator()(const type_t&);
+  constexpr static size_t operator()(const type&);
   constexpr static size_t operator()(const object&);
 };
 
@@ -188,7 +181,7 @@ struct object {
   std::string name;
   align alignment;
   storage_t storage;
-  cv_type type;
+  cmm::type type;
   cmm::value* value;
 };
 } // namespace cmm

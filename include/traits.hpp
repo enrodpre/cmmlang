@@ -240,9 +240,8 @@
 #define ADD_CONST_VOLATILE_IMPL(type, ...) \
   ADD_CONST_VOLATILE_TO_SINGLE(type) \
   IF(HAS_MORE(__VA_ARGS__), DEFER(ADD_CONST_VOLATILE_COMMA)(__VA_ARGS__), )
-#define ADD_CONST_VOLATILE_COMMA(...) \
-  , DEFER(ADD_CONST_VOLATILE_IMPL)(__VA_ARGS__)
-#define ADD_CONST_VOLATILE(...) EVAL(ADD_CONST_VOLATILE_IMPL(__VA_ARGS__))
+#define ADD_CONST_VOLATILE_COMMA(...) , DEFER(ADD_CONST_VOLATILE_IMPL)(__VA_ARGS__)
+#define ADD_CONST_VOLATILE(...)       EVAL(ADD_CONST_VOLATILE_IMPL(__VA_ARGS__))
 
 // --- Pointer to pointer manipulation ---
 #define ADD_PTR_PTR_TO_SINGLE(type) type**
@@ -264,14 +263,16 @@ template <typename T>
 concept Str = std::is_convertible_v<T, std::string_view>;
 
 template <typename T>
-concept StrSource =
-    std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view> ||
-    std::is_same_v<T, const char*>;
+concept StrSource = std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view> ||
+                    std::is_same_v<T, const char*>;
 
 template <typename T, typename = void>
 struct ensure_pointer {
   using type = T*;
 };
+
+template <typename T>
+concept IsTrivial = std::is_trivially_default_constructible_v<T> && std::is_trivially_copyable_v<T>;
 
 template <typename R>
 struct function_traits;
@@ -282,8 +283,7 @@ struct param_count;
 // Specialization to count parameters
 template <typename First, typename... Rest>
 struct param_count<First, Rest...> {
-  static const std::size_t value =
-      1 + param_count<Rest...>::value; // Count the first and recurse
+  static const std::size_t value = 1 + param_count<Rest...>::value; // Count the first and recurse
 };
 // Base case for zero parameters
 template <>
@@ -325,8 +325,7 @@ template <template <typename...> class C>
 auto is_base_of_template_t_impl(...) -> std::false_type;
 
 template <typename T, template <typename...> class C>
-using is_base_of_template_t =
-    decltype(is_base_of_template_t_impl<C>(std::declval<T*>()));
+using is_base_of_template_t = decltype(is_base_of_template_t_impl<C>(std::declval<T*>()));
 
 template <typename T, typename... Args>
 concept constructible_t = std::is_constructible_v<T, Args...>;
@@ -343,8 +342,7 @@ template <typename T>
 class Derived {};
 
 template <typename T, template <typename> class BaseTemplate>
-concept DerivedFromTemplate =
-    std::is_base_of_v<BaseTemplate<typename T::value_type>, T>;
+concept DerivedFromTemplate = std::is_base_of_v<BaseTemplate<typename T::value_type>, T>;
 
 template <typename Variant, template <typename> class Trait>
 struct check_variant_compliance;
@@ -355,8 +353,7 @@ struct is_hashable : std::false_type {};
 
 // Specialization: Check if std::hash<T> is valid
 template <typename T>
-struct is_hashable<T, std::void_t<decltype(std::hash<T>{}(std::declval<T>()))>>
-    : std::true_type {};
+struct is_hashable<T, std::void_t<decltype(std::hash<T>{}(std::declval<T>()))>> : std::true_type {};
 
 // Helper alias for easier usage
 template <typename T>
@@ -408,7 +405,7 @@ concept ReturnsVoid = std::is_same_v<get_return_type<Func, Args...>, void>;
 
 template <typename T>
 struct OptionalChecker {
-  using type = std::remove_cv_t<std::remove_reference_t<T>>;
+  using type                        = std::remove_cv_t<std::remove_reference_t<T>>;
 
   static constexpr bool is_optional = requires(type opt) {
     { opt.has_value() } -> std::convertible_to<bool>;
@@ -427,10 +424,9 @@ template <typename Base, typename Derived>
 struct polymorphic_traits {
   static constexpr bool is_base_polymorphic    = std::is_polymorphic_v<Base>;
   static constexpr bool is_derived_polymorphic = std::is_polymorphic_v<Derived>;
-  static constexpr bool is_base_of     = std::is_base_of_v<Base, Derived>;
-  static constexpr bool is_convertible = std::is_convertible_v<Derived*, Base*>;
-  static constexpr bool value = is_base_polymorphic && is_derived_polymorphic &&
-                                is_base_of && is_convertible;
+  static constexpr bool is_base_of             = std::is_base_of_v<Base, Derived>;
+  static constexpr bool is_convertible         = std::is_convertible_v<Derived*, Base*>;
+  static constexpr bool value =
+      is_base_polymorphic && is_derived_polymorphic && is_base_of && is_convertible;
 };
-#define DERIVE_OK(BASE, DERIVED) \
-  static_assert(polymorphic_traits<BASE, DERIVED>::value);
+#define DERIVE_OK(BASE, DERIVED) static_assert(polymorphic_traits<BASE, DERIVED>::value);

@@ -2,16 +2,14 @@
 
 #include "common.hpp"
 #include "fs.hpp"
-#include <cpptrace.hpp>
+#include <cpptrace/cpptrace.hpp>
 
 namespace cmm {
 
 class compiler {
 
 public:
-  compiler(const config&,
-           const fs::path&,
-           const std::string& = DEFAULT_OUTPUT_FILENAME);
+  compiler(const config&, const fs::path&, const std::string&);
   compiler(compiler&&)                 = delete;
   compiler& operator=(compiler&&)      = delete;
   compiler(const compiler&)            = delete;
@@ -23,8 +21,6 @@ public:
   static fs::ofile assemble(fs::ofile& file);
   static fs::ofile link(fs::ofile& file);
   fs::ofile run();
-
-  constexpr static const char* DEFAULT_OUTPUT_FILENAME = "res";
 
   void throw_compilation_error(std::string_view, const location&);
   static void throw_linking_error(const std::string&);

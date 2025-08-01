@@ -5,6 +5,7 @@
 #include "os.hpp"
 #include "traits.hpp"
 #include <bits/version.h>
+#include <cpptrace/utils.hpp>
 #include <cstdint>
 #include <exception>
 #include <format>
@@ -22,7 +23,6 @@
 #include <type_traits>
 #include <typeindex>
 #include <utility>
-#include <utils.hpp>
 
 namespace cmm {
 
@@ -138,7 +138,7 @@ struct TypeErasedHash {
 
 struct formattable {
   constexpr virtual ~formattable() = default;
-  operator std::string() const;
+  constexpr operator std::string() const;
   [[nodiscard]] constexpr virtual std::string format() const = 0;
 };
 
@@ -799,17 +799,16 @@ CREATE_ERROR(missing_entry_point, os::status::MISSING_ENTRY_POINT, "Main functio
 template <typename T>
 struct default_singleton {
   NOT_COPYABLE_CLS(default_singleton);
-  NOT_MOVABLE_CLS(default_singleton);
   static T& instance() {
     static T instance;
     return instance;
   }
 
+  friend T;
+
 protected:
   default_singleton()  = default;
   ~default_singleton() = default;
-
-  friend T;
 };
 
 template <typename T>
@@ -937,10 +936,9 @@ private:
 template <size_t IndentLvl = 0, typename... Args>
 constexpr string_buffer& string_buffer::write(std::format_string<Args...> std_string,
                                               Args&&... args) noexcept {
-  if constexpr (IndentLvl > 0) {
-    active() << std::format("{:{}}", "", IndentLvl);
-  }
-  active() << std::format(std_string, std::forward<Args>(args)...);
+  active() << std::format("{}{}",
+                          std::string(IndentLvl * 2, ' '),
+                          std::format(std_string, std::forward<Args>(args)...));
   return *this;
 }
 

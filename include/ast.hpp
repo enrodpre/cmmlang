@@ -7,6 +7,7 @@
 #include "visitor.hpp"
 #include <algorithm>
 #include <bits/ranges_algo.h>
+#include <cpptrace/utils.hpp>
 #include <initializer_list>
 #include <libassert/assert.hpp>
 #include <magic_enum/magic_enum.hpp>
@@ -14,7 +15,6 @@
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <utils.hpp>
 
 namespace cmm::ast {
 
@@ -183,7 +183,7 @@ namespace expr {
       arguments(std::vector<expression*>&& v)
           : siblings(std::move(v)) {}
     };
-    const term::identifier& ident;
+    term::identifier ident;
     arguments args;
 
     call(decltype(ident)&& ident_, arguments&& args = {});
