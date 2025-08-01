@@ -368,36 +368,30 @@ operand* global_scope::emplace_static(const ast::decl::variable* decl) {
   return addr;
 }
 
-using fn_store = function_store;
-bool fn_store::contains(const mangled_name& mname) const { return m_store.contains(mname); }
-
-fn_store::value_type::pointer fn_store::get(const mangled_name& mname) {
-  return m_store.at(mname).get();
-}
-
-std::vector<fn_store::value_type::pointer> fn_store::get(cstring id) const {
+std::vector<function_store::value_type::pointer> function_store::get(cstring id) const {
   // TODO support overload
   return m_store | std::views::filter([id](const auto& pair) -> bool {
            const auto& [k, v] = pair;
            return k.starts_with(id);
          }) |
-         std::views::transform([](const auto& pair) -> fn_store::value_type::pointer {
+         std::views::transform([](const auto& pair) -> function_store::value_type::pointer {
            const auto& [k, v] = pair;
            return v.get();
          }) |
          std::ranges::to<std::vector>();
 }
 
-const function* fn_store::emplace_builtin(const mangled_name& mang,
-                                          std::optional<type> ret,
-                                          const std::vector<type>& params,
-                                          const builtin_function::descriptor_t& desc,
-                                          bool inline_) {
+const function* function_store::emplace_builtin(const mangled_name& mang,
+                                                std::optional<type> ret,
+                                                const std::vector<type>& params,
+                                                const builtin_function::descriptor_t& desc,
+                                                bool inline_) {
   auto mang_str = mang.str();
   auto ptr = std::make_unique<builtin_function>(mang_str, std::move(ret), params, desc, inline_);
   return m_store.emplace(mang_str, std::move(ptr)).first->second.get();
 }
-const function* fn_store::emplace_user_provided(const ast::decl::function* decl, bool inline_) {
+const function* function_store::emplace_user_provided(const ast::decl::function* decl,
+                                                      bool inline_) {
   auto mang = mangled_name::free_function(decl);
   return m_store
       .emplace(mang.str(),
@@ -410,7 +404,17 @@ const function* fn_store::emplace_user_provided(const ast::decl::function* decl,
       .first->second.get();
 }
 
-void fn_store::clear() { m_store.clear(); }
+void function_store::clear() { m_store.clear(); }
+
+bool conversion_store::is_convertible(const type& from, const type& to) const {
+  auto mangled_from = mangled_name::type(from);
+  if (const auto& outer = m_store.at(mangled_from); m_store.contains(mangled_from)) {
+    return outer.contains(mangled_name::type(to));
+  }
+  return false;
+}
+
+std::vector<type> conversion_store::get_convertibles(const type& from) const {}
 
 frame::frame(const user_function* fn)
     : func(*fn) {

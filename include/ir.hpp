@@ -123,25 +123,30 @@ struct global_variable : public variable {
 };
 
 struct function : public symbol<ast::decl::function> {
-  using return_t = std::optional<type>;
+  using return_t     = std::optional<address_t>;
+  using parameters_t = std::vector<ast::decl::variable>;
   struct builtin_body {
+    using preprocess_t = std::function<
+        std::vector<address_t>(compilation_unit&, parameters_t, ast::expr::call::arguments)>;
+    using body_t        = std::function<operand*(compilation_unit&, std::vector<address_t>)>;
+    using postprocess_t = std::function<return_t(compilation_unit&, address_t)>;
     preprocess_t preprocess;
     body_t body;
     postprocess_t postprocess;
   };
-  using parameters_t = std::vector<ast::decl::variable>;
-  using body_t       = std::variant<const ast::compound*, builtin_body>;
-
+  using body_t = std::variant<const ast::compound*, builtin_body>;
   std::string identifier;
   linkage_t linkage;
   return_t return_type;
   parameters_t parameters;
+  body_t body;
   bool inlined;
+
   function(const ast::decl::function*, address_t, std::string, linkage_t, return_t, bool);
   [[nodiscard]] std::string format() const override;
-  virtual address_t run(compilation_unit&, ast::expr::call::arguments = {}) const = 0;
-  virtual address_t run(compilation_unit&, std::vector<operand*>) const           = 0;
-  [[nodiscard]] virtual bool is_defined() const                                   = 0;
+  address_t run(compilation_unit&, ast::expr::call::arguments = {}) const;
+  address_t run(compilation_unit&, std::vector<operand*>) const;
+  [[nodiscard]] virtual bool is_defined() const;
 };
 
 namespace builtin::function {
@@ -160,6 +165,7 @@ public:
   static mangled_name builtin_function(const builtin::function::header_t&);
   static mangled_name builtin_function(std::string_view, const std::vector<type>&);
   static std::string types(const std::vector<type>&);
+  static std::string type(const type&);
 
   [[nodiscard]] const value_type& str() const;
   operator std::string() const;
@@ -207,6 +213,15 @@ struct user_function : public function {
   [[nodiscard]] bool is_defined() const override;
 };
 
+struct conversion_function {
+  enum class type_t : uint8_t { IMPLICIT, EXPLICIT };
+  type_t type;
+  std::unique_ptr<function> body;
+
+  [[nodiscard]] bool is_implicit() const { return type == type_t::IMPLICIT; };
+  [[nodiscard]] bool is_explicit() const { return type == type_t::EXPLICIT; };
+};
+
 class variable_store : public formattable_range<std::unordered_map<std::string, variable>> {
 public:
   using key_type   = std::string;
@@ -234,9 +249,9 @@ public:
   using key_type   = mangled_name::value_type;
   using value_type = std::unique_ptr<function>;
   function_store();
-  bool contains(const mangled_name&) const;
-  value_type::pointer get(const mangled_name&);
-  const value_type::pointer get(const mangled_name&) const;
+  bool contains(const mangled_name& t) const { return m_store.contains(t); };
+  value_type::pointer get(const mangled_name& t) { return m_store.at(t).get(); }
+  value_type::pointer get(const mangled_name& t) const { return m_store.at(t).get(); }
   std::vector<value_type::pointer> get(cstring) const;
 
   const function* emplace_builtin(const mangled_name&,
@@ -246,6 +261,19 @@ public:
                                   bool = false);
   const function* emplace_user_provided(const ast::decl::function*, bool = false);
   void clear();
+
+private:
+  std::unordered_map<key_type, value_type> m_store;
+};
+
+class conversion_store {
+public:
+  using key_type     = mangled_name::value_type;
+  using value_type   = std::unordered_map<mangled_name::value_type, function>;
+
+  conversion_store() = default;
+  bool is_convertible(const type&, const type&) const;
+  std::vector<type> get_convertibles(const type&) const;
 
 private:
   std::unordered_map<key_type, value_type> m_store;
@@ -348,6 +376,7 @@ struct symbol_table : public cmm::formattable {
 private:
   std::unique_ptr<user_function> m_entry_point;
   function_store m_functions;
+  function_store m_conversions;
   global_scope m_global_scope;
   stack<frame> m_stackframe;
   memory::Allocator m_arena;
