@@ -421,14 +421,6 @@ template <typename T>
   return m_data.size();
 }
 template <typename T>
-void vector<T>::push_back(T&& t) {
-  m_data.push_back(std::move(t));
-}
-template <typename T>
-void vector<T>::push_back(const T& t) {
-  m_data.push_back(t);
-}
-template <typename T>
 template <typename Fn>
 vector<T>::pointer_type vector<T>::find(Fn fn) {
   return *(m_data | std::ranges::find_if(fn));
@@ -438,12 +430,5 @@ template <typename T>
 template <typename Fn>
 vector<T>::const_pointer_type vector<T>::find(Fn fn) const {
   return *(m_data | std::ranges::find_if(fn));
-}
-
-template <typename T>
-template <typename... Args>
-  requires(std::is_constructible_v<T, Args...>)
-void vector<T>::emplace_back(Args&&... args) {
-  m_data.emplace_back(std::forward<Args>(args)...);
 }
 }; // namespace cmm

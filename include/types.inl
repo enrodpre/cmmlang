@@ -47,6 +47,44 @@ namespace cmm {
   return MAP;
 }
 
+template <typename... Args>
+std::string mangler::type(type_t t, bool c, bool v, Args... args) {
+  switch (t.inner()) {
+    case _type_t::bool_t:
+      return boolean(c, v);
+    case _type_t::char_t:
+      return character(c, v);
+    case _type_t::uint_t:
+      return uint(c, v);
+    case _type_t::sint_t:
+      return sint(c, v);
+    case _type_t::float_t:
+      return floating(c, v);
+    case _type_t::lvalue_ref_t:
+      return lvalue(c, v, std::forward<Args>(args)...);
+    case _type_t::rvalue_ref_t:
+      return rvalue(c, v, std::forward<Args>(args)...);
+    case _type_t::pointer_t:
+      return pointer(c, v, std::forward<Args>(args)...);
+    case _type_t::array_t:
+    case _type_t::function_t:
+    case _type_t::enum_t:
+    case _type_t::scoped_enum_t:
+    case _type_t::unscoped_enum_t:
+    case _type_t::class_t:
+    case _type_t::base_t:
+    case _type_t::compound_t:
+    case _type_t::indirection_t:
+    case _type_t::reference_t:
+    case _type_t::fundamental_t:
+    case _type_t::void_t:
+    case _type_t::nullptr_t:
+    case _type_t::arithmetic_t:
+    case _type_t::integral_t:
+      break;
+  }
+}
+
 constexpr bool is_const_v::operator()(cv_type t) { return t->is_const(); }
 
 } // namespace cmm

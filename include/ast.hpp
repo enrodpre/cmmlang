@@ -2,7 +2,6 @@
 
 #include "common.hpp"
 #include "lang.hpp"
-#include "macros.hpp"
 #include "token.hpp"
 #include "traits.hpp"
 #include "visitor.hpp"
@@ -21,46 +20,48 @@ namespace cmm::ast {
 
 using cmm::visitable;
 
-struct base_visitable : visitable<> {
-
-  virtual const base_visitable* get_parent() const { return m_parent; }
-  virtual void set_parent(const base_visitable* parent_) const { m_parent = parent_; }
+struct node : virtual visitable<>, public formattable {
+  virtual const node* get_parent() const { return m_parent; }
+  virtual void set_parent(const node* parent_) const { m_parent = parent_; }
 
 private:
-  mutable const base_visitable* m_parent = nullptr;
+  mutable const node* m_parent = nullptr;
 };
 
-struct node : visitable<base_visitable, node>, public self_allocated, public formattable {
-  node(const token& token)
-      : self_allocated(token.location()) {}
+struct leaf : public node, public self_allocated {
+  leaf(const cmm::location& l)
+      : self_allocated(l) {}
+};
+struct composite : public node, public allocated {
+  cmm::location location() const override = 0;
 };
 
-struct statement : visitable<base_visitable, statement>, public allocated, public formattable {
+struct statement : visitable<composite, statement> {
   statement() = default;
 };
 
-struct global_statement : public statement {
-  using statement::statement;
+struct global_statement : visitable<statement, global_statement> {
+  global_statement() = default;
 };
-DERIVE_OK(base_visitable, statement);
+
+DERIVE_OK(composite, statement);
 
 template <typename...>
 inline constexpr bool dependent_false = false;
 
-template <typename T, typename Parent = statement>
-struct siblings : public vector<T>, visitable<Parent, siblings<T, Parent>> {
-  siblings()
-      : vector<T>(),
-        visitable<siblings<T>>() {}
+template <typename T, typename Cls, typename Parent = composite>
+struct siblings : public vector<T>, public visitable<Parent, Cls> {
+private:
+  siblings() = default;
   siblings(const std::vector<T>& s)
-      : vector<T>(s),
-        visitable<siblings<T>>() {}
+      : vector<T>(s) {}
   siblings(std::vector<T>&& s) noexcept
-      : vector<T>(std::move(s)),
-        visitable<siblings<T>>() {}
+      : vector<T>(std::move(s)) {}
   siblings(std::initializer_list<T> list)
-      : vector<T>(list),
-        visitable<siblings<T>>() {}
+      : vector<T>(list) {}
+
+public:
+  friend Cls;
 
   [[nodiscard]] std::string format() const override {
     return std::format("Array {}({})", cpptrace::demangle(typeid(T).name()), vector<T>::size());
@@ -79,11 +80,12 @@ struct siblings : public vector<T>, visitable<Parent, siblings<T, Parent>> {
   }
 };
 
-struct compound : public siblings<statement*> {
-  using siblings::location;
+struct compound : public siblings<statement*, compound, statement> {
   compound(std::vector<statement*>&&);
+  using siblings::location;
 };
 
+DERIVE_OK(statement, compound);
 static_assert(Allocated<const compound&>);
 static_assert(AllocatedPtr<compound*>);
 
@@ -93,21 +95,19 @@ concept ZeroParamConstructible = requires {
   { T{} } -> std::same_as<T>;
 };
 
-DERIVE_OK(statement, compound);
-
 namespace term {
-  struct keyword : visitable<node, keyword> {
+  struct keyword : visitable<leaf, keyword> {
     token_t kind;
     keyword(const token& token)
-        : visitable(token),
+        : visitable(token.location()),
           kind(token.type) {}
     FORMAT_DECL_IMPL();
   };
 
-  struct identifier : visitable<node, identifier> {
+  struct identifier : visitable<leaf, identifier> {
     std::string value;
     identifier(const token& token)
-        : visitable(token),
+        : visitable(token.location()),
           value(token.value) {}
     operator cstring() const { return value; }
     FORMAT_DECL_IMPL();
@@ -118,34 +118,33 @@ namespace term {
   static bool operator==(const identifier& r, const identifier& l) {
     return r.location() == l.location() && r.value == l.value;
   }
-  struct literal : visitable<node, literal> {
+  struct literal : visitable<leaf, literal> {
     std::string value;
 
     literal(const token& token)
-        : visitable(token),
+        : visitable(token.location()),
           value(token.value) {}
     FORMAT_DECL_IMPL();
   };
 
   static_assert(Allocated<const literal&>);
-  static_assert(EveryIsAllocated<const literal&, literal, node>);
   DERIVE_OK(node, literal);
 
-  struct operator_ : visitable<node, operator_> {
+  struct operator_ : visitable<leaf, operator_> {
     operator_t type;
     operator_(const token& token)
-        : visitable(token),
+        : visitable(token.location()),
           type(token.type.cast<operator_t>()) {}
     operator_(const token& loc, operator_t type_)
-        : visitable(loc),
+        : visitable(loc.location()),
           type(std::move(type_)) {}
     FORMAT_DECL_IMPL();
   };
 
-  struct specifier : visitable<node, specifier> {
+  struct specifier : visitable<leaf, specifier> {
     token_t type;
     specifier(const cmm::token& token)
-        : visitable(token),
+        : visitable(token.location()),
           type(token.type) {}
     FORMAT_DECL_IMPL();
   };
@@ -177,7 +176,13 @@ namespace expr {
   };
 
   struct call : visitable<expression, call> {
-    using arguments = siblings<expression*>;
+    struct arguments : public siblings<expression*, arguments> {
+      arguments() = default;
+      arguments(std::initializer_list<expression*> l)
+          : siblings(l) {}
+      arguments(std::vector<expression*>&& v)
+          : siblings(std::move(v)) {}
+    };
     const term::identifier& ident;
     arguments args;
 
@@ -206,13 +211,17 @@ namespace expr {
   };
 
 #define EXPRESSION_TYPES \
-  const ast::expr::binary_operator&, const ast::expr::unary_operator&, const ast::expr::call&, \
-      const ast::expr::literal&, const ast::expr::identifier&
+  ast::expr::binary_operator, ast::expr::unary_operator, ast::expr::call, ast::expr::literal, \
+      ast::expr::identifier
 }; // namespace expr
 
 namespace decl {
-  struct specifiers : public siblings<term::specifier, base_visitable> {};
+  struct specifiers : public siblings<term::specifier, specifiers> {
+    specifiers(std::vector<term::specifier>&& v)
+        : siblings(std::move(v)) {}
+  };
 
+  static_assert(std::is_base_of_v<allocated, specifiers>);
   struct label : public visitable<statement, label> {
     term::identifier term;
     label(const token&);
@@ -237,14 +246,21 @@ namespace decl {
   };
 
   struct function : visitable<global_statement, function> {
-    using parameters_t = siblings<variable>;
+    struct parameters_t : public siblings<variable, parameters_t> {
+      parameters_t() = default;
+      parameters_t(std::vector<variable>&& v)
+          : siblings(std::move(v)) {}
+    };
 
     decl::specifiers specifiers;
     term::identifier ident;
     parameters_t parameters;
-    compound* body;
+    const compound* body;
 
-    function(decl::specifiers&&, decltype(ident), decltype(parameters)&&, decltype(body) = nullptr);
+    function(decl::specifiers&&,
+             decltype(ident)&&,
+             decltype(parameters)&&,
+             decltype(body) = nullptr);
     FORMAT_DECL_IMPL();
     cmm::location location() const override;
   };
@@ -256,8 +272,6 @@ namespace decl {
   DERIVE_OK(statement, variable);
   DERIVE_OK(statement, label);
   DERIVE_OK(statement, function);
-  DERIVE_OK(statement, function);
-  DERIVE_OK(statement, variable);
 }; // namespace decl
 //
 namespace selection {
@@ -267,7 +281,7 @@ namespace selection {
     statement* block;
     statement* else_;
 
-    if_(term::keyword, expr::expression&, statement*, statement* = nullptr);
+    if_(term::keyword&&, expr::expression&, statement*, statement* = nullptr);
     FORMAT_DECL_IMPL();
     cmm::location location() const override;
   };
@@ -291,7 +305,7 @@ namespace iteration {
     term::keyword keyword;
     expr::expression& condition;
     statement* body;
-    while_(term::keyword, expr::expression&, statement*);
+    while_(term::keyword&&, expr::expression&, statement*);
     FORMAT_DECL_IMPL();
     cmm::location location() const override;
   };
@@ -305,7 +319,7 @@ namespace iteration {
     expr::expression* condition;
     expr::expression* step;
     statement* body;
-    for_(term::keyword k,
+    for_(term::keyword&& k,
          decl::variable* start_,
          expr::expression* condition_,
          expr::expression* step_,
@@ -359,9 +373,12 @@ namespace debug {
   // };
 } // namespace debug
 
-using program = siblings<ast::statement*>;
+struct program : public siblings<ast::global_statement*, program> {
+  program(std::vector<ast::global_statement*>&& v)
+      : siblings(std::move(v)) {}
+};
 
-DERIVE_OK(siblings<ast::statement*>, program);
+// DERIVE_OK(siblings<ast::statement*, program>, program);
 
 #define TERM_TYPES \
   ast::term::literal, ast::term::identifier, ast::term::keyword, ast::term::specifier, \

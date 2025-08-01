@@ -733,7 +733,7 @@ concept AllocatedPtr =
 template <typename... Ts>
 constexpr bool EveryIsAllocated = (Allocated<Ts> && ...);
 
-#define GET_LOC(p) (p == nullptr ? location() : p->loc)
+#define GET_LOC(p) (p == nullptr ? location() : p->location())
 
 struct error : public std::exception {
   error()           = delete;
@@ -993,11 +993,6 @@ template <typename T> struct vector {
   [[nodiscard]] const_reverse_iterator rend() const;
   [[nodiscard]] bool empty() const;
   [[nodiscard]] size_t size() const;
-  template <typename... Args>
-    requires(std::is_constructible_v<T, Args...>)
-  void emplace_back(Args&&...);
-  void push_back(T&&);
-  void push_back(const T&);
   template <typename Fn>
   pointer_type find(Fn);
   template <typename Fn>

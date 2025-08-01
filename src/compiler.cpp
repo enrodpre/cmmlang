@@ -65,7 +65,7 @@ ofile compiler::compile(const source_code& src) {
 }
 
 ofile compiler::assemble(ofile& asm_file) {
-  // os::execute(std::format("nasm -felf64 -g {}", asm_file.path()));
+  os::execute(std::format("nasm -felf64 -g {}", asm_file.path().string()));
 
   if constexpr (!cmm::config::assembly) {
     // asm_file.remove();
@@ -75,7 +75,7 @@ ofile compiler::assemble(ofile& asm_file) {
 
 ofile compiler::link(ofile& obj_file) {
   auto binary = obj_file.replace_extension("");
-  // os::execute(std::format("ld -o {} {}", binary.path(), obj_file.path()));
+  os::execute(std::format("ld -o {} {}", binary.path().string(), obj_file.path().string()));
   obj_file.remove();
   return binary;
 }

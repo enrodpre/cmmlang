@@ -10,8 +10,6 @@ self_allocated::self_allocated(cmm::location&& loc)
 self_allocated::self_allocated(const cmm::location& loc)
     : m_location(loc) {}
 
-const cmm::location& self_allocated::location() const { return m_location; }
-
 [[nodiscard]] std::string location::format() const { return std::format("({}, {})", rows, cols); }
 
 source_code::source_code(const fs::ifile& input)

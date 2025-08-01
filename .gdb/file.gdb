@@ -1,1 +1,1 @@
-set args examples/return.1.cmm
+set args examples/exit.1.cmm

@@ -34,9 +34,7 @@ constexpr std::string registers::to_realname(registers_t r) {
   }
 }
 
-constexpr reg* registers::parameters_t::next() {
-  return at(i++);
-}
+constexpr reg* registers::parameters_t::next() { return at(i++); }
 
 constexpr void registers::parameters_t::reset() {
   i = 0;
@@ -45,9 +43,7 @@ constexpr void registers::parameters_t::reset() {
   }
 }
 [[nodiscard]] constexpr reg* registers::parameters_t::at(size_t i_) const {
-  auto* reg_ = regs.get(
-      magic_enum::enum_cast<registers::registers_t>(m_parameters.at(i_))
-          .value());
+  auto* reg_ = regs.get(magic_enum::enum_cast<registers::registers_t>(m_parameters.at(i_)).value());
   reg_->release();
   return reg_;
 }
@@ -100,6 +96,15 @@ namespace {
 } // namespace
 
 template <typename... Args>
-void asmgen::write_instruction(const instruction_t& ins, Args&&... args) {}
+void asmgen::write_instruction(const instruction_t& ins, Args&&... args) {
+  if constexpr ((sizeof...(Args) == 0)) {
+    m_text.write("{}", ins.name());
+  } else if constexpr ((sizeof...(Args) == 1)) {
+    m_text.write<2>("{} {}", ins.name(), std::forward<Args>(args)...);
+  } else if constexpr ((sizeof...(Args) == 2)) {
+    m_text.write<2>("{} {}, {}", ins.name(), std::forward<Args>(args)...);
+  }
+  m_text.write("\n");
+}
 
 } // namespace cmm::assembly

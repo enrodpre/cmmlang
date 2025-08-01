@@ -184,8 +184,7 @@ struct builtin_function : public function {
 };
 
 struct user_function : public function {
-  using body_t = ast::compound*;
-  body_t body;
+  const ast::compound* body;
   ast::decl::function::parameters_t parameters;
   user_function(const ast::decl::function*, address_t, linkage_t, cv_type, bool = false);
 

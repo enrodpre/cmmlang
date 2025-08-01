@@ -13,8 +13,7 @@
 #define CALL(op) op<T>(const_, volatile_, std::forward<Args>(args)...)
 #define HASH()   std::hash<T>{}(const_, volatile_, std::forward<Args>(args)...)
 #ifdef TYPE_MAP_STORAGE
-  #define GET_TYPE(TYPE_, CONST, VOLATILE, ...) \
-    store::get<TYPE>(CONST, VOLATILE, __VA_ARGS__)
+  #define GET_TYPE(TYPE_, CONST, VOLATILE, ...) store::get<TYPE>(CONST, VOLATILE, __VA_ARGS__)
 #else
   #define GET_TYPE(TYPE, CONST, VOLATILE, ...) \
     store::instance().get_type<TYPE>(CONST, VOLATILE, ##__VA_ARGS__)
@@ -22,8 +21,7 @@
 
 namespace cmm {
 
-[[nodiscard]] constexpr const instruction_t::properties_map&
-instruction_t::properties_array() {
+[[nodiscard]] constexpr const instruction_t::properties_map& instruction_t::properties_array() {
   using enum _instruction_t;
   static constexpr properties_map MAP{{{
       {0, false, {}},  // nop
@@ -62,8 +60,7 @@ instruction_t::properties_array() {
   return MAP;
 }
 
-[[nodiscard]] constexpr const operator_t::properties_map&
-operator_t::properties_array() {
+[[nodiscard]] constexpr const operator_t::properties_map& operator_t::properties_array() {
   static constexpr properties_map MAP{{{
 
       // Arithmetics

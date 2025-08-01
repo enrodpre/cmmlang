@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <exceptions.hpp>
 #include <memory>
 #include <new>
 #include <utility>
@@ -24,7 +25,9 @@ struct Allocator {
   Allocator(size_t m_capacity, std::byte* m_buffer, std::byte* m_offset);
   ~Allocator() { delete[] m_buffer; }
 
-  [[nodiscard]] size_t used() const { return (m_offset - m_buffer) * sizeof(int); }
+  [[nodiscard]] size_t used() const {
+    return static_cast<size_t>((m_offset - m_buffer) * sizeof(int));
+  }
 
   template <typename T>
   [[nodiscard]] T free_space_as() const {}
@@ -34,24 +37,23 @@ struct Allocator {
   template <typename T>
   [[nodiscard]] T* allocate(size_t times = 1) {
     size_t remaining_space = m_capacity - used();
-    auto* start_ptr        = static_cast<void*>(m_offset);
-    size_t element_size    = sizeof(T);
+    size_t element_size    = sizeof(T) * times;
     if (remaining_space < element_size) {
       throw std::bad_alloc();
     }
 
-    size_t total_size           = element_size * times;
-    auto* const aligned_address = std::align(alignof(T), total_size, start_ptr, remaining_space);
+    auto* start_ptr             = static_cast<void*>(m_offset);
+    auto* const aligned_address = std::align(alignof(T), element_size, start_ptr, remaining_space);
     if (nullptr == aligned_address) {
       throw std::bad_alloc();
     }
 
-    auto allocated_pointer = static_cast<T*>(aligned_address);
-
-    // registers.emplace_back(
-    //     type_name<T>(), (uintptr_t)allocated_pointer, sizeof(T), times);
-
-    return allocated_pointer;
+    m_offset = static_cast<std::byte*>(aligned_address) + element_size;
+    REGISTER_INFO("Allocated {} for {} type in {}",
+                  element_size,
+                  cpptrace::demangle(typeid(T).name()),
+                  aligned_address);
+    return static_cast<T*>(aligned_address);
   }
 
   template <typename T>

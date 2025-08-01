@@ -55,7 +55,7 @@ public:
   ast::expr::expression* parse_primary();
   ast::expr::expression* parse_condition();
   ast::expr::expression* parse_unary_expr();
-  ast::expr::expression* parse_call(const ast::term::identifier& ident);
+  ast::expr::expression* parse_call(ast::term::identifier ident);
   ast::expr::expression* parse_expr(uint8_t = 0);
 
   // Terms
@@ -65,8 +65,7 @@ public:
 private:
   tokens m_tokens;
   memory::Allocator m_arena;
-  ast::program m_global;
-  cmm::stack<std::vector<ast::statement*>> m_compound;
+  std::vector<ast::global_statement*> m_global;
 
   ast::expr::expression* parse_lhs_expr();
   static void want(const token&, const token_t&, bool = false);

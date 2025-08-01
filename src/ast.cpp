@@ -56,8 +56,7 @@ FORMAT_IMPL(jump::return_, "{}: DerivedVisitable{}", "Return: ", *expr);
 FORMAT_IMPL(jump::goto_, "Goto({})", term);
 
 compound::compound(std::vector<statement*>&& v)
-    : siblings(std::move(v)),
-      visitable() {}
+    : siblings(std::move(v)) {}
 expr::identifier::identifier(ast::term::identifier&& id)
     : term(std::move(id)) {}
 cmm::location expr::identifier::location() const { return term.location(); }
@@ -103,42 +102,53 @@ variable::variable(decl::specifiers&& mods, decltype(ident) id, decltype(init) i
     init->set_parent(this);
   }
 }
+
+cmm::location decl::label::location() const { return term.location(); }
+
+cmm::location decl::variable::location() const {
+  return specifiers.location() + GET_LOC(ident) + GET_LOC(init);
+}
 function::function(decl::specifiers&& mods,
-                   decltype(ident) ident_,
+                   decltype(ident)&& ident_,
                    decltype(parameters)&& args,
-                   compound* body_)
-    : visitable(std::move(mods), ident_, std::move(args), body_),
-      specifiers(std::move(mods)),
-      ident(ident_),
+                   decltype(body) body_)
+    : specifiers(std::move(mods)),
+      ident(std::move(ident_)),
       parameters(std::move(args)),
       body(body_) {}
 
+cmm::location decl::function::location() const {
+  return specifiers.location() + ident.location() + parameters.location() + GET_LOC(body);
+}
+
 expr::binary_operator::binary_operator(expression& left, expression& right, term::operator_&& op)
-    : visitable(left, right, op),
-      left(left),
+    : left(left),
       right(right),
       operator_(std::move(op)) {
   left.set_parent(this);
   right.set_parent(this);
   operator_.set_parent(this);
 }
-selection::if_::if_(term::keyword k,
+selection::if_::if_(term::keyword&& k,
                     decltype(condition) condition,
                     decltype(block) block_,
                     decltype(else_) else_)
-    : visitable(k, condition, block_, else_),
-      keyword(k),
+    : keyword(std::move(k)),
       condition(condition),
       block(block_),
       else_(else_) {
   keyword.set_parent(this);
   condition.set_parent(this);
-  if (else_ != nullptr) {
-    else_->set_parent(this);
+  if (block != nullptr) {
+    block->set_parent(this);
   }
   if (else_ != nullptr) {
     else_->set_parent(this);
   }
+}
+
+cmm::location selection::if_::location() const {
+  return keyword.location() + condition.location() + GET_LOC(else_) + GET_LOC(block);
 }
 
 template <typename It>
@@ -150,9 +160,8 @@ std::string iteration::iteration<It>::exit_label() const {
   return std::format("exit_{}", static_cast<const It*>(this)->format());
 }
 
-iteration::while_::while_(term::keyword k, expr::expression& condition_, statement* block)
-    : visitable(k, condition_, block),
-      keyword(k),
+iteration::while_::while_(term::keyword&& k, expr::expression& condition_, statement* block)
+    : keyword(std::move(k)),
       condition(condition_),
       body(block) {
   keyword.set_parent(this);
@@ -162,13 +171,16 @@ iteration::while_::while_(term::keyword k, expr::expression& condition_, stateme
   }
 }
 
-iteration::for_::for_(term::keyword k,
+cmm::location iteration::while_::location() const {
+  return keyword.location() + condition.location() + GET_LOC(body);
+}
+
+iteration::for_::for_(term::keyword&& k,
                       decl::variable* start_,
                       expr::expression* condition_,
                       expr::expression* step_,
                       statement* block)
-    : visitable(k, start_, condition_, step_, block),
-      keyword(k),
+    : keyword(std::move(k)),
       start(start_),
       condition(condition_),
       step(step_),
@@ -183,31 +195,36 @@ iteration::for_::for_(term::keyword k,
   if (start != nullptr) {
     start->set_parent(this);
   }
-  if (block != nullptr) {
+  if (step != nullptr) {
     step->set_parent(this);
   }
 }
 
+cmm::location iteration::for_::location() const {
+  return keyword.location() + GET_LOC(condition) + GET_LOC(body) + GET_LOC(start) + GET_LOC(step);
+}
+
 jump::goto_::goto_(const token& token)
-    : visitable(token),
-      term(token) {
+    : term(token) {
   term.set_parent(this);
 }
+cmm::location jump::goto_::location() const { return term.location(); }
+
 jump::break_::break_(const token& token)
-    : visitable(token),
-      keyword(token) {
+    : keyword(token) {
   keyword.set_parent(this);
 }
+cmm::location jump::break_::location() const { return keyword.location(); }
 jump::continue_::continue_(const token& token)
-    : visitable(token),
-      keyword(token) {
+    : keyword(token) {
   keyword.set_parent(this);
 }
+cmm::location jump::continue_::location() const { return keyword.location(); }
 jump::return_::return_(term::keyword k, expr::expression* expr_)
-    : visitable(k, expr_),
-      keyword(std::move(k)),
+    : keyword(std::move(k)),
       expr(expr_) {
   keyword.set_parent(this);
 }
+cmm::location jump::return_::location() const { return keyword.location() + GET_LOC(expr); }
 
 } // namespace cmm::ast

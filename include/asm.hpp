@@ -95,13 +95,7 @@ struct stack_memory : public reg_memory {
 
 struct immediate : public operand {
   using stored_t = std::variant<int64_t, uint64_t, float, double, long double>;
-  enum class immediate_t : uint8_t {
-    SIGNED_INTEGER,
-    UNSIGNED_INTEGER,
-    FLOAT,
-    DOUBLE,
-    LONG_DOUBLE
-  };
+  enum class immediate_t : uint8_t { SIGNED_INTEGER, UNSIGNED_INTEGER, FLOAT, DOUBLE, LONG_DOUBLE };
 
   immediate(stored_t, immediate_t);
 
@@ -271,9 +265,7 @@ public:
 
   // Helpers
   template <typename... Args>
-  [[nodiscard]] comment_block begin_comment_block(
-      std::format_string<Args...> std,
-      Args&&... args);
+  [[nodiscard]] comment_block begin_comment_block(std::format_string<Args...> std, Args&&... args);
   void register_exit_block() noexcept;
 
   // Dynamic buffer
@@ -309,21 +301,14 @@ private:
 };
 
 template <typename... Args>
-comment_block asmgen::begin_comment_block(std::format_string<Args...> std,
-                                          Args&&... args) {
+comment_block asmgen::begin_comment_block(std::format_string<Args...> std, Args&&... args) {
   std::string comment = std::format(std, std::forward<Args>(args)...);
   m_comment_blocks.emplace_back(comment);
   write_comment(comment);
   return {*this, comment};
 }
 
-enum class Snippet : uint8_t {
-  int_to_str,
-  exit,
-  print_str,
-  print_nl,
-  print_int
-};
+enum class Snippet : uint8_t { int_to_str, exit, print_str, print_nl, print_int };
 constexpr static const cstring PRINT_NL =
     "  mov rax, 1\n  mov rdi, 1\n  lea rsi, [newline]\n  mov rdx, 1\n  "
     "syscall\n  ret";
