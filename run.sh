@@ -10,11 +10,12 @@ if [[ "$1" == "test" ]]; then
   shift
   if [[ "$1" == "e2e" ]]; then
     shift
-    python build/e2e
+    env -C build/test pytest e2e.py
   elif [[ -n "$1" ]]; then
+    setcurrfile build/test/unit_"$1"
     ./build/test/unit_$1
   else
-    ctest --output-on-failure --test-dir build/test
+    ctest --output-on-failure --debug -VV --test-dir build/test
   fi
 else
   echo '---- COMPILING'

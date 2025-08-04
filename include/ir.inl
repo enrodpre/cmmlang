@@ -1,10 +1,12 @@
 #pragma once
 
 #include "asm.hpp"
+#include "common.hpp"
 #include "ir.hpp"
 #include "lang.hpp"
 #include "types.hpp"
 #include <libassert/assert.hpp>
+#include <ranges>
 #include <tuple>
 #include <utility>
 
@@ -12,8 +14,9 @@ namespace cmm::ir {
 
 static_assert(std::formattable<const instruction_t&, char>);
 template <typename Decl>
-symbol<Decl>::symbol(const Decl* decl, address_t addr)
+symbol<Decl>::symbol(const Decl* decl, mangled_name&& mname, address_t addr)
     : decl(decl),
+      name(std::move(mname)),
       addr(addr) {}
 
 template <typename T, typename... Args>
@@ -27,11 +30,9 @@ template <typename T>
 bool symbol_table::is_declarable(symbol_table::identifier_type ident) const noexcept {
   if constexpr (std::is_same_v<ir::variable, T>) {
     // Only check current scope
-    bool global_conflict = is_global_scope() && m_global_scope.variables.contains(ident.value);
-
-    return global_conflict || active_scope().variables.contains(ident.value);
+    return !active_scope().variables.contains(ident.value);
   } else if constexpr (std::is_same_v<ir::function, T>) {
-    return m_functions.get(ident.value).size() > 0;
+    return m_functions.get_by_name(ident.value).size() > 0;
   } else {
     return active_frame().labels.contains(ident.value);
   }
@@ -45,7 +46,7 @@ bool symbol_table::is_declared(symbol_table::identifier_type ident) const noexce
     return (!is_global_scope() && !m_stackframe.empty() && active_frame().is_declared(ident)) ||
            m_global_scope.variables.contains(ident.value);
   } else if constexpr (std::is_same_v<ir::function, T>) {
-    return m_functions.get(ident.value).size() > 0;
+    return m_functions.get_by_name(ident.value).size() > 0;
   } else {
     return active_frame().labels.contains(ident.value);
   }
@@ -79,95 +80,55 @@ void compilation_unit::instruction(const instruction_t& ins, Args&&... args) {
   }
 }
 
-namespace {
-  constexpr assembly::operand* load_parameter(compilation_unit& v,
-                                              const type& type,
-                                              const ast::expr::expression* expr,
-                                              assembly::reg* to) {
-
-    return v.runner.generate_expr(*expr,
-                                  cmm::is_const_v::operator()(type)
-                                      ? intents::intent_t::LOAD_VARIABLE_ADDRESS
-                                      : intents::intent_t::LOAD_VARIABLE_VALUE,
-                                  to);
-  }
-}; // namespace
 namespace builtin {
   namespace function {
-    [[nodiscard]] constexpr const header_t::properties_map& header_t::properties_array() {
+    [[nodiscard]] constexpr const builtin_signature_t::properties_map&
+    builtin_signature_t::properties_array() {
       static properties_map MAP{{{{"exit", {UINT_T}}}}};
       return MAP;
     }
     namespace preprocessors {
-      template <size_t N>
-      constexpr auto SIMPLE_LOADING = [](compilation_unit&,
-                                         const ast::decl::function::parameters_t&,
-                                         const ast::expr::call::arguments&) { UNREACHABLE(""); };
-      template <>
-      inline constexpr auto SIMPLE_LOADING<1> = [](compilation_unit& v,
-                                                   builtin_function::parameters_t param_t,
-                                                   const ast::expr::call::arguments& arg) {
-        auto* to = load_parameter(v, param_t.at(0), arg.at(0), v.regs.parameters.at(0));
-        return std::vector<operand*>{to};
-      };
-      template <>
-      inline constexpr auto SIMPLE_LOADING<2> = [](compilation_unit& v,
-                                                   builtin_function::parameters_t params,
-                                                   const ast::expr::call::arguments& args) {
-        auto* to   = load_parameter(v, params.at(0), args.at(0), v.regs.parameters.at(0));
-        auto* from = load_parameter(v, params.at(1), args.at(1), v.regs.parameters.at(1));
-        return std::vector<operand*>{to, from};
+      using preprocess_t                = ir::builtin_function::preprocess_t;
+      const preprocess_t SIMPLE_LOADING = [](compilation_unit& v,
+                                             const builtin_function::parameters_t& params,
+                                             const std::vector<ast::expr::expression*>& args) {
+        return args | std::views::enumerate | std::views::transform([&](const auto& pair) {
+                 const auto& [i, arg] = pair;
+                 return v.runner.generate_expr(*arg,
+                                               cmm::types::is_indirect_v::operator()(*params.at(i))
+                                                   ? intents::intent_t::LOAD_VARIABLE_ADDRESS
+                                                   : intents::intent_t::LOAD_VARIABLE_VALUE,
+                                               v.regs.parameters.at(i));
+               }) |
+               std::ranges::to<std::vector>();
       };
     } // namespace preprocessors
     namespace bodies {
-      constexpr auto EXECUTE_MOVE = [](compilation_unit& v,
-                                       const std::vector<operand*>& regs) -> operand* {
-        return v.move(regs[0], regs[1]);
-      };
+      using body_t      = ir::builtin_function::body_t;
 
-      template <_instruction_t Ins, size_t N = instruction_t(Ins).n_params>
-      constexpr auto EXECUTE_INSTRUC =
-          [](compilation_unit&, const std::vector<operand*>&) -> operand* { UNREACHABLE("AAAAA"); };
-      template <_instruction_t Ins>
-        requires(instruction_t(Ins).n_params == 1)
-      constexpr auto EXECUTE_INSTRUC<Ins, 1> =
-          [](compilation_unit& v, std::vector<operand*> regs) -> operand* {
-            static_assert(instruction_t(Ins).n_params == 1);
-            auto* param = regs[0];
-            v.instruction(instruction_t(Ins), param);
-            return param;
-          };
-      template <_instruction_t Ins>
-        requires(instruction_t(Ins).n_params == 2)
-      constexpr auto EXECUTE_INSTRUC<Ins, 2> =
-          [](compilation_unit& v, const std::vector<operand*>& regs) -> operand* {
-            static_assert(instruction_t(Ins).n_params == 2);
-            auto* param = regs[0];
-            v.instruction(instruction_t(Ins), param, regs[1]);
-            return param;
-          };
-      template <_instruction_t Ins>
-      constexpr auto POST_UNARY =
-          [](compilation_unit& v, const std::vector<operand*>& args) -> operand* {
-        auto* arg          = args[0];
-        auto* saved_before = v.move(v.regs.get(assembly::registers::ACCUMULATOR), arg);
-        if (const auto* var = arg->variable()) {
-          v.save_variable(var, arg);
-          return saved_before;
-        }
-        UNREACHABLE("aaaa");
-      };
-
-      constexpr auto EXIT = [](compilation_unit& v, std::vector<operand*> arg) -> operand* {
+      const body_t EXIT = [](compilation_unit& v, const std::vector<operand*>& arg) -> operand* {
         v.current_phase = Phase::EXITING;
         v.move(v.regs.parameters.at(0), arg[0]);
         v.jump("exit");
         return nullptr;
       };
+
+      const body_t IDENTITY = [](compilation_unit&, const std::vector<operand*>& args) -> operand* {
+        return args[0];
+      };
+      const body_t CAST_TO_BOOL = [](compilation_unit& v,
+                                     const std::vector<operand*>& args) -> operand* {
+        auto* arg = args[0];
+        auto* aux = v.regs.parameters.next();
+        v.move_immediate(aux, std::to_string(assembly::bits::masks::TO_BOOL));
+        v.instruction(instruction_t::and_, arg, aux);
+        return arg;
+      };
     } // namespace bodies
     namespace postprocessors {
-      constexpr auto SIMPLE_RET = [](compilation_unit&, operand* res) -> operand* { return res; };
-      constexpr auto SAVE_VARIABLE = [](compilation_unit& v, operand* res) -> operand* {
+      using post_t               = builtin_function::postprocess_t;
+      const post_t SIMPLE_RET    = [](compilation_unit&, operand* res) -> operand* { return res; };
+      const post_t SAVE_VARIABLE = [](compilation_unit& v, operand* res) -> operand* {
         if (const auto* var = res->variable()) {
           v.save_variable(var, res);
           return res;
@@ -178,106 +139,118 @@ namespace builtin {
       static_assert(std::is_assignable_v<builtin_function::postprocess_t, decltype(SIMPLE_RET)>);
     }; // namespace postprocessors
   }; // namespace function
-  constexpr void provider::create_builtin_function(std::optional<type> ret,
-                                                   const std::string& name,
-                                                   const std::vector<type>& args,
-                                                   builtin_function::preprocess_t pre,
-                                                   builtin_function::body_t body,
-                                                   builtin_function::postprocess_t post) {
-    auto mangled = mangled_name::builtin_function(name, args);
-    table.m_functions.emplace_builtin(
-        mangled, std::move(ret), args, {std::move(pre), std::move(body), std::move(post)}, false);
-  }
-  constexpr void provider::create_builtin_operator(type ret,
-                                                   const operator_t& op,
-                                                   const std::vector<type>& args,
-                                                   builtin_function::preprocess_t pre,
-                                                   builtin_function::body_t body,
-                                                   builtin_function::postprocess_t post) {
-    create_builtin_function(
-        ret, op.caller_function(), args, std::move(pre), std::move(body), std::move(post));
-  }
-  template <_instruction_t Ins, size_t N>
-  constexpr void provider::create_simple_operator(const operator_t& op, type type) {
-    if constexpr (N == 1) {
-      create_builtin_operator(type,
-                              op,
-                              {type},
-                              function::preprocessors::SIMPLE_LOADING<N>,
-                              function::bodies::EXECUTE_INSTRUC<Ins>,
-                              function::postprocessors::SIMPLE_RET);
-    } else if constexpr (N == 2) {
-      create_builtin_operator(type,
-                              op,
-                              {type, type},
-                              function::preprocessors::SIMPLE_LOADING<N>,
-                              function::bodies::EXECUTE_INSTRUC<Ins>,
-                              function::postprocessors::SIMPLE_RET);
-    }
-  }
-
-  constexpr void provider::provide_operators() {
-    create_builtin_operator(INTREF_T,
-                            operator_t::assign,
-                            {INTREF_T, INT_T},
-                            function::preprocessors::SIMPLE_LOADING<2>,
-                            function::bodies::EXECUTE_MOVE,
-                            function::postprocessors::SIMPLE_RET);
-
-    create_builtin_operator(INTREF_T,
-                            operator_t::pre_inc,
-                            {INTREF_T},
-                            function::preprocessors::SIMPLE_LOADING<1>,
-                            function::bodies::EXECUTE_INSTRUC<_instruction_t::inc>,
-                            function::postprocessors::SIMPLE_RET);
-    create_builtin_operator(INTREF_T,
-                            operator_t::pre_dec,
-                            {INTREF_T},
-                            function::preprocessors::SIMPLE_LOADING<1>,
-                            function::bodies::EXECUTE_INSTRUC<_instruction_t::dec>,
-                            function::postprocessors::SIMPLE_RET);
-    create_builtin_operator(INTREF_T,
-                            operator_t::post_dec,
-                            {INTREF_T},
-                            function::preprocessors::SIMPLE_LOADING<1>,
-                            function::bodies::POST_UNARY<_instruction_t::dec>,
-                            function::postprocessors::SIMPLE_RET);
-    create_builtin_operator(INTREF_T,
-                            operator_t::post_inc,
-                            {INTREF_T},
-                            function::preprocessors::SIMPLE_LOADING<1>,
-                            function::bodies::POST_UNARY<_instruction_t::inc>,
-                            function::postprocessors::SIMPLE_RET);
-
-    create_simple_operator<instruction_t::add>(operator_t::plus, INT_T);
-    create_simple_operator<instruction_t::sub>(operator_t::minus, INT_T);
-    create_simple_operator<instruction_t::mul>(operator_t::star, INT_T);
-    create_simple_operator<instruction_t::div>(operator_t::fslash, INT_T);
-    create_simple_operator<instruction_t::cmp>(operator_t::eq, INT_T);
-    create_simple_operator<instruction_t::cmp>(operator_t::neq, INT_T);
-    create_simple_operator<instruction_t::cmp>(operator_t::le, INT_T);
-    create_simple_operator<instruction_t::cmp>(operator_t::lt, INT_T);
-    create_simple_operator<instruction_t::cmp>(operator_t::ge, INT_T);
-    create_simple_operator<instruction_t::cmp>(operator_t::gt, INT_T);
-    create_simple_operator<instruction_t::and_>(operator_t::and_, INT_T);
-    create_simple_operator<instruction_t::or_>(operator_t::or_, INT_T);
-    create_simple_operator<instruction_t::not_>(operator_t::not_, INT_T);
-    create_simple_operator<instruction_t::not_>(operator_t::star, INT_T);
-    create_simple_operator<instruction_t::not_>(operator_t::ampersand, INT_T);
-  }
-
-  constexpr void provider::provide_functions() {
-    create_builtin_function({},
-                            "exit",
-                            {UINT_T},
-                            function::preprocessors::SIMPLE_LOADING<1>,
-                            function::bodies::EXIT,
-                            function::postprocessors::SIMPLE_RET);
-  }
-  constexpr void provider::provide() {
-    provide_operators();
-    provide_functions();
-  }
-
+  namespace conversions {
+    namespace conditions {
+      template <type_category_t T>
+      constexpr auto BELONGS_TO = [](cr_type t) -> bool { return types::belongs_to(t, T); };
+    }; // namespace conditions
+    namespace extractors {
+      constexpr auto EXTRACT_TYPE = [](cr_type t) -> cr_type { return *t.underlying; };
+      constexpr auto WRAP_REF     = [](cr_type t) -> cr_type {
+        return type::create_lvalue(&t, t.c, t.v);
+      };
+      template <type_category_t T>
+      constexpr auto GENERATE_TYPE = [](cr_type) -> cr_type { return type::create(T); };
+    }; // namespace extractors
+  } // namespace conversions
 } // namespace builtin
+constexpr void builtin::provider::create_direct_conversion(cr_type from,
+                                                           cr_type to,
+                                                           builtin_function::body_t b) {
+  table.m_conversions.emplace_direct(std::move(b), from, to);
+}
+constexpr void builtin::provider::create_glob_conversion(std::string mangled,
+                                                         glob_conversion_function::condition_t cond,
+                                                         glob_conversion_function::extractor_t extr,
+                                                         const builtin_function::body_t& b) {
+  table.m_conversions.emplace_glob(std::move(mangled), b, std::move(cond), std::move(extr));
+}
+constexpr void builtin::provider::create_function(std::optional<ptr_type> ret,
+                                                  std::string&& name,
+                                                  const std::vector<const type*>& args,
+                                                  const builtin_function::descriptor_t& desc) {
+  table.m_functions.emplace_builtin(std::move(name), ret, args, desc, false);
+}
+constexpr void builtin::provider::create_builtin_function(
+    std::optional<ptr_type> ret,
+    const function::builtin_signature_t& sig,
+    const builtin_function::descriptor_t& desc) {
+  create_function(ret, std::string(sig.function_name), sig.args, desc);
+}
+constexpr void builtin::provider::create_builtin_operator(
+    ptr_type ret,
+    const operator_t& op,
+    const std::vector<ptr_type>& args,
+    const builtin_function::descriptor_t& desc) {
+  create_function(ret, op.caller_function(), args, desc);
+}
+template <_instruction_t Ins>
+constexpr void builtin::provider::create_simple_operator(const operator_t& op, ptr_type type) {
+  using namespace function;
+  constexpr auto N = instruction_t(Ins).n_params;
+  if constexpr (N == 1) {
+    create_builtin_operator(type, op, {type}, {bodies::EXECUTE_INSTRUC<Ins>});
+  } else if constexpr (N == 2) {
+    create_builtin_operator(type, op, {type, type}, {bodies::EXECUTE_INSTRUC<Ins>});
+  }
+}
+
+constexpr void builtin::provider::provide_operators() {
+  using namespace function;
+  create_builtin_operator(
+      SINTREF_T, operator_t::assign, {SINTREF_T, SINT_T}, {bodies::EXECUTE_MOVE});
+
+  create_builtin_operator(
+      SINTREF_T, operator_t::pre_inc, {SINTREF_T}, {bodies::EXECUTE_INSTRUC<_instruction_t::inc>});
+  create_builtin_operator(
+      SINTREF_T, operator_t::pre_dec, {SINTREF_T}, {bodies::EXECUTE_INSTRUC<_instruction_t::dec>});
+  create_builtin_operator(
+      SINTREF_T, operator_t::post_dec, {SINTREF_T}, {bodies::POST_UNARY<_instruction_t::dec>});
+  create_builtin_operator(
+      SINTREF_T, operator_t::post_inc, {SINTREF_T}, {bodies::POST_UNARY<_instruction_t::inc>});
+
+  create_simple_operator<instruction_t::add>(operator_t::plus, SINT_T);
+  create_simple_operator<instruction_t::sub>(operator_t::minus, SINT_T);
+  create_simple_operator<instruction_t::mul>(operator_t::star, SINT_T);
+  create_simple_operator<instruction_t::div>(operator_t::fslash, SINT_T);
+  create_simple_operator<instruction_t::cmp>(operator_t::eq, SINT_T);
+  create_simple_operator<instruction_t::cmp>(operator_t::neq, SINT_T);
+  create_simple_operator<instruction_t::cmp>(operator_t::le, SINT_T);
+  create_simple_operator<instruction_t::cmp>(operator_t::lt, SINT_T);
+  create_simple_operator<instruction_t::cmp>(operator_t::ge, SINT_T);
+  create_simple_operator<instruction_t::cmp>(operator_t::gt, SINT_T);
+  create_simple_operator<instruction_t::and_>(operator_t::and_, SINT_T);
+  create_simple_operator<instruction_t::or_>(operator_t::or_, SINT_T);
+  create_simple_operator<instruction_t::not_>(operator_t::not_, SINT_T);
+  create_simple_operator<instruction_t::not_>(operator_t::star, SINT_T);
+  create_simple_operator<instruction_t::not_>(operator_t::ampersand, SINT_T);
+}
+
+constexpr void builtin::provider::provide_functions() {
+  using namespace function;
+  create_builtin_function({}, builtin_signature_t::EXIT, {bodies::EXIT});
+}
+
+constexpr void builtin::provider::provide_conversions() {
+  create_glob_conversion("conv_lvalue_type",
+                         conversions::conditions::BELONGS_TO<type_category_t::lvalue_ref_t>,
+                         conversions::extractors::EXTRACT_TYPE,
+                         function::bodies::IDENTITY);
+  create_glob_conversion("conv_type_lvalue",
+                         conversions::conditions::BELONGS_TO<type_category_t::fundamental_t>,
+                         conversions::extractors::WRAP_REF,
+                         function::bodies::IDENTITY);
+  create_glob_conversion("conv_fundamental_bool",
+                         conversions::conditions::BELONGS_TO<type_category_t::fundamental_t>,
+                         conversions::extractors::GENERATE_TYPE<type_category_t::bool_t>,
+                         function::bodies::CAST_TO_BOOL);
+
+  create_direct_conversion(*UINT_T, *SINT_T, function::bodies::IDENTITY);
+}
+constexpr void builtin::provider::provide() {
+  provide_operators();
+  provide_functions();
+  provide_conversions();
+}
+
 } // namespace cmm::ir

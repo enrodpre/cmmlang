@@ -54,11 +54,8 @@ private:
   instruction_t generate_condition(const ast::expr::expression&);
   void begin_scope(const ast::compound*);
   void end_scope();
-  operand* call_function(const ast::term::identifier&, ast::expr::call::arguments);
-  operand* call_operator(const ast::term::operator_&, ast::expr::expression&);
-  operand* call_operator(const ast::term::operator_&,
-                         ast::expr::expression&,
-                         ast::expr::expression&);
+  std::optional<operand*> call_function(const ast::term::term&,
+                                        const std::vector<ast::expr::expression*>&);
   [[nodiscard]] std::optional<std::tuple<std::string, std::string>> get_label_interation_scope()
       const;
 
@@ -103,7 +100,6 @@ struct statement_visitor : public expression_visitor, public const_visitor<STATE
   void visit(const ast::jump::continue_& continue_) override;
   void visit(const ast::jump::goto_& goto_) override;
   void visit(const ast::jump::return_& ret) override;
-  void visit(const ast::expr::expression& expr) override;
 };
 } // namespace cmm::ir
 

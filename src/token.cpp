@@ -38,7 +38,7 @@ bool tokens::empty() const noexcept { return size() == 0; }
 bool tokens::has_next() const noexcept { return pointer() < size(); }
 
 [[nodiscard]] bool tokens::next_is(const token_t& other) const noexcept {
-  return m_tokens.at(m_pointer).type.is(other);
+  return has_next() && m_tokens.at(m_pointer).type.is(other);
 }
 
 RCtoken tokens::next() {

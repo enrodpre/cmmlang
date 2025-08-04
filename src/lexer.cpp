@@ -15,21 +15,15 @@ lexer::lexer(cmm::cstring src)
       m_row(1),
       m_column(1) {};
 
-bool lexer::has_next() const {
-  return m_pointer < m_src.size();
-}
+bool lexer::has_next() const { return m_pointer < m_src.size(); }
 
-char lexer::peek() const {
-  return m_src[m_pointer];
-}
+char lexer::peek() const { return m_src[m_pointer]; }
 
 cmm::cstring lexer::peek(size_t size) const {
   return std::string_view(m_src).substr(m_pointer, size);
 }
 
-cmm::cstring lexer::peek_remaining() const {
-  return std::string_view(m_src).substr(m_pointer);
-}
+cmm::cstring lexer::peek_remaining() const { return std::string_view(m_src).substr(m_pointer); }
 
 void lexer::advance(const size_t size = 1) {
   m_pointer += size;
@@ -38,8 +32,7 @@ void lexer::advance(const size_t size = 1) {
 
 tokens lexer::tokenize() {
   // Trying to aproximate number of tokens
-  auto approximated_number_tokens =
-      std::count(m_src.cbegin(), m_src.cend(), ' ');
+  auto approximated_number_tokens = std::count(m_src.cbegin(), m_src.cend(), ' ');
   m_tokens.reserve(approximated_number_tokens);
 
   while (has_next()) {
@@ -60,38 +53,30 @@ tokens lexer::tokenize() {
 auto constexpr lexer::single_patterns() {
   return token_t::properties_array() | std::views::filter([](const auto& pair) {
            const auto& [type, prop] = pair;
-           return prop.pattern_type ==
-                  token_t::properties::pattern_t::SINGLE_CHAR;
+           return prop.pattern_type == token_t::properties::pattern_t::SINGLE_CHAR;
          });
 }
 
 auto constexpr lexer::multi_patterns() {
-  return cmm::token_t::properties_array() |
-         std::views::filter([](const auto& pair) {
+  return cmm::token_t::properties_array() | std::views::filter([](const auto& pair) {
            const auto& [type, prop] = pair;
-           return prop.pattern_type ==
-                  token_t::properties::pattern_t::MULTI_CHAR;
+           return prop.pattern_type == token_t::properties::pattern_t::MULTI_CHAR;
          });
 }
 
 auto constexpr lexer::regex_patterns() {
   using pair_           = std::pair<token_t, std::string>;
-  auto compare_patterns = [](const pair_& a, const pair_& b) {
-    return a.second > b.second;
-  };
+  auto compare_patterns = [](const pair_& a, const pair_& b) { return a.second > b.second; };
 
-  auto sorted =
-      cmm::token_t::properties_array() |
-      std::views::filter([](const auto& pair) {
-        const auto& [type, prop] = pair;
-        return prop.pattern_type == token_t::properties::pattern_t::REGEX;
-      }) |
-      std::views::transform([](const auto& pair) {
-        const auto& [type, prop] = pair;
-        return std::make_pair<token_t, std::string>(type,
-                                                    std::string(prop.pattern));
-      }) |
-      std::ranges::to<std::vector>();
+  auto sorted = cmm::token_t::properties_array() | std::views::filter([](const auto& pair) {
+                  const auto& [type, prop] = pair;
+                  return prop.pattern_type == token_t::properties::pattern_t::REGEX;
+                }) |
+                std::views::transform([](const auto& pair) {
+                  const auto& [type, prop] = pair;
+                  return std::make_pair<token_t, std::string>(type, std::string(prop.pattern));
+                }) |
+                std::ranges::to<std::vector>();
   std::ranges::sort(sorted, compare_patterns);
   return sorted;
 }
@@ -104,8 +89,7 @@ void lexer::create_token(cmm::token_t&& type, size_t length) {
 void lexer::create_token(cmm::token_t&& type, cmm::cstring value) {
   advance(value.length());
 
-  m_tokens.emplace_back(
-      std::move(type), location(m_row, 1, m_column, value.length()), value);
+  m_tokens.emplace_back(std::move(type), location(m_row, 1, m_column, value.length()), value);
 }
 
 void lexer::parse_token() {
@@ -126,14 +110,6 @@ void lexer::parse_token() {
     }
   }
 
-  // Then try monotokens
-  for (auto const& [tokenType, reserved] : single_patterns()) {
-    if (reserved.pattern.find(peek()) != std::string::npos) {
-      create_token(tokenType, 1);
-      return;
-    }
-  }
-
   // Try patterns otherwise, as func or var identifiers
   for (auto& [tokenType, pattern] : regex_patterns()) {
     std::cmatch match;
@@ -141,15 +117,22 @@ void lexer::parse_token() {
     auto next_token = peek_remaining();
     /* REGISTER_TRACE("Trying {}", tokenType); */
     if (std::regex_search(next_token.cbegin(), next_token.cend(), match, re)) {
-      const auto* start =
-          m_src.cbegin() + (cmm::cstring::difference_type)m_pointer;
-      const auto* end = start + match[1].length();
+      const auto* start = m_src.cbegin() + (cmm::cstring::difference_type)m_pointer;
+      const auto* end   = start + match[1].length();
       cmm::cstring sv{start, end};
 
       create_token(std::move(tokenType), sv);
       // Consume ditched matched chars
       // as colon in label
       advance(match[0].length() - match[1].length());
+      return;
+    }
+  }
+
+  // Then try monotokens
+  for (auto const& [tokenType, reserved] : single_patterns()) {
+    if (reserved.pattern.find(peek()) != std::string::npos) {
+      create_token(tokenType, 1);
       return;
     }
   }

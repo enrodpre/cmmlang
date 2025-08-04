@@ -157,7 +157,7 @@ struct dynamic_storage : public storage<T> {
 
 struct value {};
 struct scalar_value : public value {
-  type_t type;
+  // type_t type;
 };
 struct composite_value : public value {
   size_t length;

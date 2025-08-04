@@ -6,10 +6,12 @@
 #include "common.hpp"
 #include "lang.hpp"
 #include "traverser.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <libassert/assert.hpp>
 #include <optional>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 
 namespace cmm::ir {
@@ -57,21 +59,38 @@ namespace intents {
     SAVE_VARIABLE_VALUE
   };
 } // namespace intents
-struct variable;
-struct function;
-struct label;
-struct array;
 
 struct compilation_unit;
 
+class mangled_name {
+public:
+  using value_type = std::string;
+  explicit mangled_name(const value_type&);
+  mangled_name(value_type&&);
+
+  static mangled_name variable(cstring, cr_type);
+  static mangled_name label(cstring);
+  static mangled_name function(cstring, const std::vector<ast::decl::variable>&);
+  static mangled_name function(cstring, const std::vector<ptr_type>&);
+  static mangled_name direct_conversion_function(cr_type, cr_type);
+  static std::string types(const std::vector<const type*>&);
+
+  [[nodiscard]] const value_type& str() const;
+  operator std::string() const;
+
+private:
+  value_type m_string;
+};
 template <typename Decl>
 struct symbol : public formattable {
   using address_t = assembly::operand*;
   using decl_t    = Decl;
+  mangled_name name;
   const Decl* decl;
-  address_t addr;
+  mutable address_t addr;
 
-  symbol(const Decl* decl, address_t);
+  symbol(const Decl* decl, mangled_name&&, address_t);
+  [[nodiscard]] bool is_loaded() const noexcept { return addr != nullptr; }
 };
 
 struct label : public symbol<ast::decl::label> {
@@ -93,135 +112,168 @@ struct local_scope;
 struct variable : public symbol<ast::decl::variable> {
   linkage_t linkage;
   storage_t storage;
-  cmm::type type;
-  scope& scope_ref;
-  variable(scope&, const ast::decl::variable*, address_t, linkage_t, storage_t, decltype(type));
+  ptr_type type;
+  mutable scope* scope_ref;
+  variable(scope*, const ast::decl::variable*, address_t, linkage_t, storage_t, decltype(type));
   [[nodiscard]] std::string format() const override;
 };
 
 struct local_variable : public variable {
-  local_variable(local_scope&, const ast::decl::variable*, operand*, storage_t, decltype(type));
+  local_variable(local_scope*, const ast::decl::variable*, operand*, storage_t, decltype(type));
 };
 
 struct auto_local_variable : public local_variable {
-  auto_local_variable(local_scope&,
+  auto_local_variable(local_scope*,
                       const ast::decl::variable*,
                       assembly::reg_memory*,
                       storage_t,
                       decltype(type));
 };
 struct arg_local_variable : public local_variable {
-  arg_local_variable(local_scope&,
-                     const ast::decl::variable*,
-                     assembly::reg*,
-                     storage_t,
-                     decltype(type));
+  arg_local_variable(const ast::decl::variable*, decltype(type));
+  void load(local_scope*, operand*) const;
 };
 
 struct global_variable : public variable {
-  global_variable(scope&, const ast::decl::variable*, assembly::label_memory*, decltype(type));
+  global_variable(scope*, const ast::decl::variable*, assembly::label_memory*, decltype(type));
 };
 
 struct function : public symbol<ast::decl::function> {
-  using return_t     = std::optional<address_t>;
-  using parameters_t = std::vector<ast::decl::variable>;
-  struct builtin_body {
-    using preprocess_t = std::function<
-        std::vector<address_t>(compilation_unit&, parameters_t, ast::expr::call::arguments)>;
-    using body_t        = std::function<operand*(compilation_unit&, std::vector<address_t>)>;
-    using postprocess_t = std::function<return_t(compilation_unit&, address_t)>;
-    preprocess_t preprocess;
-    body_t body;
-    postprocess_t postprocess;
+  struct signature_t {
+    std::string name;
+    std::vector<ptr_type> argument_types;
+
+    signature_t(std::string name, std::vector<ptr_type> args)
+        : name(std::move(name)),
+          argument_types(std::move(args)) {}
+    template <typename... Args>
+    signature_t(std::string name, Args&&... args)
+        : name(std::move(name)),
+          argument_types({std::forward<Args>(args)...}) {}
+    operator std::tuple<cstring, std::vector<ptr_type>>() const {
+      return std::make_tuple(name, argument_types);
+    }
+    bool operator==(const signature_t& other) const {
+      return name == other.name &&
+             std::ranges::all_of(std::views::zip(argument_types, other.argument_types),
+                                 [](const auto& type_pair) {
+                                   const auto& [t, other_t] = type_pair;
+                                   return *t == *other_t;
+                                 });
+    }
+    [[nodiscard]] mangled_name mangle() const {
+      return mangled_name::function(name, argument_types);
+    }
   };
-  using body_t = std::variant<const ast::compound*, builtin_body>;
-  std::string identifier;
+
+  using return_t = ptr_type;
   linkage_t linkage;
   return_t return_type;
-  parameters_t parameters;
-  body_t body;
+  function::signature_t signature;
   bool inlined;
 
-  function(const ast::decl::function*, address_t, std::string, linkage_t, return_t, bool);
+  function(const ast::decl::function*, address_t, signature_t&&, linkage_t, return_t, bool);
   [[nodiscard]] std::string format() const override;
-  address_t run(compilation_unit&, ast::expr::call::arguments = {}) const;
-  address_t run(compilation_unit&, std::vector<operand*>) const;
-  [[nodiscard]] virtual bool is_defined() const;
+  virtual std::vector<operand*> load(compilation_unit&,
+                                     const std::vector<ast::expr::expression*>& = {}) const  = 0;
+  virtual std::optional<operand*> run(compilation_unit&, const std::vector<operand*>&) const = 0;
+  std::optional<operand*> load_and_run(compilation_unit&,
+                                       const std::vector<ast::expr::expression*>& = {}) const;
+  [[nodiscard]] virtual bool is_defined() const = 0;
 };
 
 namespace builtin::function {
-  struct header_t;
+  struct builtin_signature_t;
 }
-
-class mangled_name {
-public:
-  using value_type = std::string;
-  explicit mangled_name(const value_type&);
-  mangled_name(value_type&&);
-
-  static mangled_name free_unary_operator(const operator_t&, cstring);
-  static mangled_name free_binary_operator(const operator_t&, cstring, cstring);
-  static mangled_name free_function(const ast::decl::function*);
-  static mangled_name builtin_function(const builtin::function::header_t&);
-  static mangled_name builtin_function(std::string_view, const std::vector<type>&);
-  static std::string types(const std::vector<type>&);
-  static std::string type(const type&);
-
-  [[nodiscard]] const value_type& str() const;
-  operator std::string() const;
-
-private:
-  value_type m_string;
-};
 
 struct builtin_function : public function {
   using return_t     = std::optional<address_t>;
-  using parameters_t = std::vector<type>;
-  using preprocess_t = std::function<
-      std::vector<address_t>(compilation_unit&, parameters_t, ast::expr::call::arguments)>;
+  using parameters_t = std::vector<ptr_type>;
+  using preprocess_t =
+      std::function<std::vector<address_t>(compilation_unit&,
+                                           parameters_t,
+                                           const std::vector<ast::expr::expression*>&)>;
   using body_t        = std::function<operand*(compilation_unit&, std::vector<address_t>)>;
   using postprocess_t = std::function<return_t(compilation_unit&, address_t)>;
 
   struct descriptor_t {
-    preprocess_t preprocess;
+    preprocess_t pre;
     body_t body;
-    postprocess_t postprocess;
-
-    descriptor_t(preprocess_t preprocess, body_t body, postprocess_t postprocess)
-        : preprocess(std::move(preprocess)),
-          body(std::move(body)),
-          postprocess(std::move(postprocess)) {}
+    postprocess_t post;
+    descriptor_t(body_t b);
   };
 
   parameters_t parameters;
   descriptor_t descriptor;
-  builtin_function(std::string, std::optional<type>, parameters_t, descriptor_t, bool = false);
+  builtin_function(cr_string, ptr_type, parameters_t, descriptor_t, bool = false);
 
-  address_t run(compilation_unit&, ast::expr::call::arguments) const override;
-  address_t run(compilation_unit&, std::vector<operand*> = {}) const override;
+  std::vector<operand*> load(compilation_unit&,
+                             const std::vector<ast::expr::expression*>&) const override;
+  std::optional<operand*> run(compilation_unit&, const std::vector<operand*>& = {}) const override;
 
   [[nodiscard]] bool is_defined() const override;
 };
 
 struct user_function : public function {
   const ast::compound* body;
-  ast::decl::function::parameters_t parameters;
-  user_function(const ast::decl::function*, address_t, linkage_t, type, bool = false);
+  std::vector<arg_local_variable> parameters;
+  user_function(const ast::decl::function*,
+                address_t,
+                linkage_t,
+                cr_type,
+                std::vector<arg_local_variable>&& parameters,
+                bool = false);
 
-  address_t run(compilation_unit&, ast::expr::call::arguments) const override;
-  address_t run(compilation_unit&, std::vector<operand*> = {}) const override;
+  std::vector<operand*> load(compilation_unit&,
+                             const std::vector<ast::expr::expression*>&) const override;
+  std::optional<address_t> run(compilation_unit&, const std::vector<operand*>& = {}) const override;
   [[nodiscard]] bool is_defined() const override;
 };
 
+enum class conversion_operand_t : uint8_t {
+  ANY_TYPE,
+  ANY_FUNDAMENTAL,
+};
+struct conversion_operand {};
 struct conversion_function {
-  enum class type_t : uint8_t { IMPLICIT, EXPLICIT };
-  type_t type;
-  std::unique_ptr<function> body;
+  using body_t = std::variant<std::monostate, builtin_function::body_t, const ast::compound*>;
+  enum class conversion_type_t : uint8_t { IMPLICIT, EXPLICIT };
+  conversion_type_t type;
+  body_t body;
 
-  [[nodiscard]] bool is_implicit() const { return type == type_t::IMPLICIT; };
-  [[nodiscard]] bool is_explicit() const { return type == type_t::EXPLICIT; };
+  conversion_function(body_t);
+  virtual ~conversion_function()                                    = default;
+  [[nodiscard]] virtual bool is_convertible(cr_type) const noexcept = 0;
+  [[nodiscard]] virtual cr_type to(cr_type) const noexcept          = 0;
+  [[nodiscard]] virtual operand* operator()(operand*) const noexcept;
+  [[nodiscard]] bool is_implicit() const { return type == conversion_type_t::IMPLICIT; };
+  [[nodiscard]] bool is_explicit() const { return type == conversion_type_t::EXPLICIT; };
 };
 
+struct direct_conversion_function : public conversion_function {
+  cr_type from_type;
+  cr_type to_type;
+
+  [[nodiscard]] bool is_convertible(cr_type t) const noexcept override { return from_type == t; }
+  [[nodiscard]] cr_type to(cr_type) const noexcept override { return to_type; };
+
+  direct_conversion_function(decltype(body), cr_type, cr_type);
+};
+struct glob_conversion_function : public conversion_function {
+  std::string description;
+  using condition_t = std::function<bool(cr_type)>;
+  using extractor_t = std::function<cr_type(cr_type)>;
+  condition_t condition;
+  extractor_t extractor;
+
+  [[nodiscard]] bool is_convertible(cr_type t) const noexcept override { return condition(t); }
+  [[nodiscard]] cr_type to(cr_type t) const noexcept override { return extractor(t); };
+
+  glob_conversion_function(std::string, body_t, condition_t&&, extractor_t&&);
+};
+
+template <typename T>
+struct symbol_result {};
 class variable_store : public formattable_range<std::unordered_map<std::string, variable>> {
 public:
   using key_type   = std::string;
@@ -231,6 +283,7 @@ public:
   size_t size() const noexcept;
   value_type* get(const std::string&);
   [[nodiscard]] const value_type* get(const std::string&) const;
+  void put(value_type&&);
   template <typename T, typename... Args>
     requires std::is_constructible_v<T, Args...>
   const value_type& emplace(key_type, Args&&...);
@@ -246,37 +299,50 @@ private:
 class function_store
     : public formattable_range<std::unordered_map<std::string, std::unique_ptr<function>>> {
 public:
-  using key_type   = mangled_name::value_type;
-  using value_type = std::unique_ptr<function>;
+  using key_type       = mangled_name::value_type;
+  using value_type     = std::unique_ptr<function>;
+  using container_type = std::unordered_map<key_type, value_type>;
   function_store();
+  const container_type& data() const { return m_store; }
+  container_type::const_iterator begin() const { return m_store.begin(); }
+  container_type::const_iterator end() const { return m_store.end(); }
+  container_type::const_iterator cbegin() const { return m_store.begin(); }
+  container_type::const_iterator cend() const { return m_store.cend(); }
   bool contains(const mangled_name& t) const { return m_store.contains(t); };
-  value_type::pointer get(const mangled_name& t) { return m_store.at(t).get(); }
-  value_type::pointer get(const mangled_name& t) const { return m_store.at(t).get(); }
-  std::vector<value_type::pointer> get(cstring) const;
+  const function* get(const function::signature_t&) const;
+  std::vector<const function*> get_by_name(cstring) const;
 
-  const function* emplace_builtin(const mangled_name&,
-                                  std::optional<type>,
-                                  const std::vector<type>&,
+  const function* emplace_builtin(std::string&&,
+                                  std::optional<ptr_type>,
+                                  const std::vector<ptr_type>&,
                                   const builtin_function::descriptor_t&,
                                   bool = false);
   const function* emplace_user_provided(const ast::decl::function*, bool = false);
   void clear();
 
 private:
-  std::unordered_map<key_type, value_type> m_store;
+  container_type m_store;
 };
 
 class conversion_store {
 public:
   using key_type     = mangled_name::value_type;
-  using value_type   = std::unordered_map<mangled_name::value_type, function>;
+  using value_type   = std::unordered_map<key_type, direct_conversion_function>;
 
   conversion_store() = default;
   bool is_convertible(const type&, const type&) const;
-  std::vector<type> get_convertibles(const type&) const;
+  std::vector<ptr_type> get_convertible_types(const type&) const;
+  std::vector<const conversion_function*> get_conversions(const type&) const;
+
+  void emplace_direct(conversion_function::body_t, cr_type, cr_type);
+  void emplace_glob(std::string,
+                    conversion_function::body_t,
+                    glob_conversion_function::condition_t,
+                    glob_conversion_function::extractor_t);
 
 private:
-  std::unordered_map<key_type, value_type> m_store;
+  std::unordered_map<key_type, value_type> m_direct_store;
+  std::vector<glob_conversion_function> m_glob_store;
 };
 
 namespace builtin {
@@ -329,6 +395,7 @@ struct global_scope : public scope {
 struct local_scope : public scope {
   operand* emplace_argument(const ast::decl::variable*, assembly::reg*);
   operand* emplace_automatic(const ast::decl::variable*);
+  void load_argument(arg_local_variable);
   cref<frame> frame_ref;
   cref<ast::compound> compound;
   local_scope(const frame&, const ast::compound&);
@@ -350,7 +417,7 @@ struct symbol_table : public cmm::formattable {
   [[nodiscard]] const scope& active_scope() const noexcept;
 
   // Frames
-  void push_frame(const ast::term::identifier&);
+  void push_frame(const user_function*);
   size_t pop_frame();
 
   template <typename T>
@@ -359,7 +426,7 @@ struct symbol_table : public cmm::formattable {
   bool is_declarable(const ast::term::identifier&) const noexcept;
   const label* get_label(const ast::term::identifier&) const;
   const variable* get_variable(const ast::term::identifier&) const;
-  const function* get_function(const mangled_name&) const;
+  const function* get_function(const function::signature_t&) const;
   const function* get_function(const ast::term::identifier&) const;
   void declare_function(const ast::decl::function*, bool = false);
 
@@ -376,11 +443,14 @@ struct symbol_table : public cmm::formattable {
 private:
   std::unique_ptr<user_function> m_entry_point;
   function_store m_functions;
-  function_store m_conversions;
+  conversion_store m_conversions;
   global_scope m_global_scope;
   stack<frame> m_stackframe;
   memory::Allocator m_arena;
 
+  std::optional<const function*> progressive_prefix_match(
+      const std::vector<ptr_type>&,
+      const std::vector<const function*>&) const;
   friend builtin::provider;
   friend compilation_unit;
 };
@@ -437,14 +507,15 @@ public:
   //////////// OBJECTS ///////////
   [[nodiscard]] std::string current_line() const;
 
-  const variable* declare_variable(const ast::decl::variable&, operand*);
+  const variable* declare_local_variable(const ast::decl::variable&, operand*);
   const variable* declare_global_variable(const ast::decl::variable&, operand*);
   void declare_label(const ast::decl::label&);
   [[nodiscard]] operand* get_variable_address(const ast::term::identifier&) const;
   void save_variable(const variable*, operand*);
   void reserve_memory(cstring, cstring, cstring);
-  type get_expression_type(const ast::expr::expression&);
-  operand* call_builtin(const builtin::function::header_t&, const std::vector<operand*>&);
+  ptr_type get_expression_type(const ast::expr::expression&);
+  std::optional<operand*> call_builtin(const builtin::function::builtin_signature_t&,
+                                       const std::vector<operand*>&);
 
   template <typename... Args>
   void instruction(const instruction_t&, Args&&...);
@@ -480,30 +551,99 @@ private:
 
 namespace builtin {
   namespace function {
-    enum class _header_t : uint8_t { EXIT };
-    using header_arguments_t = std::vector<type>;
-    BUILD_ENUMERATION_CLASS(header_t, std::string_view, function_name, header_arguments_t, args);
-  }; // namespace function
-  struct provider {
-    symbol_table& table;
-    constexpr void create_builtin_function(std::optional<type>,
-                                           const std::string&,
-                                           const std::vector<type>&,
-                                           builtin_function::preprocess_t,
-                                           builtin_function::body_t,
-                                           builtin_function::postprocess_t);
-    constexpr void create_builtin_operator(type,
-                                           const operator_t&,
-                                           const std::vector<type>&,
-                                           builtin_function::preprocess_t,
-                                           builtin_function::body_t,
-                                           builtin_function::postprocess_t);
+    enum class _builtin_signature_t : uint8_t { EXIT };
+    using header_arguments_t = std::vector<ptr_type>;
+    struct builtin_signature_t : public cmm::enumeration<_builtin_signature_t> {
+      BUILD_ENUMERATION(builtin_signature_t,
+                        std::string_view,
+                        function_name,
+                        header_arguments_t,
+                        args);
 
-    template <_instruction_t Ins, size_t = instruction_t(Ins).n_params>
-    constexpr void create_simple_operator(const operator_t& op, type type);
+      [[nodiscard]] ir::function::signature_t signature() const {
+        return {std::string(function_name), args};
+      }
+      [[nodiscard]] mangled_name mangle() const {
+        return mangled_name::function(function_name, args);
+      }
+    };
+    namespace preprocessors {
+      inline extern const builtin_function::preprocess_t SIMPLE_LOADING;
+    };
+    namespace bodies {
+      using body_t                = ir::builtin_function::body_t;
+      constexpr auto EXECUTE_MOVE = [](compilation_unit& v,
+                                       const std::vector<operand*>& regs) -> operand* {
+        return v.move(regs[0], regs[1]);
+      };
+
+      template <_instruction_t Ins>
+      constexpr auto EXECUTE_INSTRUC =
+          [](compilation_unit& v, const std::vector<operand*>& regs) -> operand* {
+        constexpr auto N = instruction_t(Ins).n_params;
+        if constexpr (N == 0) {
+          v.instruction(instruction_t(Ins));
+          return nullptr;
+        } else {
+          auto* param = regs[0];
+          if constexpr (N == 1) {
+            v.instruction(instruction_t(Ins), param);
+          } else if constexpr (N == 2) {
+            auto* param2 = regs[1];
+            v.instruction(instruction_t(Ins), param, param2);
+          }
+          return param;
+        }
+      };
+      ;
+      template <_instruction_t Ims>
+      constexpr auto POST_UNARY =
+          [](compilation_unit& v, const std::vector<operand*>& args) -> operand* {
+        auto* arg          = args[0];
+        auto* saved_before = v.move(v.regs.get(assembly::registers::ACCUMULATOR), arg);
+        if (const auto* var = arg->variable()) {
+          v.save_variable(var, arg);
+          return saved_before;
+        };
+        UNREACHABLE("aaaa");
+      };
+      inline extern const body_t EXIT;
+      inline extern const body_t CAST_TO_BOOL;
+    }; // namespace bodies
+    namespace postprocessors {
+      using post_t = ir::builtin_function::postprocess_t;
+      inline extern const post_t SIMPLE_RET;
+      inline extern const post_t SAVE_VARIABLE;
+    }; // namespace postprocessors
+  }; // namespace function
+  class provider {
+  public:
+    symbol_table& table;
+    constexpr void provide();
+
+  private:
+    constexpr void create_function(std::optional<ptr_type>,
+                                   std::string&&,
+                                   const std::vector<ptr_type>&,
+                                   const builtin_function::descriptor_t&);
+    constexpr void create_builtin_function(std::optional<ptr_type>,
+                                           const function::builtin_signature_t&,
+                                           const builtin_function::descriptor_t&);
+    constexpr void create_builtin_operator(ptr_type,
+                                           const operator_t&,
+                                           const std::vector<ptr_type>&,
+                                           const builtin_function::descriptor_t&);
+    constexpr void create_direct_conversion(cr_type, cr_type, builtin_function::body_t);
+    constexpr void create_glob_conversion(std::string,
+                                          glob_conversion_function::condition_t,
+                                          glob_conversion_function::extractor_t,
+                                          const builtin_function::body_t&);
+
+    template <_instruction_t Ins>
+    constexpr void create_simple_operator(const operator_t& op, ptr_type type);
     constexpr void provide_operators();
     constexpr void provide_functions();
-    constexpr void provide();
+    constexpr void provide_conversions();
   };
 } // namespace builtin
 }; // namespace cmm::ir

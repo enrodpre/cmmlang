@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <memory>
 #include <new>
+#include <type_traits>
 #include <utility>
 
 namespace cmm::memory {
@@ -20,14 +21,12 @@ T cast_pointer(F f) {
 
 struct register_;
 
-struct Allocator {
-  Allocator();
+struct Allocator : default_singleton<Allocator> {
+  Allocator() = default;
   Allocator(size_t m_capacity, std::byte* m_buffer, std::byte* m_offset);
   ~Allocator() { delete[] m_buffer; }
 
-  [[nodiscard]] size_t used() const {
-    return static_cast<size_t>((m_offset - m_buffer) * sizeof(int));
-  }
+  [[nodiscard]] size_t used() const { return static_cast<size_t>(m_offset - m_buffer); }
 
   template <typename T>
   [[nodiscard]] T free_space_as() const {}
@@ -64,7 +63,7 @@ struct Allocator {
   }
 
   template <typename T, typename... Args>
-    requires std::constructible_from<T, Args...>
+    requires(std::is_constructible_v<T, Args...> || is_constructible<T, Args...>)
   [[nodiscard]] T* emplace(Args&&... args) {
     return new (allocate<T>()) T(std::forward<Args>(args)...);
   }
@@ -92,6 +91,13 @@ private:
   size_t m_capacity                      = ALLOCATOR_SIZE;
   std::byte* m_buffer = new std::byte[ALLOCATOR_SIZE]; // Where objects are stored
   std::byte* m_offset = m_buffer;
+};
+
+struct allocator_emplacer_helper {
+  template <typename T, typename... Args>
+  static T* emplace(Allocator& alloc, Args&&... args) {
+    return alloc.template emplace<T>(std::forward<Args>(args)...);
+  }
 };
 
 } // namespace cmm::memory

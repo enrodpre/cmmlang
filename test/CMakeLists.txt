@@ -9,6 +9,8 @@ message(STATUS "CWD: ${CMAKE_CURRENT_SOURCE_DIR}")
 
 project(${TESTSNAME} LANGUAGES CXX)
 
+set(GTEST_DISABLE_PTHREADS ON)
+add_definitions(-DGTEST_PRINT_ENABLED)
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
 
 # ---- Dependencies ----
@@ -19,21 +21,26 @@ find_package(GTest REQUIRED QUIET)
 # include(GoogleTest)
 
 # ---- Unit test function ----
-function(add_unit_test file)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGTEST_PRINT_ENABLED")
+# ---- Add unit tests ----
+# add_unit_test(parser)
+set(UNIT_TEST_LIST state strings token preprocessor ast asm
+types parser)
+foreach(file ${UNIT_TEST_LIST})
   set(name unit_${file})
   add_executable(${name} "${CMAKE_CURRENT_SOURCE_DIR}/test_${file}.cpp")
   target_link_libraries(${name} CmmLib gtest gtest_main)
   gtest_discover_tests(${name})
-endfunction()
+  # set_tests_properties(${name} PROPERTIES LABELS "unit")
+endforeach()
 
-# ---- Add unit tests ----
-# add_unit_test(parser)
-add_unit_test(state)
-add_unit_test(strings)
-add_unit_test(token)
-add_unit_test(preprocessor)
-add_unit_test(ast)
-add_unit_test(asm)
+add_custom_target(run_unit_tests
+COMMAND ${CMAKE_CTEST_COMMAND}
+--output-on-failure
+-VV
+-C $<CONFIGURATION>
+WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+COMMENT "Running all unit tests" )
 
 set(ENV{PYTEST_INPUT_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/../examples")
 set(ENV{PYTEST_OUTPUT_DIR} "${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -66,6 +73,8 @@ add_test(NAME e2e
   COMMAND pytest e2e.py
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# set_tests_properties(e2e PROPERTIES LABELS "integration")
 
 # ---- code coverage ----
 if(ENABLE_TEST_COVERAGE)

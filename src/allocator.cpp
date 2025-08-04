@@ -2,21 +2,13 @@
 
 namespace cmm::memory {
 
-Allocator::Allocator()
-    : m_capacity{ALLOCATOR_SIZE},
-      m_buffer{new std::byte[ALLOCATOR_SIZE]},
-      m_offset{m_buffer} {}
-
-Allocator::Allocator(size_t m_capacity,
-                     std::byte* m_buffer,
-                     std::byte* m_offset)
+Allocator::Allocator(size_t m_capacity, std::byte* m_buffer, std::byte* m_offset)
     : m_capacity(m_capacity),
       m_buffer(m_buffer),
       m_offset(m_offset) {}
 
 void Allocator::report_statistics() const noexcept {
-  auto accumulate_stat = [](const register_& a,
-                            const register_& b) -> register_ {
+  auto accumulate_stat = [](const register_& a, const register_& b) -> register_ {
     return {.size = a.size + b.size, .times = a.times + b.times};
   };
 
@@ -29,11 +21,7 @@ void Allocator::report_statistics() const noexcept {
       // strings::colorizer::colorize<strings::colorizer::style_t::RED>(color);
       // log::apply(color, log::style_t::RED);
     }
-    REGISTER_DEBUG("{}: {}, {}-{}",
-                   reg.node,
-                   reg.size,
-                   (const void*)reg.start,
-                   (const void*)end);
+    REGISTER_DEBUG("{}: {}, {}-{}", reg.node, reg.size, (const void*)reg.start, (const void*)end);
 
     last_end = end;
   }

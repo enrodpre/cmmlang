@@ -17,6 +17,12 @@ struct identifier;
 
 namespace cmm::assembly {
 
+namespace bits {
+  constexpr auto BIT_DATASIZE = DATASIZE * 8;
+  namespace masks {
+    constexpr auto TO_BOOL = 0x1;
+  }
+} // namespace bits
 struct operand : public formattable {
   using content_t = const ir::variable*;
   struct symbol_container {
@@ -47,6 +53,7 @@ struct operand : public formattable {
   // virtual std::unique_ptr<Operand> clone() const = 0;
 
   [[nodiscard]] std::optional<symbol_container> content() const;
+  [[nodiscard]] cr_type content_type() const;
   [[nodiscard]] content_t variable() const;
   operand* hold_value(content_t);
   operand* hold_address(content_t);

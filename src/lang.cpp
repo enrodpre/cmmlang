@@ -16,7 +16,7 @@ namespace cmm {
 
 // constexpr category_t typeof ::operator()(const type& t) { return t.category; }
 constexpr size_t sizeof_::operator()(const type& t) {
-  using enum category_t;
+  using enum type_category_t;
   switch (t.category) {
     case lvalue_ref_t:
     case rvalue_ref_t:
@@ -39,7 +39,18 @@ constexpr size_t sizeof_::operator()(const type& t) {
     case unscoped_enum_t:
     case class_t:
       return 0;
+    case type_category_t::any_t:
+    case type_category_t::fundamental_t:
+    case type_category_t::arithmetic_t:
+    case type_category_t::integral_t:
+    case type_category_t::compound_t:
+    case type_category_t::indirection_t:
+    case type_category_t::reference_t:
+    case type_category_t::enum_t:
+    default:
+      break;
   }
+  return 0;
 }
 constexpr size_t sizeof_::operator()(const object& o) { return sizeof_::operator()(o.type); }
 } // namespace cmm

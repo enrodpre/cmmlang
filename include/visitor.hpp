@@ -1,7 +1,7 @@
 #pragma once
 
+#include <cpptrace/utils.hpp>
 #include <stdexcept>
-#include <utils.hpp>
 namespace cmm {
 
 template <class... Ts>
@@ -83,4 +83,81 @@ struct visitable<B> : std::conditional_t<std::is_class_v<B>, B, detail::dummy> {
   virtual void accept(visitor<>&)       = 0;
   virtual void accept(visitor<>&) const = 0;
 };
+
+namespace detail {
+  template <class base, class T>
+  struct func_visitor_helper : visitor<T> {
+    void visit(T& t) final { dynamic_cast<base&>(*this).f(t); }
+  };
+  template <class F, class... T>
+  struct func_visitor final : func_visitor<func_visitor_helper<F, T...>, T>... {
+    func_visitor(F&& f)
+        : f(std::move(f)) {}
+    func_visitor(const F& f)
+        : f(f) {}
+    template <class X>
+    func_visitor& tryVisit(X& x) {
+      x.accept(*this);
+      return *this;
+    }
+
+  private:
+    template <class, class> friend struct func_visitor_helper;
+    F f;
+  };
+
+  template <class F>
+  struct func_visitor<F> final : visitor<> {
+    func_visitor(const F&) {}
+  };
+} // namespace detail
+
+template <class... T, class F>
+auto makeVisitor(F&& f) -> detail::func_visitor<std::decay_t<F>, T...> {
+  return {std::forward<F>(f)};
+}
+
+template <typename Ret, typename... Ts>
+struct fn_visitor;
+
+template <typename Ret, typename Arg, typename... VisitableTypes>
+struct fn_visitor<Ret(Arg), VisitableTypes...> : visitor<VisitableTypes...> {
+  fn_visitor(Arg parameter, Ret initialResult = Ret())
+      : parameter(parameter),
+        result(initialResult) {}
+  Arg parameter;
+  Ret result;
+
+  template <typename T>
+  Ret accept(T& v) {
+    v.accept(*this);
+    return result;
+  }
+};
+
+template <typename Arg, typename... VisitableTypes>
+struct fn_visitor<void(Arg), VisitableTypes...> : visitor<VisitableTypes...> {
+  fn_visitor(Arg parameter)
+      : parameter(parameter) {}
+  Arg parameter;
+
+  template <typename T>
+  void accept(T& v) {
+    v.accept(*this);
+  }
+};
+
+template <typename Ret, typename... VisitableTypes>
+struct fn_visitor<Ret(), VisitableTypes...> : visitor<VisitableTypes...> {
+  fn_visitor(Ret initialResult = Ret())
+      : result(initialResult) {}
+  Ret result;
+
+  template <typename T>
+  Ret accept(T& v) {
+    v.accept(*this);
+    return result;
+  }
+};
+
 } // namespace cmm

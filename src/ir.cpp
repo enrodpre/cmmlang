@@ -2,16 +2,20 @@
 #include "asm.hpp"
 #include "ast.hpp"
 #include "common.hpp"
+#include "ir.inl"
 #include "lang.hpp"
 #include "types.hpp"
+#include <algorithm>
 #include <bits/ranges_algo.h>
 #include <format>
 #include <libassert/assert.hpp>
 #include <magic_enum/magic_enum.hpp>
+#include <optional>
 #include <ranges>
+#include <tuple>
 #include <type_traits>
-#include <utility>
 
+#include <utility>
 namespace cmm::ir {
 
 namespace {
@@ -38,14 +42,14 @@ namespace {
     throw incompatible_token(storages[1].location(), storages[1].format(), storages[0].format());
   }
   namespace {
-    constexpr category_t parse_enum_type(const token_t& token_type, bool unsigned_) {
+    constexpr type_category_t parse_enum_type(const token_t& token_type, bool unsigned_) {
       if (token_type == token_t::int_t) {
-        return unsigned_ ? category_t::uint_t : category_t::sint_t;
+        return unsigned_ ? type_category_t::uint_t : type_category_t::sint_t;
       }
-      return token_type.cast<category_t>();
+      return token_type.cast<type_category_t>();
     }
   }; // namespace
-  type parse_type(const ast::decl::specifiers& specs) {
+  cr_type parse_type(const ast::decl::specifiers& specs) {
     bool const_    = false;
     bool volatile_ = false;
     bool unsigned_ = false;
@@ -70,86 +74,99 @@ namespace {
 
       throw required_type(l);
     }
-    return type_factory::create_fundamental(
-        parse_enum_type(type_.value(), unsigned_), const_, volatile_);
+    return type::create_fundamental(parse_enum_type(type_.value(), unsigned_), const_, volatile_);
   }
 
 } // namespace
 
 using namespace cmm::assembly;
 
-builtin_function::builtin_function(std::string mang,
-                                   std::optional<type> ret,
+builtin_function::builtin_function(cr_string name,
+                                   ptr_type ret,
                                    parameters_t args,
                                    descriptor_t desc,
                                    bool inlined_)
-    : function(nullptr, {}, std::move(mang), linkage_t::normal, std::move(ret), inlined_),
+    : function(nullptr, {}, {name, args}, linkage_t::normal, ret, inlined_),
       parameters(std::move(args)),
       descriptor(std::move(desc)) {}
 
+builtin_function::descriptor_t::descriptor_t(body_t b)
+    : pre(builtin::function::preprocessors::SIMPLE_LOADING),
+      body(std::move(b)),
+      post(builtin::function::postprocessors::SIMPLE_RET) {}
+
 bool builtin_function::is_defined() const { return true; }
 
-std::string mangled_name::types(const std::vector<type>& types) {
-  return types | std::views::transform([](const type& t) -> std::string { return t.format(); }) |
-         std::views::join_with('_') | std::ranges::to<std::string>();
+mangled_name mangled_name::function(cstring name, const std::vector<ast::decl::variable>& vars) {
+  auto args = vars | std::views::transform([](const auto& var) -> ptr_type {
+                return &parse_type(var.specifiers);
+              }) |
+              std::ranges::to<std::vector>();
+  return function(name, args);
 }
-mangled_name mangled_name::builtin_function(const builtin::function::header_t& h) {
-  return builtin_function(h.function_name, h.args);
-}
-mangled_name mangled_name::builtin_function(std::string_view name, const std::vector<type>& t) {
+
+mangled_name mangled_name::function(cstring name, const std::vector<const type*>& t) {
   return std::format("{}_{}", name, types(t));
 }
 
+std::string mangled_name::types(const std::vector<ptr_type>& types) {
+  return types | std::views::transform([](ptr_type t) { return t->format(); }) |
+         std::views::join_with('_') | std::ranges::to<std::string>();
+}
+
+mangled_name mangled_name::direct_conversion_function(cr_type f, cr_type t) {
+  return function("conv_{}", std::vector<ptr_type>{&f, &t});
+}
+
+mangled_name mangled_name::label(cstring name) { return std::string(name); }
+mangled_name mangled_name::variable(cstring name, cr_type) { return std::string(name); }
+
 label::label(const ast::decl::label* label_, address_t addr)
-    : symbol(label_, addr) {}
+    : symbol(label_, mangled_name::label(label_->term.value), addr) {}
 
 [[nodiscard]] std::string label::format() const { return std::format("label({})", decl->term); }
 
 static_assert(std::formattable<ast::term::identifier, char>);
 
-variable::variable(scope& scope,
+variable::variable(scope* scope,
                    const ast::decl::variable* p,
                    address_t addr,
                    linkage_t l,
                    storage_t s,
-                   cmm::type t)
-    : symbol(p, addr),
+                   ptr_type t)
+    : symbol(p, mangled_name::variable(p->ident->value, *t), addr),
       linkage(l),
       storage(s),
-      type(std::move(t)),
+      type(t),
       scope_ref(scope) {}
 
-global_variable::global_variable(scope& scope,
+global_variable::global_variable(scope* scope,
                                  const ast::decl::variable* decl,
                                  assembly::label_memory* addr,
-                                 cmm::type t)
-    : variable(scope,
-               decl,
-               addr,
-               parse_linkage(decl->specifiers),
-               storage_t::static_,
-               std::move(t)) {}
+                                 ptr_type t)
+    : variable(scope, decl, addr, parse_linkage(decl->specifiers), storage_t::static_, t) {}
 
-local_variable::local_variable(local_scope& scope,
+local_variable::local_variable(local_scope* scope,
                                const ast::decl::variable* decl,
                                operand* addr,
                                storage_t s,
-                               cmm::type t)
-    : variable(scope, decl, addr, linkage_t::normal, s, std::move(t)) {}
+                               ptr_type t)
+    : variable(scope, decl, addr, linkage_t::normal, s, t) {}
 
-auto_local_variable::auto_local_variable(local_scope& scope,
+auto_local_variable::auto_local_variable(local_scope* scope,
                                          const ast::decl::variable* decl,
                                          assembly::reg_memory* r,
                                          storage_t s,
-                                         cmm::type t)
-    : local_variable(scope, decl, r, s, std::move(t)) {}
+                                         ptr_type t)
+    : local_variable(scope, decl, r, s, t) {}
 
-arg_local_variable::arg_local_variable(local_scope& scope,
-                                       const ast::decl::variable* decl,
-                                       assembly::reg* r,
-                                       storage_t s,
-                                       cmm::type t)
-    : local_variable(scope, decl, r, s, std::move(t)) {}
+arg_local_variable::arg_local_variable(const ast::decl::variable* decl, decltype(type) t)
+    : local_variable(nullptr, decl, nullptr, storage_t::normal, t) {}
+
+void arg_local_variable::load(local_scope* scope, operand* r) const {
+  scope_ref = scope;
+  addr      = r;
+}
 
 [[nodiscard]] std::string variable::format() const {
   return std::format("var({}, {}, {}, {})", decl->ident->value, linkage, storage, type);
@@ -157,85 +174,92 @@ arg_local_variable::arg_local_variable(local_scope& scope,
 
 function::function(const ast::decl::function* decl,
                    address_t addr,
-                   std::string id,
+                   signature_t&& sig,
                    linkage_t link,
                    return_t t,
                    bool inlined_)
-    : symbol(decl, addr),
-      identifier(std::move(id)),
+    : symbol(decl, mangled_name::function(sig.name, sig.argument_types), addr),
+      signature(std::move(sig)),
       linkage(link),
-      return_type(std::move(t)),
+      return_type(t),
       inlined(inlined_) {}
 
-FORMAT_IMPL(function, "function<{}>", identifier);
-
-operand* builtin_function::run(compilation_unit& ctx, ast::expr::call::arguments args) const {
-  // PREP
-  auto prep_b = ctx.asmgen.begin_comment_block("preprocess {}", identifier);
-  auto regs   = descriptor.preprocess(ctx, parameters, args);
-  prep_b.end();
-
-  // BODY
-  return run(ctx, regs);
+std::optional<operand*> function::load_and_run(
+    compilation_unit& v,
+    const std::vector<ast::expr::expression*>& arg) const {
+  auto args = load(v, arg);
+  return run(v, args);
 }
 
-operand* builtin_function::run(compilation_unit& ctx, std::vector<operand*> regs) const {
-  auto exec_b    = ctx.asmgen.begin_comment_block("executing body {}", identifier);
+FORMAT_IMPL(function, "function<{}>", name.str());
+
+std::vector<operand*> builtin_function::load(
+    compilation_unit& ctx,
+    const std::vector<ast::expr::expression*>& args) const {
+  // PREP
+  auto prep_b = ctx.asmgen.begin_comment_block("preprocess {}", name.str());
+  return descriptor.pre(ctx, parameters, args);
+}
+
+std::optional<operand*> builtin_function::run(compilation_unit& ctx,
+                                              const std::vector<operand*>& regs) const {
+  auto exec_b    = ctx.asmgen.begin_comment_block("executing body {}", name.str());
 
   auto* res_body = descriptor.body(ctx, regs);
   exec_b.end();
 
   // POST
-  auto post_b = ctx.asmgen.begin_comment_block("postprocess {}", identifier);
-  auto res    = descriptor.postprocess(ctx, res_body);
-  if constexpr (ReturnsVoid<std::invoke_result_t<builtin_function::postprocess_t,
-                                                 compilation_unit&,
-                                                 operand*>>) {};
-  return res.value();
+  return descriptor.post(ctx, res_body);
 }
 
 user_function::user_function(const ast::decl::function* decl,
                              address_t addr,
                              linkage_t link,
-                             type t,
+                             cr_type t,
+                             std::vector<arg_local_variable>&& parameters,
                              bool inlined_)
-    : function(decl, addr, decl->ident.value, link, t, inlined_),
+    : function(
+          decl,
+          addr,
+          signature_t(decl->ident.value, parameters | std::views::transform([](const auto& params) {
+                                           return params.type;
+                                         }) | std::ranges::to<std::vector>()),
+          link,
+          &t,
+          inlined_),
       body(decl->body),
-      parameters(decl->parameters) {}
+      parameters(std::move(parameters)) {}
 
-operand* user_function::run(compilation_unit& ctx, ast::expr::call::arguments args) const {
+std::vector<operand*> user_function::load(compilation_unit& ctx,
+                                          const std::vector<ast::expr::expression*>& args) const {
   REGISTER_TRACE("Calling {}", decl->ident);
 
+  ctx.table.push_frame(this);
   // Load parameters
-  auto prepared_args =
-      std::views::zip(decl->parameters, args) | std::views::enumerate |
-      std::views::transform([this, &ctx](const auto& enumerated_pair) -> operand* {
-        const auto& [i, pair]         = enumerated_pair;
-        const auto& [parameter, expr] = pair;
+  return std::views::zip(parameters, args) | std::views::enumerate |
+         std::views::transform([this, &ctx](const auto& enumerated_pair) -> operand* {
+           auto& [i, pair]         = enumerated_pair;
+           auto& [parameter, expr] = pair;
 
-        auto* actual_expr             = expr != nullptr ? expr : parameter.init;
-        if (actual_expr == nullptr) {
-          throw wrong_function_argument(decl->location(), parameter.format(), "nullptr");
-        }
+           auto* actual_expr       = expr != nullptr ? expr : parameter.decl->init;
+           if (actual_expr == nullptr) {
+             throw wrong_function_argument(decl->location(), parameter.format(), "nullptr");
+           }
 
-        auto expr_type = ctx.get_expression_type(*actual_expr);
+           if (!ctx.table.is_declarable<variable>(*parameter.decl->ident)) {
+             throw already_declared_symbol(*parameter.decl->ident);
+           }
 
-        if (ctx.table.is_declared<variable>(*parameter.ident)) {
-          throw already_declared_symbol(parameter);
-        }
-
-        auto* reg_ = ctx.regs.parameters.at(i);
-        return ctx.runner.generate_expr(*actual_expr, intents::intent_t::LOAD_VARIABLE_VALUE, reg_);
-      }) |
-      std::ranges::to<std::vector>();
-
-  return run(ctx, prepared_args);
+           auto* reg_ = ctx.runner.generate_expr(
+               *actual_expr, intents::intent_t::LOAD_VARIABLE_VALUE, ctx.regs.parameters.at(i));
+           parameter.load(&ctx.table.active_frame().active_scope(), reg_);
+           return reg_;
+         }) |
+         std::ranges::to<std::vector>();
 }
 
-user_function::address_t user_function::run(compilation_unit& ctx,
-                                            std::vector<operand*> ops) const {
-
-  ctx.table.push_frame(decl->ident);
+std::optional<operand*> user_function::run(compilation_unit& ctx,
+                                           const std::vector<operand*>& ops) const {
 
   for (const auto& [param, op] : std::views::zip(decl->parameters, ops)) {
     ctx.table.active_frame().active_scope().emplace_argument(&param, dynamic_cast<reg*>(op));
@@ -262,10 +286,51 @@ user_function::address_t user_function::run(compilation_unit& ctx,
     ctx.table.active_frame().local_stack.pop(ditched + 1);
   }
 
-  return ctx.regs.get(registers::ACCUMULATOR);
+  if (return_type != VOID_T) {
+    return ctx.regs.get(registers::ACCUMULATOR);
+  }
+  return {};
 }
 
 bool user_function::is_defined() const { return body != nullptr; }
+conversion_function::conversion_function(body_t body)
+    : type(conversion_type_t::IMPLICIT),
+      body(std::move(body)) {}
+
+operand* conversion_function::operator()(operand* reg) const noexcept {
+  cr_type from = reg->content_type();
+  ASSERT(is_convertible(from));
+  cr_type to_t = to(from);
+  struct conversion_visitor {
+    cr_type from;
+    cr_type to;
+    operand* in;
+    operand* operator()(std::monostate) const { return in; }
+    operand* operator()(const builtin_function::body_t& body) const {
+      builtin_function fn("conv", std::make_optional(&to), {&from}, {body}, true);
+      return fn.run(ir::compilation_unit::instance(), {in}).value();
+    }
+    operand* operator()(const ast::compound*) const {
+      NOT_IMPLEMENTED
+      // user_function fn ()
+      return nullptr;
+    }
+  };
+
+  return std::visit(conversion_visitor{.from = from, .to = to_t, .in = reg}, body);
+}
+direct_conversion_function::direct_conversion_function(body_t body, cr_type from, cr_type to)
+    : conversion_function(std::move(body)),
+      from_type(from),
+      to_type(to) {}
+glob_conversion_function::glob_conversion_function(std::string desc,
+                                                   body_t body,
+                                                   condition_t&& from,
+                                                   extractor_t&& to)
+    : conversion_function(std::move(body)),
+      description(std::move(desc)),
+      condition(std::move(from)),
+      extractor(std::move(to)) {}
 
 using parameters_t = ast::decl::function::parameters_t;
 using arguments_t  = ast::expr::call::arguments;
@@ -277,6 +342,7 @@ local_scope::local_scope(const frame& frame, const ast::compound& comp)
     : frame_ref(frame),
       compound(comp) {}
 
+void local_scope::load_argument(arg_local_variable var) { variables.put(std::move(var)); }
 // const frame* local_scope::parent() const { return &frame_ref.get(); }
 
 using id = symbol_table::identifier_type;
@@ -296,38 +362,6 @@ mangled_name::mangled_name(std::string&& str)
 
 [[nodiscard]] const std::string& mangled_name::str() const { return m_string; }
 
-mangled_name mangled_name::free_unary_operator(const operator_t& op, cstring expr_t) {
-  std::ostringstream os;
-  os << op.caller_function();
-  os << "_";
-  os << expr_t;
-  return os.str();
-}
-
-mangled_name mangled_name::free_binary_operator(const operator_t& op, cstring l, cstring r) {
-  std::ostringstream os;
-  os << op.caller_function();
-  os << "_";
-  os << l;
-  os << "_";
-  os << r;
-  return os.str();
-}
-
-mangled_name mangled_name::free_function(const ast::decl::function* fn) {
-  if (fn->parameters.empty()) {
-    return mangled_name{fn->ident.value};
-  }
-
-  auto mangled_params = fn->parameters.data() |
-                        std::views::transform([](const auto& p) -> std::string {
-                          return parse_type(p.specifiers).format();
-                        }) |
-                        std::views::join_with('_');
-  // auto joined = std::format("{}", std::join(mangled_params, "_"));
-  return std::string(fn->ident.value); // + "_" + joined;
-}
-
 mangled_name::operator std::string() const { return m_string; }
 
 using var_store = variable_store;
@@ -341,12 +375,13 @@ var_store::value_type* var_store::get(const std::string& id) { return &m_store.a
   return &m_store.at(id);
 }
 size_t var_store::size() const noexcept { return m_store.size(); }
+void var_store::put(value_type&& v) { m_store.insert(std::make_pair(v.name.str(), std::move(v))); }
 
 void var_store::clear() { m_store.clear(); }
 
 operand* local_scope::emplace_argument(const ast::decl::variable* decl, reg* r) {
   auto var = variables.emplace<local_variable>(
-      decl->ident->value, *this, decl, r, storage_t::normal, parse_type(decl->specifiers));
+      decl->ident->value, this, decl, r, storage_t::normal, &parse_type(decl->specifiers));
   r->hold_value(&var);
   return r;
 }
@@ -355,7 +390,7 @@ operand* local_scope::emplace_automatic(const ast::decl::variable* decl) {
   auto* addr =
       operand_factory::instance().create<stack_memory>(frame_ref.get().local_stack.size() + 1);
   auto var = variables.emplace<local_variable>(
-      decl->ident->value, *this, decl, addr, storage_t::normal, parse_type(decl->specifiers));
+      decl->ident->value, this, decl, addr, storage_t::normal, &parse_type(decl->specifiers));
   addr->hold_address(&var);
   return addr;
 }
@@ -363,36 +398,47 @@ operand* local_scope::emplace_automatic(const ast::decl::variable* decl) {
 operand* global_scope::emplace_static(const ast::decl::variable* decl) {
   auto* addr = operand_factory::instance().create<label_memory>(decl->label());
   auto var   = variables.emplace<global_variable>(
-      decl->ident->value, *this, decl, addr, parse_type(decl->specifiers));
+      decl->ident->value, this, decl, addr, &parse_type(decl->specifiers));
   addr->hold_address(&var);
   return addr;
 }
 
-std::vector<function_store::value_type::pointer> function_store::get(cstring id) const {
-  // TODO support overload
-  return m_store | std::views::filter([id](const auto& pair) -> bool {
+const function* function_store::get(const function::signature_t& sig) const {
+  auto mangled = sig.mangle();
+  if (m_store.contains(mangled)) {
+    return m_store.at(mangled).get();
+  }
+  return nullptr;
+}
+
+std::vector<const function*> function_store::get_by_name(cstring name) const {
+  return m_store | std::views::filter([name](const auto& pair) -> bool {
            const auto& [k, v] = pair;
-           return k.starts_with(id);
+           return k.starts_with(name);
          }) |
-         std::views::transform([](const auto& pair) -> function_store::value_type::pointer {
-           const auto& [k, v] = pair;
-           return v.get();
-         }) |
+         std::views::transform(
+             [name](const auto& pair) -> const function* { return pair.second.get(); }) |
          std::ranges::to<std::vector>();
 }
 
-const function* function_store::emplace_builtin(const mangled_name& mang,
-                                                std::optional<type> ret,
-                                                const std::vector<type>& params,
+const function* function_store::emplace_builtin(std::string&& name,
+                                                std::optional<ptr_type> ret,
+                                                const std::vector<ptr_type>& params,
                                                 const builtin_function::descriptor_t& desc,
                                                 bool inline_) {
-  auto mang_str = mang.str();
-  auto ptr = std::make_unique<builtin_function>(mang_str, std::move(ret), params, desc, inline_);
-  return m_store.emplace(mang_str, std::move(ptr)).first->second.get();
+  auto ptr = std::make_unique<builtin_function>(std::move(name), ret, params, desc, inline_);
+  return m_store.emplace(mangled_name::function(name, params), std::move(ptr)).first->second.get();
 }
 const function* function_store::emplace_user_provided(const ast::decl::function* decl,
                                                       bool inline_) {
-  auto mang = mangled_name::free_function(decl);
+  auto params = decl->parameters.transform([](const ast::decl::variable& var) {
+    return arg_local_variable(&var, &parse_type(var.specifiers));
+  });
+
+  auto mang   = function::signature_t(
+                  decl->ident.value,
+                  transform_vector(params, [](const arg_local_variable& v) { return v.type; }))
+                  .mangle();
   return m_store
       .emplace(mang.str(),
                std::make_unique<user_function>(
@@ -400,6 +446,7 @@ const function* function_store::emplace_user_provided(const ast::decl::function*
                    operand_factory::instance().create<assembly::label>(mang.str()),
                    parse_linkage(decl->specifiers),
                    parse_type(decl->specifiers),
+                   std::move(params),
                    inline_))
       .first->second.get();
 }
@@ -407,14 +454,59 @@ const function* function_store::emplace_user_provided(const ast::decl::function*
 void function_store::clear() { m_store.clear(); }
 
 bool conversion_store::is_convertible(const type& from, const type& to) const {
-  auto mangled_from = mangled_name::type(from);
-  if (const auto& outer = m_store.at(mangled_from); m_store.contains(mangled_from)) {
-    return outer.contains(mangled_name::type(to));
+  auto mangled_from = from.format();
+  bool res          = false;
+  if (const auto& outer = m_direct_store.at(mangled_from); m_direct_store.contains(mangled_from)) {
+    if (outer.contains(to.format())) {
+      return true;
+    }
   }
-  return false;
+
+  return std::ranges::any_of(m_glob_store, [&to](const glob_conversion_function& fn) -> bool {
+    return fn.is_convertible(to);
+  });
 }
 
-std::vector<type> conversion_store::get_convertibles(const type& from) const {}
+std::vector<ptr_type> conversion_store::get_convertible_types(cr_type from) const {
+  return get_conversions(from) | std::views::transform([&from](const auto& conversion) -> ptr_type {
+           return &conversion->to(from);
+         }) |
+         std::ranges::to<std::vector>();
+}
+
+std::vector<const conversion_function*> conversion_store::get_conversions(cr_type from) const {
+  auto mangled_from = from.format();
+  auto glob_range =
+      m_glob_store | std::views::filter([&from](const glob_conversion_function& fn) -> bool {
+        return fn.is_convertible(from);
+      }) |
+      std::views::transform([](const glob_conversion_function& fn) -> const conversion_function* {
+        return static_cast<const conversion_function*>(&fn);
+      }) |
+      std::ranges::to<std::vector>();
+  if (m_direct_store.contains(mangled_from)) {
+    auto range = m_direct_store.at(mangled_from) | std::views::values |
+                 std::views::transform(
+                     [](const direct_conversion_function& ptr) -> const conversion_function* {
+                       return &ptr;
+                     }) |
+                 std::ranges::to<std::vector>();
+    glob_range.insert(glob_range.end(), range.begin(), range.end());
+  }
+  return glob_range;
+}
+
+void conversion_store::emplace_direct(conversion_function::body_t body, cr_type f, cr_type t) {
+  auto& value = m_direct_store[f.format()];
+  value.emplace(t.format(), direct_conversion_function(std::move(body), f, t));
+}
+
+void conversion_store::emplace_glob(std::string desc,
+                                    conversion_function::body_t body,
+                                    glob_conversion_function::condition_t c,
+                                    glob_conversion_function::extractor_t e) {
+  m_glob_store.emplace_back(std::move(desc), std::move(body), std::move(c), std::move(e));
+}
 
 frame::frame(const user_function* fn)
     : func(*fn) {
@@ -470,11 +562,11 @@ local_scope& frame::active_scope() {
   UNREACHABLE("Unrecheable");
 }
 
-void symbol_table::push_frame(id ident) {
-  const auto* func = dynamic_cast<const user_function*>(get_function(ident));
-  m_stackframe.emplace_back(func);
-  active_frame().create_scope(*func->body);
+void symbol_table::push_frame(const user_function* fn) {
+  m_stackframe.emplace_back(fn);
+  active_frame().create_scope(*fn->body);
 }
+
 static_assert(std::is_constructible_v<frame, const ir::user_function*>);
 static_assert(std::is_class_v<frame>);
 
@@ -544,30 +636,56 @@ const variable* symbol_table::get_variable(id ident) const {
 
   return active_frame().get(ident);
 }
-const function* symbol_table::get_function(const mangled_name& mname) const {
-  const auto& candidates = m_functions.get(mname.str());
-  ASSERT(candidates.size() == 1);
-  return candidates[0];
-}
 
-const function* symbol_table::get_function(id ident) const {
-  if (ident.value == "main") {
-    return m_entry_point.get();
+std::optional<const function*> symbol_table::progressive_prefix_match(
+    const std::vector<ptr_type>& argument_types,
+    const std::vector<const function*>& possible_fns) const {
+  auto range = argument_types | std::views::enumerate |
+               std::views::transform([this, &possible_fns](const auto& pair) {
+                 auto i                 = std::get<0>(pair);
+                 ptr_type castable_type = std::get<1>(pair);
+
+                 auto r                 = m_conversions.get_convertible_types(*castable_type) |
+                          std::views::transform([this, i, &possible_fns](ptr_type casted_type) {
+                            auto p = possible_fns |
+                                     std::views::filter([this, i, casted_type](const function* fn) {
+                                       return fn->signature.argument_types.at(i)->format() ==
+                                              casted_type->format();
+                                     });
+                            return p;
+                          }) |
+                          std::views::join | std::ranges::to<std::vector>();
+                 return r;
+               }) |
+               std::views::join | std::ranges::to<std::vector>();
+  if (range.size() == 1) {
+    return range[0];
   }
 
-  const auto& candidates = m_functions.get(ident.value);
-  if (candidates.size() < 1) {
-    throw undeclared_symbol(ident);
+  return std::nullopt; // no unique match found
+}
+
+const function* symbol_table::get_function(const function::signature_t& sig) const {
+  if (const auto* candidate = m_functions.get(sig); candidate != nullptr) {
+    return candidate;
+  }
+  auto map          = m_functions.get_by_name(sig.name);
+  auto filtered_map = map | std::views::filter([&sig](const auto& fn) {
+                        return fn->signature.argument_types.size() == sig.argument_types.size();
+                      }) |
+                      std::ranges::to<std::vector>();
+  if (!filtered_map.empty()) {
+    auto opt = progressive_prefix_match(sig.argument_types, filtered_map);
+    if (opt.has_value()) {
+      return opt.value();
+    }
   }
 
-  return candidates[0];
+  throw undeclared_symbol(location(), sig.name);
 }
+
 void symbol_table::declare_function(const ast::decl::function* func, bool inline_) {
   REGISTER_TRACE("Creating func {}", func->ident);
-  if (m_functions.contains(mangled_name::free_function(func))) {
-    throw already_declared_symbol(func->ident);
-  }
-
   m_functions.emplace_user_provided(func, inline_);
 }
 
@@ -575,11 +693,13 @@ user_function* symbol_table::get_entry_point() { return m_entry_point.get(); }
 
 void symbol_table::link_entry_point(const ast::decl::function* fn) {
   if (!is_entry_point_defined()) {
+    std::vector<arg_local_variable> params;
     m_entry_point =
         std::make_unique<user_function>(fn,
                                         operand_factory::instance().create<assembly::label>("main"),
                                         parse_linkage(fn->specifiers),
                                         parse_type(fn->specifiers),
+                                        std::move(params),
                                         true);
   } else {
     throw already_declared_symbol(*fn);
@@ -592,9 +712,10 @@ bool symbol_table::in_main() const noexcept {
   return m_stackframe.top().func.get().decl->ident.value == "main";
 }
 
-operand* compilation_unit::call_builtin(const builtin::function::header_t& header,
-                                        const std::vector<operand*>& args) {
-  const auto* fn      = table.get_function(mangled_name::builtin_function(header));
+std::optional<operand*> compilation_unit::call_builtin(
+    const builtin::function::builtin_signature_t& header,
+    const std::vector<operand*>& args) {
+  const auto* fn      = table.get_function(header.signature());
   const auto* builtin = dynamic_cast<const builtin_function*>(fn);
   return fn->run(*this, args);
 }
@@ -623,7 +744,8 @@ const variable* compilation_unit::declare_global_variable(const ast::decl::varia
   return addr->variable();
 }
 
-const variable* compilation_unit::declare_variable(const ast::decl::variable& decl, operand* init) {
+const variable* compilation_unit::declare_local_variable(const ast::decl::variable& decl,
+                                                         operand* init) {
   // + 1 because not counted yet
   const auto* var = table.active_frame().active_scope().emplace_automatic(&decl)->variable();
   push(init);
@@ -672,7 +794,7 @@ operand* compilation_unit::move(operand* to, operand* from) {
     asmgen.write_instruction(instruction_t::mov, to->value(), aux->value());
     aux->release();
   } else {
-    asmgen.write_instruction(_instruction_t::mov, to->value(), from->value());
+    asmgen.write_instruction(instruction_t::mov, to->value(), from->value());
   }
 
   if (auto cont = from->content(); cont) {
@@ -705,41 +827,6 @@ operand* compilation_unit::zero(operand* reg) {
 void compilation_unit::reserve_memory(cstring name, cstring kw, cstring times) {
   asmgen.add_section_data(assembly::asmgen::Section::BS, name, kw, times);
 }
-type compilation_unit::get_expression_type(const ast::expr::expression& e) {
-  if (const auto* id = dynamic_cast<const ast::expr::identifier*>(&e)) {
-    // TODO
-    return table.get_variable(id->term)->type;
-  }
-
-  if (const auto* lit = dynamic_cast<const ast::expr::literal*>(&e)) {
-    return type_factory::create_fundamental(lit->type.cast<category_t>());
-  }
-
-  if (const auto* unary = dynamic_cast<const ast::expr::unary_operator*>(&e)) {
-    auto expr_t  = get_expression_type(unary->expr);
-    auto mangled = mangled_name::free_unary_operator(unary->operator_.type, expr_t.format());
-    return *table.get_function(mangled)->return_type;
-  }
-
-  if (const auto* bin = dynamic_cast<const ast::expr::binary_operator*>(&e)) {
-    auto left_t  = get_expression_type(bin->left);
-    auto right_t = get_expression_type(bin->right);
-    auto mangled =
-        mangled_name::builtin_function(bin->operator_.type.caller_function(), {left_t, right_t});
-    return *table.get_function(mangled)->return_type;
-  }
-
-  if (const auto* call = dynamic_cast<const ast::expr::call*>(&e)) {
-    auto types = call->args | std::views::transform([this](const auto& expr) -> type {
-                   return get_expression_type(*expr);
-                 }) |
-                 std::ranges::to<std::vector>();
-    auto mangled = mangled_name::builtin_function(call->ident.value, types);
-    return *table.get_function(mangled)->return_type;
-  }
-
-  throw generic_error(e);
-}
 
 void compilation_unit::jump(cstring label) { asmgen.write_instruction(_instruction_t::jmp, label); }
 void compilation_unit::jump(const instruction_t& ins, cstring a) {
@@ -757,7 +844,7 @@ void compilation_unit::cmp(cstring a, cstring b) {
 void compilation_unit::ret() { asmgen.write_instruction(_instruction_t::ret); }
 using namespace builtin::function;
 
-void compilation_unit::exit(operand* op) { call_builtin(header_t::EXIT, {op}); }
+void compilation_unit::exit(operand* op) { call_builtin(builtin_signature_t::EXIT, {op}); }
 
 void compilation_unit::exit_successfully() {
   auto* reg = regs.parameters.at(0);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.hpp"
+#include <concepts>
 #include <type_traits>
 
 namespace cmm {
@@ -150,6 +151,23 @@ template <ScopedEnum E>
 [[nodiscard]] constexpr auto enumeration<E>::value() const noexcept {
   return magic_enum::enum_integer(m_value);
 };
+
+template <ScopedEnum From>
+template <typename To>
+[[nodiscard]] constexpr bool enumeration<From>::is_castable() const {
+
+  if constexpr (Enumerable<To>) {
+    if (auto to =
+            magic_enum::enum_cast<typename To::value_type>(name(), magic_enum::case_insensitive)) {
+      return to.has_value();
+    }
+  } else {
+    if (auto to = magic_enum::enum_cast<To>(name(), magic_enum::case_insensitive)) {
+      return to.has_value();
+    }
+  }
+  return false;
+}
 
 template <ScopedEnum From>
 template <typename To>
@@ -431,5 +449,47 @@ template <typename T>
 template <typename Fn>
 vector<T>::const_pointer_type vector<T>::find(Fn fn) const {
   return *(m_data | std::ranges::find_if(fn));
+}
+
+template <typename T>
+template <typename Fn>
+auto vector<T>::transform(Fn&& fn) const {
+  return m_data | std::views::transform(fn) | std::ranges::to<std::vector>();
+}
+template <typename T>
+[[nodiscard]] std::string vector<T>::join(char delim, size_t lvl) const {
+  return data() | std::views::transform([lvl](const auto& elem) {
+           if constexpr (requires { elem.operator->(); }) {
+             return elem->format(lvl + 1);
+           } else if constexpr (std::is_pointer_v<std::remove_cvref_t<decltype(elem)>>) {
+             return elem->format(lvl + 1);
+           } else {
+             return elem.format(lvl + 1);
+           }
+         }) |
+         std::views::join_with(delim) | std::ranges::to<std::string>();
+}
+
+template <typename T>
+template <std::ranges::forward_range Pattern>
+  requires(std::ranges::view<Pattern>)
+std::string vector<T>::join(Pattern&& p, size_t lvl) const {
+  return data() | std::views::transform([lvl](const auto& elem) {
+           if constexpr (requires { elem.operator->(); }) {
+             return elem->format(lvl + 1);
+           } else if constexpr (std::is_pointer_v<std::remove_cvref_t<decltype(elem)>>) {
+             return elem->format(lvl + 1);
+           } else {
+             return elem.format(lvl + 1);
+           }
+         }) |
+         std::views::join_with(p) | std::ranges::to<std::string>();
+}
+template <typename T>
+template <std::move_constructible Func, std::ranges::forward_range Pattern>
+  requires(std::ranges::view<Pattern>)
+std::string vector<T>::join(Func&& fn, Pattern&& p, size_t) const {
+  return data() | std::views::transform(fn) | std::views::join_with(p) |
+         std::ranges::to<std::string>();
 }
 }; // namespace cmm

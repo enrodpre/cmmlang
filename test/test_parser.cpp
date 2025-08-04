@@ -1,27 +1,24 @@
 
-#include "allocator.hpp"
 #include "ast.hpp"
+#include "lang.hpp"
 #include "parser.hpp"
+#include "types.hpp"
 #include <cpptrace/from_current.hpp>
 #include <gtest/gtest.h>
-#include <memory>
 #include <utility>
 
 using namespace cmm;
 using namespace ast;
-using namespace parser;
 
 class ParserTest : public ::testing::Test {
-  cmm::location create_location() {
+  static cmm::location create_location() {
     static size_t i = 0;
     --i;
     return {i, i, i, i};
   }
-  token create_token(cmm::token_t type, cmm::cstring value = "") {
+  static token create_token(cmm::token_t type, cmm::cstring value = "") {
     location loc = create_location();
-    return {std::move(type),
-            location(loc.rows.start, 1, loc.cols.start, loc.cols.length),
-            value};
+    return {std::move(type), location(loc.rows.start, 1, loc.cols.start, loc.cols.length), value};
   }
 
 protected:
@@ -57,25 +54,30 @@ protected:
 
   size_t row;
 
-  static std::unique_ptr<Parser> prepare_parser(std::vector<token> t) {
-    return std::make_unique<Parser>(tokens(t));
+  template <typename To, typename From>
+  To cast(From from) {
+    auto* to = dynamic_cast<To>(from);
+    EXPECT_TRUE(to != nullptr) << std::format("Type {} assumed to be {} but is {}",
+                                              typeid(From).name(),
+                                              typeid(To).name(),
+                                              typeid(from).name());
+    return to;
   }
 
-  template <typename T>
-  T unfold(compound compound) {
-    return get<T>(*compound.front());
-  }
+#define CAST(FROM, TO_T, TO) \
+  auto* TO = dynamic_cast<TO_T>(FROM); \
+  EXPECT_TRUE(TO != nullptr) << std::format( \
+      "Type {} assumed to be {}", typeid(FROM).name(), typeid(TO_T).name());
 
-  template <typename T>
-  T unfold(statement* stmt) {
-    return get<T>(*stmt);
-  }
-
-  static void check_literal(const expr::expression& expr,
-                            const std::string& value) {
+  static void check_literal(const expr::expression& expr, const std::string& value) {
     const auto* lit = dynamic_cast<const expr::literal*>(&expr);
     EXPECT_FALSE(lit == nullptr);
-    EXPECT_EQ(value, lit->lit.value);
+    EXPECT_EQ(value, lit->term.value);
+  }
+  static void require_identifier(const expr::expression& expr, const std::string& value) {
+    const auto* lit = dynamic_cast<const expr::identifier*>(&expr);
+    EXPECT_FALSE(lit == nullptr);
+    EXPECT_EQ(value, lit->term.value);
   }
 
   template <typename T>
@@ -92,16 +94,12 @@ using namespace std;
 using namespace expr;
 
 TEST_F(ParserTest, Call) {
-  auto parser = prepare_parser({exit, oparen, zero, comma, doce, cparen, semi});
-  auto elements = parser->parse();
+  parser::parser p({exit, oparen, zero, comma, doce, cparen, semi});
 
-  EXPECT_EQ(elements.size(), 1);
-  auto* expr_call = get_if<expr::expression*>(elements[0]);
-  EXPECT_TRUE(expr_call);
-  auto* call_ = dynamic_cast<expr::call*>(*expr_call);
+  auto* call_ = cast<expr::call*>(p.parse_expr());
   EXPECT_TRUE(call_);
-  EXPECT_EQ((*call_).ident->value, "exit");
-  EXPECT_EQ((*call_).args.size(), 2);
+  EXPECT_EQ("exit", call_->ident.value);
+  EXPECT_EQ(2, call_->args.size());
 
   auto it                = (*call_).args.begin();
   expr::expression* arg1 = *it++;
@@ -111,21 +109,29 @@ TEST_F(ParserTest, Call) {
 }
 
 TEST_F(ParserTest, Vardecl) {
-  auto parser   = prepare_parser({int_t, ident, assign, lit, semi});
-  auto elements = parser->parse();
-  auto vardecl  = unfold<decl::variable>(elements);
+  parser::parser p({int_t, ident, assign, lit, semi});
+  auto* elements = p.parse_declaration();
+  auto* vardecl  = cast<decl::variable*>(elements);
 
-  // EXPECT_EQ(vardecl->specs.type, cmm::Specifier::int_t);
-  EXPECT_EQ(vardecl.ident->value, "var");
-  EXPECT_TRUE(vardecl.init);
+  EXPECT_EQ(vardecl->ident->value, "var");
+  auto* expr = cast<expr::literal*>(vardecl->init);
+  EXPECT_EQ("5", expr->term.value);
+  EXPECT_EQ(type_category_t::sint_t, expr->type);
 }
 
-TEST_F(ParserTest, expression) {
+#define PRINT(x) \
+  do { \
+    testing::internal::CaptureStdout(); \
+    std::cout << x << '\n'; \
+    std::string output = testing::internal::GetCapturedStdout(); \
+    std::cout << output; \
+  } while (0);
+
+TEST_F(ParserTest, binop_expression) {
   // TODO terminar
 
-  auto parser =
-      prepare_parser({zero, plus, doce, star, ocho, plus, dos, star, quince});
-  auto* top_expr  = parser->parse_expr();
+  parser::parser p({zero, plus, doce, star, ocho, plus, dos, star, quince});
+  auto* top_expr  = p.parse_expr();
 
   auto* top_binop = unfold_expression<expr::binary_operator>(top_expr);
   check_literal(top_binop->left, "0");
@@ -138,69 +144,76 @@ TEST_F(ParserTest, expression) {
   check_literal(mult_left->right, "8");
 
   // Check right
-  auto* mult_right =
-      unfold_expression<expr::binary_operator>(&top_right->right);
+  auto* mult_right = unfold_expression<expr::binary_operator>(&top_right->right);
   check_literal(mult_right->left, "2");
   check_literal(mult_right->right, "15");
 }
 
 TEST_F(ParserTest, unary_operator) {
-  auto parser = prepare_parser({inc, ident, semi, ident, dec, semi});
-  auto elems  = parser->parse();
+  auto* expr   = parser::parser({inc, ident}).parse_expr();
+  auto* preinc = cast<expr::unary_operator*>(expr);
+  EXPECT_EQ(operator_t::pre_inc, preinc->operator_.type);
 
-  EXPECT_EQ(2, elems.size());
-  auto it     = elems.begin();
-  auto* expr1 = get_if<expr::expression*>(*it++);
-  EXPECT_TRUE(expr1);
-  auto* preinc = unfold_expression<expr::unary_operator>(*expr1);
-  EXPECT_TRUE(preinc);
-  auto* expr2 = get_if<expr::expression*>(*it++);
-  EXPECT_TRUE(expr2);
-  auto* postdec = unfold_expression<expr::unary_operator>(*expr2);
-  EXPECT_TRUE(postdec);
+  expr          = parser::parser({ident, dec}).parse_expr();
+  auto* postdec = cast<expr::unary_operator*>(expr);
+  EXPECT_EQ(operator_t::post_dec, preinc->operator_.type);
+}
 
-  EXPECT_EQ(cmm::operator_t::pre_inc, (*preinc).operator_.type);
-  EXPECT_EQ(cmm::operator_t::post_dec, (*postdec).operator_.type);
+TEST_F(ParserTest, multi_operator) {
+  auto* expr = parser::parser({inc, exit, plus, doce, star, ident, dec}).parse_expr();
+  CAST(expr, expr::binary_operator*, first);
+  EXPECT_EQ(operator_t::plus, first->operator_.type);
+
+  CAST(&first->left, expr::unary_operator*, first_left);
+  EXPECT_EQ(operator_t::pre_inc, first_left->operator_.type);
+  CAST(&first_left->expr, expr::identifier*, left_id);
+  EXPECT_EQ("exit", left_id->term.value);
+
+  CAST(&first->right, expr::binary_operator*, first_right);
+  EXPECT_EQ(operator_t::star, first_right->operator_.type);
+  CAST(&first_right->left, expr::identifier*, right_left);
+  EXPECT_EQ("12", right_left->term.value);
+  CAST(&first_right->right, expr::unary_operator*, right_right);
+  EXPECT_EQ(operator_t::post_dec, right_right->operator_.type);
+  CAST(&right_right->expr, expr::identifier*, right_right_right);
+  EXPECT_EQ("var", right_right_right->term.value);
 }
 
 TEST_F(ParserTest, IfElse) {
+  parser::parser p({if_,
+                    oparen,
+                    true_,
+                    cparen,
+                    o_curly,
+                    semi,
+                    semi,
+                    semi,
+                    semi,
+                    c_curly,
+                    else_,
+                    o_curly,
+                    semi,
+                    c_curly});
 
-  auto parser = prepare_parser({if_,
-                                oparen,
-                                true_,
-                                cparen,
-                                o_curly,
-                                semi,
-                                semi,
-                                semi,
-                                semi,
-                                c_curly,
-                                else_,
-                                o_curly,
-                                semi,
-                                c_curly});
+  auto* elems = p.parse_if();
+  auto* if_   = cast<selection::if_*>(elems);
+  auto* block = cast<compound*>(if_->block);
+  auto* else_ = cast<compound*>(if_->else_);
 
-  auto elems  = parser->parse();
-  auto if_    = unfold<selection::if_>(elems);
-  auto block  = unfold<compound>(&if_.block);
-  auto else_  = unfold<compound>(if_.else_);
-
-  EXPECT_EQ(block.size(), 0);
-  EXPECT_TRUE(if_.else_);
-  EXPECT_EQ(else_.size(), 0);
+  EXPECT_EQ(block->size(), 0);
+  EXPECT_TRUE(if_->else_);
+  EXPECT_EQ(else_->size(), 0);
 }
 
 TEST_F(ParserTest, Block) {
-  auto parser = prepare_parser(
-      {o_curly, o_curly, semi, c_curly, semi, o_curly, c_curly, c_curly});
+  parser::parser p({o_curly, o_curly, semi, c_curly, semi, o_curly, c_curly, c_curly});
 
-  auto block = parser->parse_compound();
-  EXPECT_EQ(block.size(), 2);
+  auto* block = p.parse_compound();
+  EXPECT_EQ(block->size(), 2);
 
-  auto* first_stmt = block.front();
-  EXPECT_NO_THROW(std::get<compound>(*first_stmt));
-  compound comp = std::get<compound>(*first_stmt);
-  EXPECT_EQ(0, comp.size());
+  auto* first_stmt = *block->begin();
+  auto* comp       = cast<compound*>(first_stmt);
+  EXPECT_EQ(0, comp->size());
 }
 
 #if 0

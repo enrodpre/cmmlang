@@ -18,9 +18,11 @@
 
 namespace cmm::ast {
 
+#define FORMAT_DECL_IMPL() std::string format(size_t = 0) const override;
+
 using cmm::visitable;
 
-struct node : virtual visitable<>, public formattable {
+struct node : virtual visitable<>, public indented_formattable {
   virtual const node* get_parent() const { return m_parent; }
   virtual void set_parent(const node* parent_) const { m_parent = parent_; }
 
@@ -63,9 +65,6 @@ private:
 public:
   friend Cls;
 
-  [[nodiscard]] std::string format() const override {
-    return std::format("Array {}({})", cpptrace::demangle(typeid(T).name()), vector<T>::size());
-  }
   [[nodiscard]] cmm::location location() const override {
     return std::ranges::fold_left(
         this->cbegin(), this->cend(), location(), [](const cmm::location& acum, const auto& elem) {
@@ -83,6 +82,7 @@ public:
 struct compound : public siblings<statement*, compound, statement> {
   compound(std::vector<statement*>&&);
   using siblings::location;
+  FORMAT_DECL_IMPL();
 };
 
 DERIVE_OK(statement, compound);
@@ -96,18 +96,22 @@ concept ZeroParamConstructible = requires {
 };
 
 namespace term {
-  struct keyword : visitable<leaf, keyword> {
+  struct term : visitable<leaf, term> {
+    term(const token& tok)
+        : visitable(tok.location()) {}
+  };
+  struct keyword : visitable<term, keyword> {
     token_t kind;
     keyword(const token& token)
-        : visitable(token.location()),
+        : visitable(token),
           kind(token.type) {}
     FORMAT_DECL_IMPL();
   };
 
-  struct identifier : visitable<leaf, identifier> {
+  struct identifier : visitable<term, identifier> {
     std::string value;
     identifier(const token& token)
-        : visitable(token.location()),
+        : visitable(token),
           value(token.value) {}
     operator cstring() const { return value; }
     FORMAT_DECL_IMPL();
@@ -118,11 +122,11 @@ namespace term {
   static bool operator==(const identifier& r, const identifier& l) {
     return r.location() == l.location() && r.value == l.value;
   }
-  struct literal : visitable<leaf, literal> {
+  struct literal : visitable<term, literal> {
     std::string value;
 
     literal(const token& token)
-        : visitable(token.location()),
+        : visitable(token),
           value(token.value) {}
     FORMAT_DECL_IMPL();
   };
@@ -130,21 +134,21 @@ namespace term {
   static_assert(Allocated<const literal&>);
   DERIVE_OK(node, literal);
 
-  struct operator_ : visitable<leaf, operator_> {
+  struct operator_ : visitable<term, operator_> {
     operator_t type;
     operator_(const token& token)
-        : visitable(token.location()),
+        : visitable(token),
           type(token.type.cast<operator_t>()) {}
     operator_(const token& loc, operator_t type_)
-        : visitable(loc.location()),
+        : visitable(loc),
           type(std::move(type_)) {}
     FORMAT_DECL_IMPL();
   };
 
-  struct specifier : visitable<leaf, specifier> {
+  struct specifier : visitable<term, specifier> {
     token_t type;
     specifier(const cmm::token& token)
-        : visitable(token.location()),
+        : visitable(token),
           type(token.type) {}
     FORMAT_DECL_IMPL();
   };
@@ -152,27 +156,41 @@ namespace term {
 } // namespace term
 
 namespace expr {
-  struct expression : visitable<statement, expression> {
-    using visitable::visitable;
+  struct compilation_unit;
+
+  enum class value_category_t : uint8_t { GLVALUE, PRVALUE, XVALUE, LVALUE, RVALUE };
+
+  struct semantics : semantic_extension {
+    value_category_t value_category;
+    ptr_type original_type;
+    ptr_type casted_type;
+  };
+
+  struct expression : visitable<statement, expression, expression>,
+                      public decorable<expression, semantics> {
+    expression()
+        : decorable(*this) {}
+    ptr_type type() const { return semantics()->original_type; }
   };
 
   static_assert(std::is_base_of_v<statement, expression>);
+
   struct identifier : visitable<expression, identifier> {
     ast::term::identifier term;
     identifier(ast::term::identifier&& id);
-    FORMAT_DECL_IMPL();
     cmm::location location() const override;
+    std::string format(size_t indent) const override;
   };
 
   DERIVE_OK(expression, identifier);
 
   struct literal : visitable<expression, literal> {
     ast::term::literal term;
-    type_t type;
-    literal(std::string, type_t);
+    literal(std::string, type_category_t);
     literal(const token& token);
-    FORMAT_DECL_IMPL();
     cmm::location location() const override;
+    std::string format(size_t indent) const override;
+    ptr_type type;
   };
 
   struct call : visitable<expression, call> {
@@ -182,22 +200,23 @@ namespace expr {
           : siblings(l) {}
       arguments(std::vector<expression*>&& v)
           : siblings(std::move(v)) {}
+      FORMAT_DECL_IMPL();
     };
     term::identifier ident;
     arguments args;
 
     call(decltype(ident)&& ident_, arguments&& args = {});
-    FORMAT_DECL_IMPL();
     cmm::location location() const override;
+    std::string format(size_t indent) const override;
   };
 
   struct unary_operator : visitable<expression, unary_operator> {
     expression& expr;
     term::operator_ operator_;
 
-    unary_operator(expression& expression, term::operator_&& op);
-    FORMAT_DECL_IMPL();
+    unary_operator(expression* expression, term::operator_&& op);
     cmm::location location() const override;
+    std::string format(size_t indent) const override;
   };
 
   struct binary_operator : visitable<expression, binary_operator> {
@@ -205,9 +224,9 @@ namespace expr {
     expression& right;
     term::operator_ operator_;
 
-    binary_operator(expression& left, expression& right, term::operator_&& op);
-    FORMAT_DECL_IMPL();
+    binary_operator(expression* left, expression* right, term::operator_&& op);
     cmm::location location() const override;
+    std::string format(size_t indent) const override;
   };
 
 #define EXPRESSION_TYPES \
@@ -219,6 +238,7 @@ namespace decl {
   struct specifiers : public siblings<term::specifier, specifiers> {
     specifiers(std::vector<term::specifier>&& v)
         : siblings(std::move(v)) {}
+    FORMAT_DECL_IMPL();
   };
 
   static_assert(std::is_base_of_v<allocated, specifiers>);
@@ -250,6 +270,7 @@ namespace decl {
       parameters_t() = default;
       parameters_t(std::vector<variable>&& v)
           : siblings(std::move(v)) {}
+      FORMAT_DECL_IMPL();
     };
 
     decl::specifiers specifiers;
@@ -376,6 +397,7 @@ namespace debug {
 struct program : public siblings<ast::global_statement*, program> {
   program(std::vector<ast::global_statement*>&& v)
       : siblings(std::move(v)) {}
+  FORMAT_DECL_IMPL();
 };
 
 // DERIVE_OK(siblings<ast::statement*, program>, program);
@@ -389,7 +411,7 @@ struct program : public siblings<ast::global_statement*, program> {
 #define STATEMENT_TYPES \
   ast::decl::function, ast::decl::variable, ast::compound, ast::decl::label, ast::iteration::for_, \
       ast::iteration::while_, ast::selection::if_, ast::jump::break_, ast::jump::continue_, \
-      ast::jump::goto_, ast::jump::return_, ast::expr::expression
+      ast::jump::goto_, ast::jump::return_
 
 #define SIBLING_TYPES \
   ast::expr::call::arguments, ast::decl::function::parameters_t, ast::decl::specifiers

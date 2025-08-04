@@ -5,6 +5,7 @@
 
 #include "lang.hpp"
 #include "token.hpp"
+#include "types.hpp"
 #include <magic_enum/magic_enum_format.hpp>
 #include <utility>
 
@@ -140,6 +141,7 @@ statement* parser::parse_statement() {
   }
 
   REGISTER_WARN("No token matched");
+  NOT_IMPLEMENTED;
   return nullptr;
 }
 
@@ -181,7 +183,7 @@ ast::expr::expression* parser::parse_lhs_expr() {
 
   if (token.type.is(token_t::o_paren)) {
     m_tokens.advance();
-    auto* expr = parse_expr(0);
+    auto* expr = parse_expr();
     if (m_tokens.peek().type == token_t::c_paren) {
       m_tokens.advance();
     } else {
@@ -192,9 +194,19 @@ ast::expr::expression* parser::parse_lhs_expr() {
 
   if (token.type.is_operator()) {
     m_tokens.advance();
+    operator_t op;
+    if (token.type.is(token_t::dec)) {
+      op = operator_t::pre_dec;
+    } else if (token.type.is(token_t::inc)) {
+      op = operator_t::pre_inc;
+    } else if (token.type.is_castable<operator_t>()) {
+      op = token.type.cast<operator_t>();
+    } else {
+      NOT_IMPLEMENTED;
+    }
+    term::operator_ term(token, op);
     auto* operand = parse_lhs_expr();
-    term::operator_ op(token);
-    return m_arena.emplace<expr::unary_operator>(*operand, std::move(op));
+    return m_arena.emplace<expr::unary_operator>(operand, std::move(term));
   }
 
   throw unexpected_token(token);
@@ -209,22 +221,36 @@ expr::expression* parser::parse_expr(uint8_t min_prec) {
     if (!op.type.is_operator()) {
       break;
     }
+    if (op.type == token_t::inc || op.type == token_t::dec) {
+      m_tokens.advance();
+      operator_t op_t;
+      if (op.type == token_t::inc) {
+        op_t = operator_t::post_inc;
+      } else if (op.type == token_t::dec) {
+        op_t = operator_t::post_dec;
+      } else {
+        NOT_IMPLEMENTED;
+      }
+      term::operator_ t(op, op_t);
+      lhs = m_arena.emplace<expr::unary_operator>(lhs, std::move(t));
+      continue;
+    }
 
     term::operator_ curr_op{op};
     auto prec = curr_op.type.precedence;
 
-    if (prec < min_prec) {
+    if (prec >= min_prec) {
       break;
     }
 
     m_tokens.advance();
 
-    int next_min_prec     = curr_op.type.assoc == cmm::associativity_t::L2R ? prec + 1 : prec;
+    if (curr_op.type.assoc == cmm::associativity_t::L2R) {
+      prec++;
+    }
 
-    expr::expression* rhs = parse_expr(next_min_prec);
-
-    auto* next_lhs        = m_arena.emplace<expr::binary_operator>(*lhs, *rhs, std::move(curr_op));
-    lhs                   = next_lhs;
+    expr::expression* rhs = parse_expr(prec);
+    lhs                   = m_arena.emplace<expr::binary_operator>(lhs, rhs, std::move(curr_op));
   }
 
   return lhs;

@@ -76,8 +76,8 @@ enum class _token_t : uint8_t {
   inc,
   dec,
   bslash,
-  comma,
   operator_end,
+  comma,
 
   // Pairs
   o_paren,
@@ -134,9 +134,9 @@ struct token_t : public cmm::enumeration<_token_t> {
     enum class pattern_t : uint8_t { SINGLE_CHAR, MULTI_CHAR, REGEX };
     const pattern_t pattern_type;
     const cstring pattern;
-    std::optional<type_t> type;
+    std::optional<type_category_t> type;
 
-    constexpr properties(pattern_t, cstring, type_t = {}) noexcept;
+    constexpr properties(pattern_t, cstring, type_category_t = {}) noexcept;
   };
 
   using value_type = _token_t;

@@ -40,7 +40,7 @@ add_library(${LIBNAME} ${sources})
 target_compile_options(${LIBNAME} PRIVATE
   -std=c++26
   -fdiagnostics-color=always
-   -O0 -g3 -fno-inline
+   -O0 -g -fno-inline
 )
 target_compile_features(${LIBNAME} PUBLIC cxx_std_26)
 target_link_libraries(
@@ -57,7 +57,7 @@ find_package(cxxopts REQUIRED)
 target_compile_options(${APPNAME} PRIVATE
   -std=c++26
   -fdiagnostics-color=always
-   -O0 -g3 -fno-inline
+   -O0 -g -fno-inline
 )
 target_link_libraries(${APPNAME} PRIVATE ${LIBNAME} cxxopts::cxxopts)
 

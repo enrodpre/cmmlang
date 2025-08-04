@@ -56,7 +56,7 @@ public:
   ast::expr::expression* parse_condition();
   ast::expr::expression* parse_unary_expr();
   ast::expr::expression* parse_call(ast::term::identifier ident);
-  ast::expr::expression* parse_expr(uint8_t = 0);
+  ast::expr::expression* parse_expr(uint8_t = 255);
 
   // Terms
   ast::decl::specifiers parse_specifiers();

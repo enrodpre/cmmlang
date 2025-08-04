@@ -12,7 +12,7 @@ class token_pp:
         namespace_type = self.val["type"]["m_value"]
         type = str(namespace_type).split("::")[-1]
         value = self.val["value"]
-        if value["_M_len"] != 0:
+        if len(str(value)) > 0:
             return f"token({type}, {value})"
 
         return f"token({type})"
@@ -84,8 +84,8 @@ def build_pp(pps):
     return pp
 
 
-# pps = (("cmm::location", location_pp), ("cmm::token", token_pp))
+pps = (("cmm::token", token_pp),)
 
-# gdb.printing.register_pretty_printer(gdb.current_objfile(), build_pp(pps), replace=True)
+gdb.printing.register_pretty_printer(gdb.current_objfile(), build_pp(pps), replace=True)
 # disabled_types = ("cmm::formattable",)
 # disable_types(disabled_types)

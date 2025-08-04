@@ -111,7 +111,6 @@ namespace log {
   #define SAVE_ASSEMBLY 0
 #endif
 
-#define FORMAT_DECL_IMPL() std::string format() const override;
 #define FORMAT_IMPL(TYPE, stdstr, ...) \
   std::string TYPE::format() const { return std::format(stdstr, __VA_ARGS__); }
 
@@ -122,6 +121,7 @@ constexpr static uint8_t MEM_ADDR_LEN  = WORD_LEN; // bytes
 
 using ushort                           = unsigned short;
 using cstring                          = std::string_view;
+using cr_string                        = const std::string&;
 
 struct hashable {
   virtual ~hashable()                                = default;
@@ -139,7 +139,13 @@ struct TypeErasedHash {
 struct formattable {
   constexpr virtual ~formattable() = default;
   constexpr operator std::string() const;
-  [[nodiscard]] constexpr virtual std::string format() const = 0;
+  [[nodiscard]] virtual std::string format() const = 0;
+};
+
+struct indented_formattable {
+  virtual ~indented_formattable() = default;
+  constexpr operator std::string() const;
+  [[nodiscard]] constexpr virtual std::string format(size_t lvl) const = 0;
 };
 
 template <typename T>
@@ -189,6 +195,25 @@ struct std::formatter<T*, char> : std::formatter<string_view> {
   template <typename Ctx>
   auto format(const T* obj, Ctx& ctx) const {
     return std::formatter<string_view>::format(obj->format(), ctx);
+  }
+};
+
+template <typename T>
+  requires(
+      std::is_base_of_v<cmm::indented_formattable, std::remove_cv_t<std::remove_reference_t<T>>>)
+struct std::formatter<T, char> : std::formatter<string_view> {
+  template <typename Ctx>
+  auto format(const T& obj, Ctx& ctx) const {
+    return std::formatter<string_view>::format(obj.format(0), ctx);
+  }
+};
+template <typename T>
+  requires(
+      std::is_base_of_v<cmm::indented_formattable, std::remove_cv_t<std::remove_reference_t<T>>>)
+struct std::formatter<T*, char> : std::formatter<string_view> {
+  template <typename Ctx>
+  auto format(const T* obj, Ctx& ctx) const {
+    return std::formatter<string_view>::format(obj->format(0), ctx);
   }
 };
 
@@ -317,6 +342,8 @@ struct enumeration : public formattable {
   // Conversion
   constexpr operator E() const { return inner(); };
   constexpr operator uint8_t() const { return (uint8_t)value(); };
+  template <typename To>
+  [[nodiscard]] constexpr bool is_castable() const;
   template <typename To>
   To cast() const;
 
@@ -782,6 +809,7 @@ CREATE_ERROR(invalid_continue,
 CREATE_ERROR(invalid_break, os::status::INVALID_BREAK, "break statement not within loop or switch");
 CREATE_ERROR(undeclared_symbol, os::status::UNDECLARED_SYMBOL, "{} not declared");
 CREATE_ERROR(already_declared_symbol, os::status::ALREADY_DECLARED_SYMBOL, "{} already declared");
+CREATE_ERROR(undefined_function, os::status::COMPILATION_ERROR, "Function {} is not defined");
 CREATE_ERROR(label_in_global, os::status::LABEL_IN_GLOBAL, "Label {} in global scope");
 CREATE_ERROR(return_in_global, os::status::RETURN_IN_GLOBAL, "Return in global scope");
 CREATE_ERROR(bad_function_call, os::status::BAD_FUNCTION_CALL, "Label {} in global scope");
@@ -971,7 +999,8 @@ template <typename T> struct vector {
   vector(const container_type&);
   vector(container_type&&);
   virtual ~vector() = default;
-
+  operator container_type() const { return m_data; }
+  operator const container_type&() const { return m_data; }
   [[nodiscard]] const container_type& data() const;
   T& at(size_t);
   [[nodiscard]] const T& at(size_t) const;
@@ -995,10 +1024,21 @@ template <typename T> struct vector {
   pointer_type find(Fn);
   template <typename Fn>
   const_pointer_type find(Fn) const;
+  template <typename Fn>
+  auto transform(Fn&&) const;
+  [[nodiscard]] std::string join(char, size_t) const;
+  template <std::ranges::forward_range Pattern>
+    requires(std::ranges::view<Pattern>)
+  std::string join(Pattern&&, size_t) const;
+  template <std::move_constructible Func, std::ranges::forward_range Pattern>
+    requires(std::ranges::view<Pattern>)
+  std::string join(Func&&, Pattern&&, size_t) const;
 
 private:
   container_type m_data;
 };
+
+static_assert(std::is_copy_constructible_v<vector<int>>);
 
 template <typename T>
 struct node {
@@ -1006,6 +1046,67 @@ struct node {
   T value;
 };
 
+namespace traits {
+
+  template <typename T, T V>
+  struct integral_constant {
+    static constexpr T value = V;
+    using value_type         = T;
+    using type               = integral_constant<T, V>;
+    constexpr operator value_type() const noexcept { return value; }
+    constexpr value_type operator()() const noexcept { return value; }
+  };
+  template <bool B>
+  using bool_constant = integral_constant<bool, B>;
+  using true_type     = bool_constant<true>;
+  using false_type    = bool_constant<false>;
+
+}; // namespace traits
+
+template <typename Range, typename Func>
+auto forward_range(Range&& range, Func&& fn) {
+  auto make_ref_tuple = [&range]<std::size_t... Indices>(std::index_sequence<Indices...>) {
+    return std::tie(range[Indices]...);
+  };
+
+  constexpr auto size = std::tuple_size_v<std::remove_reference_t<Range>>;
+  auto ref_tuple      = make_ref_tuple(std::make_index_sequence<size>{});
+  return std::apply([fn](auto&&... args) { return fn(args...); }, ref_tuple);
+}
+
+#define transform_vector(IN, FN) IN | std::views::transform(FN) | std::ranges::to<std::vector>()
+
+template <typename T, typename... Args>
+concept is_constructible = requires(Args&&... args) {
+  { T{std::forward<Args>(args)...} } -> std::same_as<T>;
+  !std::is_abstract_v<T>;
+};
+
+template <typename T>
+constexpr inline auto generate = [](T& t) { return t; };
+
+struct semantic_extension {
+  ~semantic_extension() = default;
+};
+
+struct base_decorable {
+  virtual ~base_decorable() = default;
+  virtual semantic_extension* semantics() { return nullptr; }
+};
+
+template <typename T, typename Ext>
+struct decorable {
+  virtual ~decorable() = default;
+  decorable(T& t)
+      : m_decorated(t) {}
+
+  virtual Ext* semantics() { return static_cast<Ext*>(&m_semantics); }
+  virtual const Ext* semantics() const { return static_cast<const Ext*>(&m_semantics); }
+
+private:
+  T& m_decorated;
+  Ext m_semantics;
+};
 } // namespace cmm
 
 #include "common.inl"
