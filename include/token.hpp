@@ -182,7 +182,6 @@ class tokens : public formattable_range<std::vector<token>> {
   using range_type = std::vector<token>;
 
 private:
-  using RCtoken        = const token&;
   using const_iterator = std::vector<token>::const_iterator;
 
 public:
@@ -195,9 +194,9 @@ public:
   [[nodiscard]] bool empty() const noexcept;
   [[nodiscard]] bool has_next() const noexcept;
   [[nodiscard]] bool next_is(const token_t&) const noexcept;
-  [[nodiscard]] RCtoken next();
+  token next();
   void advance(size_t = 1);
-  RCtoken peek(short = 0);
+  const token& peek(short = 0);
   void pointer(size_t) noexcept;
   [[nodiscard]] size_t pointer() const noexcept;
   void reserve(size_t);

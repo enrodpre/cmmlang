@@ -45,9 +45,6 @@ ofile compiler::compile(const source_code& src) {
   if (m_config.dump_ast) {
     // std::print("{}\n", compound.join('\n'));
   }
-
-  // exit(1);
-  // ast::validator::validate(compound);
   ir::compilation_unit& cunit = ir::compilation_unit::instance();
   auto& fn                    = compound.at(0);
 
@@ -59,7 +56,11 @@ ofile compiler::compile(const source_code& src) {
     asm_file.write(asm_code);
     return asm_file;
   } catch (const compilation_error& e) {
-    throw_compilation_error(e.what(), e.loc);
+    if (e.loc.has_value()) {
+      throw_compilation_error(e.what(), e.loc.value());
+    } else {
+      REGISTER_ERROR("{}", e.what());
+    }
     os::error(e.status);
   }
 }
@@ -117,6 +118,6 @@ void compiler::throw_compilation_error(std::string_view err, const location& loc
   auto second_line          = std::format("   {} |    {}", loc.rows.start, formatter_error_line);
   auto formatted_msg        = std::format("{}\n{}", first_line, second_line);
 
-  std::cout << formatted_msg;
+  REGISTER_ERROR("{}", formatted_msg);
 }
 } // namespace cmm

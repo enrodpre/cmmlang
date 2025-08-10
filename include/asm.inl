@@ -1,6 +1,7 @@
 #pragma once
 
 #include "asm.hpp"
+#include <cpptrace/exceptions.hpp>
 #include <magic_enum/magic_enum.hpp>
 
 namespace cmm::assembly {
@@ -34,7 +35,12 @@ constexpr std::string registers::to_realname(registers_t r) {
   }
 }
 
-constexpr reg* registers::parameters_t::next() { return at(i++); }
+constexpr reg* registers::parameters_t::next() {
+  // if (i >= 6) {
+  //   throw cmm::error("No more registers available");
+  // }
+  return at((i++) % 6);
+}
 
 constexpr void registers::parameters_t::reset() {
   i = 0;
@@ -98,7 +104,7 @@ namespace {
 template <typename... Args>
 void asmgen::write_instruction(const instruction_t& ins, Args&&... args) {
   if constexpr ((sizeof...(Args) == 0)) {
-    m_text.write("{}", ins.name());
+    m_text.write<2>("{}", ins.name());
   } else if constexpr ((sizeof...(Args) == 1)) {
     m_text.write<2>("{} {}", ins.name(), std::forward<Args>(args)...);
   } else if constexpr ((sizeof...(Args) == 2)) {

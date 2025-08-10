@@ -168,6 +168,9 @@ namespace types {
   struct is_indirect_v {
     static constexpr bool operator()(cr_type);
   };
+  struct is_reference_v {
+    static constexpr bool operator()(cr_type);
+  };
   type_metadata_t get_metadata_of(type_category_t);
   // std::vector<type_category_t> all_children_of(type_category_t);
   bool belongs_to(type_category_t, type_category_t);

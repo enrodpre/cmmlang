@@ -84,7 +84,7 @@ def build_pp(pps):
     return pp
 
 
-pps = (("cmm::token", token_pp),)
+pps = (("cmm::token", token_pp), ("cmm::location", location_pp))
 
 gdb.printing.register_pretty_printer(gdb.current_objfile(), build_pp(pps), replace=True)
 # disabled_types = ("cmm::formattable",)

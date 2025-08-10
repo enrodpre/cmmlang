@@ -5,6 +5,7 @@
 #include "ast.hpp"
 #include "common.hpp"
 #include "lang.hpp"
+#include "semantic.hpp"
 #include "traverser.hpp"
 #include <algorithm>
 #include <cstdint>
@@ -81,62 +82,74 @@ public:
 private:
   value_type m_string;
 };
+
+struct scope;
+struct local_scope;
+
+template <typename T>
+concept is_declaration = std::is_base_of_v<ast::decl::declaration, T>;
+
 template <typename Decl>
+  requires(is_declaration<Decl>)
 struct symbol : public formattable {
-  using address_t = assembly::operand*;
-  using decl_t    = Decl;
-  mangled_name name;
-  const Decl* decl;
-  mutable address_t addr;
+  using decl_t       = Decl;
+  ~symbol() override = default;
+  ir::scope* scope;
+  ir::operand* address;
 
-  symbol(const Decl* decl, mangled_name&&, address_t);
-  [[nodiscard]] bool is_loaded() const noexcept { return addr != nullptr; }
+  [[nodiscard]] virtual bool is_loaded() const noexcept {
+    return scope == nullptr || address == nullptr;
+  }
+  [[nodiscard]] virtual cr_string identifier() const noexcept = 0;
+  void load(ir::scope* s, operand* addr);
+  [[nodiscard]] const decl_t* declaration() const { return m_decl; }
+
+  symbol(const Decl*);
+
+private:
+  const Decl* m_decl;
 };
 
-struct label : public symbol<ast::decl::label> {
-  label(const decl_t* label_, address_t);
+struct variable;
+struct user_function;
+
+struct label : public symbol<cmm::ast::decl::label> {
+  label(const ast::decl::label*, local_scope*, assembly::label_memory*);
   [[nodiscard]] std::string format() const override;
+  [[nodiscard]] cr_string identifier() const noexcept override {
+    return declaration()->term.value();
+  }
 };
 
-struct array : public symbol<ast::decl::label> {
-  array(const decl_t* label_, address_t);
-  [[nodiscard]] std::string format() const override;
-};
+// struct array : public symbol<array, ast::decl::array> {
+//   array(const ast::decl::label* label_);
+//   [[nodiscard]] std::string format() const override;
+// };
 
 static_assert(std::is_move_constructible<label>());
 static_assert(std::is_move_assignable<label>());
 
-struct scope;
-struct local_scope;
+template <typename T>
+concept is_var_declaration =
+    std::is_same_v<std::remove_cvref_t<std::remove_pointer_t<std::decay_t<T>>>,
+                   ast::decl::variable>;
+
+static_assert(is_var_declaration<const ast::decl::variable*&>);
 
 struct variable : public symbol<ast::decl::variable> {
   linkage_t linkage;
   storage_t storage;
   ptr_type type;
-  mutable scope* scope_ref;
-  variable(scope*, const ast::decl::variable*, address_t, linkage_t, storage_t, decltype(type));
+  variable(const ast::decl::variable*, linkage_t, storage_t, decltype(type));
   [[nodiscard]] std::string format() const override;
+  [[nodiscard]] cr_string identifier() const noexcept override {
+    return declaration()->ident->value();
+  };
 };
 
-struct local_variable : public variable {
-  local_variable(local_scope*, const ast::decl::variable*, operand*, storage_t, decltype(type));
-};
-
-struct auto_local_variable : public local_variable {
-  auto_local_variable(local_scope*,
-                      const ast::decl::variable*,
-                      assembly::reg_memory*,
-                      storage_t,
-                      decltype(type));
-};
-struct arg_local_variable : public local_variable {
-  arg_local_variable(const ast::decl::variable*, decltype(type));
-  void load(local_scope*, operand*) const;
-};
-
-struct global_variable : public variable {
-  global_variable(scope*, const ast::decl::variable*, assembly::label_memory*, decltype(type));
-};
+template <typename T>
+concept is_func_declaration =
+    std::is_same_v<std::remove_pointer_t<std::remove_cvref_t<T>>, ast::decl::function>;
 
 struct function : public symbol<ast::decl::function> {
   struct signature_t {
@@ -146,10 +159,6 @@ struct function : public symbol<ast::decl::function> {
     signature_t(std::string name, std::vector<ptr_type> args)
         : name(std::move(name)),
           argument_types(std::move(args)) {}
-    template <typename... Args>
-    signature_t(std::string name, Args&&... args)
-        : name(std::move(name)),
-          argument_types({std::forward<Args>(args)...}) {}
     operator std::tuple<cstring, std::vector<ptr_type>>() const {
       return std::make_tuple(name, argument_types);
     }
@@ -166,20 +175,23 @@ struct function : public symbol<ast::decl::function> {
     }
   };
 
+  struct argument;
+
   using return_t = ptr_type;
   linkage_t linkage;
   return_t return_type;
-  function::signature_t signature;
   bool inlined;
 
-  function(const ast::decl::function*, address_t, signature_t&&, linkage_t, return_t, bool);
+  function(const decl_t*, linkage_t, return_t, bool);
   [[nodiscard]] std::string format() const override;
   virtual std::vector<operand*> load(compilation_unit&,
                                      const std::vector<ast::expr::expression*>& = {}) const  = 0;
   virtual std::optional<operand*> run(compilation_unit&, const std::vector<operand*>&) const = 0;
   std::optional<operand*> load_and_run(compilation_unit&,
                                        const std::vector<ast::expr::expression*>& = {}) const;
-  [[nodiscard]] virtual bool is_defined() const = 0;
+  [[nodiscard]] virtual bool is_defined() const                        = 0;
+  [[nodiscard]] virtual std::vector<ptr_type> argument_types() const   = 0;
+  [[nodiscard]] [[nodiscard]] virtual bool is_builtin() const noexcept = 0;
 };
 
 namespace builtin::function {
@@ -187,47 +199,52 @@ namespace builtin::function {
 }
 
 struct builtin_function : public function {
-  using return_t     = std::optional<address_t>;
+  using return_t     = std::optional<operand*>;
   using parameters_t = std::vector<ptr_type>;
   using preprocess_t =
-      std::function<std::vector<address_t>(compilation_unit&,
-                                           parameters_t,
-                                           const std::vector<ast::expr::expression*>&)>;
-  using body_t        = std::function<operand*(compilation_unit&, std::vector<address_t>)>;
-  using postprocess_t = std::function<return_t(compilation_unit&, address_t)>;
+      std::function<std::vector<operand*>(compilation_unit&,
+                                          parameters_t,
+                                          const std::vector<ast::expr::expression*>&)>;
+  using body_t        = std::function<operand*(compilation_unit&, std::vector<operand*>)>;
+  using postprocess_t = std::function<return_t(compilation_unit&, operand*)>;
 
   struct descriptor_t {
     preprocess_t pre;
     body_t body;
     postprocess_t post;
     descriptor_t(body_t b);
+    descriptor_t(preprocess_t, body_t b);
+    descriptor_t(preprocess_t, body_t b, postprocess_t);
   };
 
-  parameters_t parameters;
+  signature_t signature;
   descriptor_t descriptor;
-  builtin_function(cr_string, ptr_type, parameters_t, descriptor_t, bool = false);
+  builtin_function(cr_string, ptr_type, const parameters_t&, descriptor_t&&, bool = false);
+  builtin_function(signature_t&&, ptr_type, descriptor_t&&, bool = false);
 
   std::vector<operand*> load(compilation_unit&,
                              const std::vector<ast::expr::expression*>&) const override;
   std::optional<operand*> run(compilation_unit&, const std::vector<operand*>& = {}) const override;
 
   [[nodiscard]] bool is_defined() const override;
+  [[nodiscard]] cr_string identifier() const noexcept override { return signature.name; };
+  [[nodiscard]] std::vector<ptr_type> argument_types() const override;
+  [[nodiscard]] bool is_builtin() const noexcept override { return true; };
 };
 
 struct user_function : public function {
   const ast::compound* body;
-  std::vector<arg_local_variable> parameters;
-  user_function(const ast::decl::function*,
-                address_t,
-                linkage_t,
-                cr_type,
-                std::vector<arg_local_variable>&& parameters,
-                bool = false);
+  user_function(const ast::decl::function*, linkage_t, cr_type, bool = false);
 
   std::vector<operand*> load(compilation_unit&,
                              const std::vector<ast::expr::expression*>&) const override;
-  std::optional<address_t> run(compilation_unit&, const std::vector<operand*>& = {}) const override;
+  std::optional<operand*> run(compilation_unit&, const std::vector<operand*>& = {}) const override;
   [[nodiscard]] bool is_defined() const override;
+  [[nodiscard]] cr_string identifier() const noexcept override {
+    return declaration()->ident.value();
+  };
+  [[nodiscard]] std::vector<ptr_type> argument_types() const override;
+  [[nodiscard]] bool is_builtin() const noexcept override { return false; };
 };
 
 enum class conversion_operand_t : uint8_t {
@@ -286,7 +303,7 @@ public:
   void put(value_type&&);
   template <typename T, typename... Args>
     requires std::is_constructible_v<T, Args...>
-  const value_type& emplace(key_type, Args&&...);
+  value_type& emplace(key_type, Args&&...);
   void clear();
 
   friend scope;
@@ -313,9 +330,9 @@ public:
   std::vector<const function*> get_by_name(cstring) const;
 
   const function* emplace_builtin(std::string&&,
-                                  std::optional<ptr_type>,
+                                  ptr_type,
                                   const std::vector<ptr_type>&,
-                                  const builtin_function::descriptor_t&,
+                                  builtin_function::descriptor_t&&,
                                   bool = false);
   const function* emplace_user_provided(const ast::decl::function*, bool = false);
   void clear();
@@ -386,20 +403,21 @@ struct frame {
 struct scope {
   virtual ~scope() = default;
   variable_store variables;
+
+  operand* create_builtin(const ast::decl::variable*, linkage_t, storage_t, ptr_type, operand*);
+  operand* create_user_provided(const ast::decl::variable*, operand*);
+
+private:
+  operand* create(const ast::decl::variable*, linkage_t, storage_t, ptr_type, operand*);
 };
 
-struct global_scope : public scope {
-  operand* emplace_static(const ast::decl::variable*);
-};
+struct global_scope : public scope {};
 
 struct local_scope : public scope {
-  operand* emplace_argument(const ast::decl::variable*, assembly::reg*);
-  operand* emplace_automatic(const ast::decl::variable*);
-  void load_argument(arg_local_variable);
   cref<frame> frame_ref;
   cref<ast::compound> compound;
   local_scope(const frame&, const ast::compound&);
-  // [[nodiscard]] const frame* parent() const override;
+  void load_argument(variable);
 };
 
 static_assert(!std::is_abstract_v<global_scope>);
@@ -429,6 +447,8 @@ struct symbol_table : public cmm::formattable {
   const function* get_function(const function::signature_t&) const;
   const function* get_function(const ast::term::identifier&) const;
   void declare_function(const ast::decl::function*, bool = false);
+  template <typename T>
+  T* load_symbol(const ast::term::term&);
 
   bool is_entry_point_defined() const noexcept;
   user_function* get_entry_point();
@@ -513,7 +533,6 @@ public:
   [[nodiscard]] operand* get_variable_address(const ast::term::identifier&) const;
   void save_variable(const variable*, operand*);
   void reserve_memory(cstring, cstring, cstring);
-  ptr_type get_expression_type(const ast::expr::expression&);
   std::optional<operand*> call_builtin(const builtin::function::builtin_signature_t&,
                                        const std::vector<operand*>&);
 
@@ -569,7 +588,8 @@ namespace builtin {
     };
     namespace preprocessors {
       inline extern const builtin_function::preprocess_t SIMPLE_LOADING;
-    };
+      inline extern const builtin_function::preprocess_t RAX_LOADING;
+    }; // namespace preprocessors
     namespace bodies {
       using body_t                = ir::builtin_function::body_t;
       constexpr auto EXECUTE_MOVE = [](compilation_unit& v,
@@ -613,6 +633,7 @@ namespace builtin {
     namespace postprocessors {
       using post_t = ir::builtin_function::postprocess_t;
       inline extern const post_t SIMPLE_RET;
+      inline extern const post_t RET_RAX;
       inline extern const post_t SAVE_VARIABLE;
     }; // namespace postprocessors
   }; // namespace function
@@ -622,17 +643,17 @@ namespace builtin {
     constexpr void provide();
 
   private:
-    constexpr void create_function(std::optional<ptr_type>,
+    constexpr void create_function(ptr_type,
                                    std::string&&,
                                    const std::vector<ptr_type>&,
-                                   const builtin_function::descriptor_t&);
-    constexpr void create_builtin_function(std::optional<ptr_type>,
+                                   builtin_function::descriptor_t&&);
+    constexpr void create_builtin_function(ptr_type,
                                            const function::builtin_signature_t&,
-                                           const builtin_function::descriptor_t&);
+                                           builtin_function::descriptor_t&&);
     constexpr void create_builtin_operator(ptr_type,
                                            const operator_t&,
                                            const std::vector<ptr_type>&,
-                                           const builtin_function::descriptor_t&);
+                                           builtin_function::descriptor_t&&);
     constexpr void create_direct_conversion(cr_type, cr_type, builtin_function::body_t);
     constexpr void create_glob_conversion(std::string,
                                           glob_conversion_function::condition_t,

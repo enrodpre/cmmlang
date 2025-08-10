@@ -11,19 +11,6 @@ namespace intents {
   enum class intent_t : uint8_t;
 }
 
-using assembly::operand;
-
-// using callback_body_t = std::function<void(compilation_unit&)>;
-// enum class callback_t : uint8_t { EXEC_INSTRUCTION = 0, SAVE_VARIABLE };
-
-// using callback_loader_t = std::function<callback_body_t(ir::variable, reg*)>;
-
-// struct callbacks {
-//   STATIC_CLS(callbacks)
-//   static const callback_loader_t EXEC_INSTRUCTION;
-//   static const callback_loader_t SAVE_VARIABLE;
-// };
-
 struct expression_visitor;
 struct statement_visitor;
 struct global_visitor;
@@ -38,13 +25,15 @@ public:
   void generate_program(const ast::program&);
   void generate_statements(const ast::compound&);
   void generate_statement(const ast::statement*);
-  operand* generate_expr(const ast::expr::expression&, ir::intents::intent_t, operand*);
-  operand* generate_expr(const ast::expr::expression&, ir::intents::intent_t);
-  operand* generate_expr(const ast::expr::expression&);
+  assembly::operand* generate_expr(const ast::expr::expression&,
+                                   ir::intents::intent_t,
+                                   assembly::operand*);
+  assembly::operand* generate_expr(const ast::expr::expression&, ir::intents::intent_t);
+  assembly::operand* generate_expr(const ast::expr::expression&);
+  assembly::operand* generate_expr(const ast::expr::expression&, cr_type, assembly::operand*);
 
 private:
   compilation_unit& m_context;
-  // std::queue<callback_body_t> m_callbacks;
 
   // Helpers
   template <bool IsGlobal>
@@ -54,8 +43,8 @@ private:
   instruction_t generate_condition(const ast::expr::expression&);
   void begin_scope(const ast::compound*);
   void end_scope();
-  std::optional<operand*> call_function(const ast::term::term&,
-                                        const std::vector<ast::expr::expression*>&);
+  std::optional<assembly::operand*> call_function(const ast::term::term&,
+                                                  const ast::expr::call::arguments&);
   [[nodiscard]] std::optional<std::tuple<std::string, std::string>> get_label_interation_scope()
       const;
 
@@ -64,19 +53,19 @@ private:
   friend global_visitor;
 };
 
-struct global_visitor : public const_visitor<GLOBAL_TYPES> {
+struct global_visitor : public cref_visitor<GLOBAL_TYPES> {
   ast_traverser* gen;
   global_visitor(ast_traverser*);
   void visit(const ast::decl::variable&) override;
   void visit(const ast::decl::function&) override;
 };
 
-struct expression_visitor : public const_visitor<EXPRESSION_TYPES> {
+struct expression_visitor : public cref_visitor<EXPRESSION_TYPES> {
   ast_traverser* gen;
-  operand* in;
-  operand* out;
+  assembly::operand* in;
+  assembly::operand* out;
   ir::intents::intent_t intent;
-  expression_visitor(ast_traverser*, operand*, ir::intents::intent_t);
+  expression_visitor(ast_traverser*, assembly::operand*, ir::intents::intent_t);
 
   void visit(const ast::expr::call&) override;
   void visit(const ast::expr::binary_operator&) override;
@@ -85,7 +74,8 @@ struct expression_visitor : public const_visitor<EXPRESSION_TYPES> {
   void visit(const ast::expr::identifier&) override;
 };
 
-struct statement_visitor : public expression_visitor, public const_visitor<STATEMENT_TYPES> {
+struct statement_visitor : public expression_visitor,
+                           public cref_visitor<STATEMENT_TYPES, GLOBAL_TYPES> {
   ast_traverser* gen;
   statement_visitor(ast_traverser*);
 

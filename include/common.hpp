@@ -5,11 +5,13 @@
 #include "os.hpp"
 #include "traits.hpp"
 #include <bits/version.h>
+#include <concepts>
 #include <cpptrace/utils.hpp>
 #include <cstdint>
 #include <exception>
 #include <format>
 #include <functional>
+#include <iostream>
 #include <libassert/assert.hpp>
 #include <magic_enum/magic_enum_all.hpp>
 #include <magic_enum/magic_enum_format.hpp>
@@ -140,12 +142,7 @@ struct formattable {
   constexpr virtual ~formattable() = default;
   constexpr operator std::string() const;
   [[nodiscard]] virtual std::string format() const = 0;
-};
-
-struct indented_formattable {
-  virtual ~indented_formattable() = default;
-  constexpr operator std::string() const;
-  [[nodiscard]] constexpr virtual std::string format(size_t lvl) const = 0;
+  [[nodiscard]] virtual std::string repr(size_t = 0) const { return format(); }
 };
 
 template <typename T>
@@ -195,25 +192,6 @@ struct std::formatter<T*, char> : std::formatter<string_view> {
   template <typename Ctx>
   auto format(const T* obj, Ctx& ctx) const {
     return std::formatter<string_view>::format(obj->format(), ctx);
-  }
-};
-
-template <typename T>
-  requires(
-      std::is_base_of_v<cmm::indented_formattable, std::remove_cv_t<std::remove_reference_t<T>>>)
-struct std::formatter<T, char> : std::formatter<string_view> {
-  template <typename Ctx>
-  auto format(const T& obj, Ctx& ctx) const {
-    return std::formatter<string_view>::format(obj.format(0), ctx);
-  }
-};
-template <typename T>
-  requires(
-      std::is_base_of_v<cmm::indented_formattable, std::remove_cv_t<std::remove_reference_t<T>>>)
-struct std::formatter<T*, char> : std::formatter<string_view> {
-  template <typename Ctx>
-  auto format(const T* obj, Ctx& ctx) const {
-    return std::formatter<string_view>::format(obj->format(0), ctx);
   }
 };
 
@@ -345,7 +323,7 @@ struct enumeration : public formattable {
   template <typename To>
   [[nodiscard]] constexpr bool is_castable() const;
   template <typename To>
-  To cast() const;
+  constexpr To cast() const;
 
   // Data
   static constexpr auto type_name() noexcept;
@@ -354,32 +332,12 @@ struct enumeration : public formattable {
   [[nodiscard]] constexpr E inner() const noexcept { return m_value; }
   [[nodiscard]] constexpr auto value() const noexcept;
 
-  [[nodiscard]] std::string format() const override;
+  [[nodiscard]] constexpr std::string format() const override;
 
   using value_type = E;
 
 protected:
   E m_value;
-};
-
-template <typename T, typename V, auto N>
-class enum_property : public formattable {
-public:
-  constexpr enum_property(T::value_type);
-  constexpr enum_property()                                = default;
-  constexpr ~enum_property() override                      = default;
-  constexpr enum_property(const enum_property&)            = default;
-  constexpr enum_property& operator=(const enum_property&) = default;
-  constexpr enum_property(enum_property&&)                 = default;
-  constexpr enum_property& operator=(enum_property&&)      = default;
-
-  constexpr const V& read() const;
-  constexpr operator const V&() const;
-
-  [[nodiscard]] std::string format() const override;
-
-private:
-  V m_value;
 };
 
 #define ENUM_PROPERTY(TYPE, NAME, N) TYPE NAME
@@ -511,6 +469,7 @@ private:
   DECLARE_VARS(__VA_ARGS__) \
   using member_types   = std::tuple<GET_TYPES(__VA_ARGS__)>; \
   using properties_map = magic_enum::containers::array<value_type, member_types>; \
+  static_assert(std::is_constant_evaluated()); \
   [[nodiscard]] static constexpr const properties_map& properties_array(); \
   constexpr TYPE(value_type e) \
       : enumeration<value_type>(e), \
@@ -736,6 +695,18 @@ static bool operator==(const location& r, const location& l) {
   return r.rows == l.rows && l.cols == r.cols;
 }
 
+} // namespace cmm
+
+template <>
+struct std::formatter<std::optional<cmm::location>> : formatter<string_view> {
+  auto format(const std::optional<cmm::location>& loc, format_context& ctx) const {
+    if (loc) {
+      return formatter<string_view>::format(std::format("{}", loc.value()), ctx);
+    }
+    return formatter<string_view>::format("<No location>", ctx);
+  }
+};
+namespace cmm {
 struct allocated {
   virtual ~allocated()                                 = default;
   [[nodiscard]] virtual cmm::location location() const = 0;
@@ -779,50 +750,77 @@ bool check_type(Base* ptr) {
   return dynamic_cast<Derived*>(ptr);
 }
 
-struct compilation_error : public cmm::error {
-  cmm::os::status status;
-  const location loc;
-
-  compilation_error(cmm::os::status status, location loc, const std::string& msg)
-      : error(std::move(msg)),
-        status(status),
-        loc(std::move(loc)) {
-    std::print("{}", libassert::stacktrace());
-  }
+enum class _error_t : uint8_t {
+  GENERIC,
+  INVALID_CONTINUE,
+  INVALID_BREAK,
+  UNDECLARED_SYMBOL,
+  ALREADY_DECLARED_SYMBOL,
+  UNDEFINED_FUNCTION,
+  LABEL_IN_GLOBAL,
+  RETURN_IN_GLOBAL,
+  BAD_FUNCTION_CALL,
+  WRONG_FUNCTION_ARGUMENT,
+  UNEXPECTED_TOKEN,
+  INCOMPATIBLE_TOKEN,
+  REQUIRED_TYPE,
+  TOO_MANY_TYPES,
+  MISSING_ENTRY_POINT
 };
 
-#define CREATE_ERROR(NAME, STATUS, FMTSTR) \
-  struct NAME : public compilation_error { \
-    template <typename... Args> \
-    NAME(cmm::location loc, Args&&... args) \
-        : compilation_error(STATUS, loc, std::format(FMTSTR, std::forward<Args>(args)...)) { \
-      static_assert((std::formattable<Args, char> && ...)); \
-    } \
-    template <Allocated T> NAME(const T& t) \
-        : compilation_error(STATUS, t.location(), std::format(FMTSTR, t)) {} \
-  } // namespace cmm
+struct error_t : public cmm ::enumeration<_error_t> {
+  using value_type   = _error_t;
+  using element_type = error_t;
+  using enumeration<value_type>::enumeration;
+  using enum value_type;
+  _error_t self;
+  os ::status status;
+  std ::string_view fmt;
+  bool located;
+  using member_types   = std ::tuple<_error_t, os ::status, std ::string_view, bool>;
+  using properties_map = magic_enum ::containers ::array<value_type, member_types>;
+  static_assert(std ::is_constant_evaluated());
+  [[nodiscard]] static constexpr const properties_map& properties_array();
+  constexpr error_t(value_type e)
+      : enumeration<value_type>(e),
+        self(std ::get<0>(element_type ::properties_array().at(m_value))),
+        status(std ::get<1>(element_type ::properties_array().at(m_value))),
+        fmt(std ::get<2>(element_type ::properties_array().at(m_value))),
+        located(std ::get<3>(element_type ::properties_array().at(m_value))) {}
+};
+;
 
-CREATE_ERROR(generic_error, os::status::GENERIC_ERROR, "Generic error");
-CREATE_ERROR(invalid_continue,
-             os::status::INVALID_CONTINUE,
-             "continue statement not within loop or switch");
-CREATE_ERROR(invalid_break, os::status::INVALID_BREAK, "break statement not within loop or switch");
-CREATE_ERROR(undeclared_symbol, os::status::UNDECLARED_SYMBOL, "{} not declared");
-CREATE_ERROR(already_declared_symbol, os::status::ALREADY_DECLARED_SYMBOL, "{} already declared");
-CREATE_ERROR(undefined_function, os::status::COMPILATION_ERROR, "Function {} is not defined");
-CREATE_ERROR(label_in_global, os::status::LABEL_IN_GLOBAL, "Label {} in global scope");
-CREATE_ERROR(return_in_global, os::status::RETURN_IN_GLOBAL, "Return in global scope");
-CREATE_ERROR(bad_function_call, os::status::BAD_FUNCTION_CALL, "Label {} in global scope");
-CREATE_ERROR(wrong_function_argument,
-             os::status::WRONG_FUNCTION_ARGUMENT,
-             "Wrong argument. Declared {} but provided {}");
-CREATE_ERROR(unexpected_token, os::status::UNEXPECTED_TOKEN, "Unexpected token {}");
-CREATE_ERROR(incompatible_token,
-             os::status::INCOMPATIBLE_TOKEN,
-             "Incompatible token {}. Already declared {}");
-CREATE_ERROR(required_type, os::status::REQUIRED_TYPE, "Required type in specifiers");
-CREATE_ERROR(too_many_types, os::status::UNEXPECTED_TOKEN, "More than one type in specifiers");
-CREATE_ERROR(missing_entry_point, os::status::MISSING_ENTRY_POINT, "Main function not found");
+template <typename T>
+concept maybe_allocated = requires(T t) {
+  { t.location() } -> std::same_as<std::optional<cmm::location>>;
+};
+
+struct compilation_error : public cmm::error {
+  cmm::os::status status;
+  std::optional<cmm::location> loc;
+
+  compilation_error(const error_t& err, const std::string& str, std::optional<location> loc = {})
+      : error(str),
+        status(err.status),
+        loc(std::move(loc)) {}
+};
+
+template <_error_t Err, typename... Args>
+  requires(!error_t(Err).located)
+[[noreturn]] void throw_error(Args&&... args) {
+  constexpr auto err = error_t(Err);
+  std::print("{}", libassert::stacktrace());
+  throw compilation_error(err, std::format(err.fmt, std::forward<Args>(args)...));
+}
+
+template <_error_t Err, typename L, typename... Args>
+  requires(maybe_allocated<L> || Allocated<L>)
+[[noreturn]] void throw_error(L&& l, Args&&... args) {
+  constexpr auto err = error_t(Err);
+  auto msg           = std::format(err.fmt, l, std::forward<Args>(args)...);
+  std::print("{}", libassert::stacktrace());
+  throw compilation_error(err, msg, l.location());
+}
 
 template <typename T>
 struct default_singleton {
@@ -1089,24 +1087,54 @@ struct semantic_extension {
   ~semantic_extension() = default;
 };
 
+struct allocated_extension {
+  ~allocated_extension() = default;
+};
+
+struct loaded_extension {
+  ~loaded_extension() = default;
+};
+
+struct loaded_decorable {
+  virtual ~loaded_decorable() = default;
+  virtual loaded_extension* data() { return nullptr; }
+  using extension_t = loaded_extension;
+};
+
+struct allocated_decorable {
+  virtual ~allocated_decorable() = default;
+  virtual allocated_extension* declaration() { return nullptr; }
+  using extension_t = allocated_extension;
+};
+struct semantic_decorable {
+  virtual ~semantic_decorable() = default;
+  virtual semantic_extension* semantics() { return nullptr; }
+  using extension_t = semantic_extension;
+};
 struct base_decorable {
   virtual ~base_decorable() = default;
-  virtual semantic_extension* semantics() { return nullptr; }
 };
 
-template <typename T, typename Ext>
-struct decorable {
-  virtual ~decorable() = default;
-  decorable(T& t)
-      : m_decorated(t) {}
-
-  virtual Ext* semantics() { return static_cast<Ext*>(&m_semantics); }
-  virtual const Ext* semantics() const { return static_cast<const Ext*>(&m_semantics); }
+template <typename T, typename Type, typename Ext>
+struct decorable : public base_decorable, public Type {
+  using extension_t     = Type::extension_t;
+  ~decorable() override = default;
+  decorable(T&& t)
+      : m_decorated(std::move(t)) {}
 
 private:
-  T& m_decorated;
-  Ext m_semantics;
+  T m_decorated;
 };
+
+#define GET_MEMBER(OBJ, MEMBER) \
+  if constexpr (requires { OBJ.operator->(); }) { \
+    OBJ->MEMBER \
+  } else if constexpr (std::is_pointer_v<decltype(OBJ)>) { \
+    OBJ->MEMBER \
+  } else { \
+    OBJ.MEMBER \
+  }
+
 } // namespace cmm
 
 #include "common.inl"

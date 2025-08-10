@@ -17,7 +17,7 @@ struct visitor<T> : virtual visitor<> {
 namespace detail {
   template <class T>
   struct visitor_no_warn : visitor<T> {
-    void visit(T& t) override { visit((const T&)t); }
+    void visit(T t) override { visit((const T)t); }
     virtual void visit(const T&) = 0;
   };
 } // namespace detail
@@ -28,7 +28,16 @@ struct visitor<const T> : detail::visitor_no_warn<T> {
 };
 
 template <typename... Ts>
-using const_visitor = visitor<const Ts...>;
+using ref_visitor = visitor<Ts&...>;
+
+template <typename... Ts>
+using cref_visitor = visitor<const Ts&...>;
+
+template <typename... Ts>
+using ptr_visitor = visitor<Ts*...>;
+
+template <typename... Ts>
+using cptr_visitor = visitor<const Ts*...>;
 
 namespace detail {
   struct dummy {};

@@ -6,6 +6,41 @@
 
 namespace cmm {
 
+[[nodiscard]] constexpr const error_t::properties_map& error_t::properties_array() {
+  using enum _error_t;
+  using namespace os;
+  static_assert(std::is_constant_evaluated());
+  static constexpr properties_map MAP{
+      {{{GENERIC, os::status::GENERIC_ERROR, "Generic error", false},
+        {INVALID_CONTINUE,
+         os::status::INVALID_CONTINUE,
+         "continue statement not within loop or switch",
+         true},
+        {INVALID_BREAK,
+         os::status::INVALID_BREAK,
+         "break statement not within loop or switch",
+         true},
+        {UNDECLARED_SYMBOL, os::status::UNDECLARED_SYMBOL, "{} not declared", true},
+        {ALREADY_DECLARED_SYMBOL, os::status::ALREADY_DECLARED_SYMBOL, "{} already declared", true},
+        {UNDEFINED_FUNCTION, os::status::COMPILATION_ERROR, "Function {} is not defined", true},
+        {LABEL_IN_GLOBAL, os::status::LABEL_IN_GLOBAL, "Label {} in global scope", true},
+        {RETURN_IN_GLOBAL, os::status::RETURN_IN_GLOBAL, "Return in global scope", true},
+        {BAD_FUNCTION_CALL, os::status::BAD_FUNCTION_CALL, "Label {} in global scope", true},
+        {WRONG_FUNCTION_ARGUMENT,
+         os::status::WRONG_FUNCTION_ARGUMENT,
+         "Wrong argument. Declared {} but provided {}",
+         true},
+        {UNEXPECTED_TOKEN, os::status::UNEXPECTED_TOKEN, "Unexpected token {}", true},
+        {INCOMPATIBLE_TOKEN,
+         os::status::INCOMPATIBLE_TOKEN,
+         "Incompatible token {}. Already declared {}",
+         true},
+        {REQUIRED_TYPE, os::status::REQUIRED_TYPE, "Required type in specifiers", true},
+        {TOO_MANY_TYPES, os::status::UNEXPECTED_TOKEN, "More than one type in specifiers", true},
+        {MISSING_ENTRY_POINT, os::status::MISSING_ENTRY_POINT, "Main function not found", false}}}};
+  return MAP;
+}; // namespace cmm
+
 namespace log {
   template <typename T>
   constexpr std::string apply(T&& t, style_t s) {
@@ -145,7 +180,7 @@ constexpr auto enumeration<E>::type_name() noexcept {
 }
 template <ScopedEnum E>
 [[nodiscard]] constexpr auto enumeration<E>::name() const noexcept {
-  return magic_enum::enum_name<E>(m_value);
+  return std::string(magic_enum::enum_name<E>(m_value));
 };
 template <ScopedEnum E>
 [[nodiscard]] constexpr auto enumeration<E>::value() const noexcept {
@@ -171,7 +206,7 @@ template <typename To>
 
 template <ScopedEnum From>
 template <typename To>
-To enumeration<From>::cast() const {
+constexpr To enumeration<From>::cast() const {
   auto to_enum = name();
   if constexpr (Enumerable<To>) {
     if (auto to =
@@ -193,27 +228,8 @@ To enumeration<From>::cast() const {
 }
 
 template <ScopedEnum E>
-std::string enumeration<E>::format() const {
+constexpr std::string enumeration<E>::format() const {
   return std::format("{}::{}", type_name(), name());
-}
-template <typename T, typename V, auto N>
-constexpr enum_property<T, V, N>::enum_property(T::value_type v)
-    : m_value(v) {
-  static_assert(std::is_default_constructible<V>());
-}
-
-template <typename T, typename V, auto N>
-constexpr const V& enum_property<T, V, N>::read() const {
-  auto tuple = T::properties_array().at(m_value);
-  return std::get<N>(tuple);
-}
-template <typename T, typename V, auto N>
-constexpr enum_property<T, V, N>::operator const V&() const {
-  return read();
-}
-template <typename T, typename V, auto N>
-std::string enum_property<T, V, N>::format() const {
-  return std::format("{}", read());
 }
 
 template <typename T>
@@ -460,11 +476,11 @@ template <typename T>
 [[nodiscard]] std::string vector<T>::join(char delim, size_t lvl) const {
   return data() | std::views::transform([lvl](const auto& elem) {
            if constexpr (requires { elem.operator->(); }) {
-             return elem->format(lvl + 1);
+             return elem->repr(lvl + 1);
            } else if constexpr (std::is_pointer_v<std::remove_cvref_t<decltype(elem)>>) {
-             return elem->format(lvl + 1);
+             return elem->repr(lvl + 1);
            } else {
-             return elem.format(lvl + 1);
+             return elem.repr(lvl + 1);
            }
          }) |
          std::views::join_with(delim) | std::ranges::to<std::string>();
@@ -476,11 +492,11 @@ template <std::ranges::forward_range Pattern>
 std::string vector<T>::join(Pattern&& p, size_t lvl) const {
   return data() | std::views::transform([lvl](const auto& elem) {
            if constexpr (requires { elem.operator->(); }) {
-             return elem->format(lvl + 1);
+             return elem->repr(lvl + 1);
            } else if constexpr (std::is_pointer_v<std::remove_cvref_t<decltype(elem)>>) {
-             return elem->format(lvl + 1);
+             return elem->repr(lvl + 1);
            } else {
-             return elem.format(lvl + 1);
+             return elem.repr(lvl + 1);
            }
          }) |
          std::views::join_with(p) | std::ranges::to<std::string>();

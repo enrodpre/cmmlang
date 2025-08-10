@@ -136,7 +136,7 @@ registers::parameters_t::parameters_t(registers& regs)
 const ir::variable* registers::find_var(const ast::term::identifier& id) {
   for (const auto* r : m_registers) {
     if (const auto* var = r->variable()) {
-      if (*var->decl->ident == id) {
+      if (var->identifier() == id) {
         return var;
       }
     }

@@ -48,9 +48,9 @@ namespace cmm {
       {1, false, {}},  // dec
       {2, true, {}},   // add
       {2, true, {}},   // sub
-      {2, true, {}},   // mul
+      {1, true, {}},   // mul
       {2, true, {}},   // imul
-      {2, true, {}},   // div
+      {1, true, {}},   // div
       {2, true, {}},   // idiv
       {0, false, {}},  // syscall
       {0, false, {}},  // ret

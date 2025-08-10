@@ -72,12 +72,12 @@ protected:
   static void check_literal(const expr::expression& expr, const std::string& value) {
     const auto* lit = dynamic_cast<const expr::literal*>(&expr);
     EXPECT_FALSE(lit == nullptr);
-    EXPECT_EQ(value, lit->term.value);
+    EXPECT_EQ(value, lit->term.value());
   }
   static void require_identifier(const expr::expression& expr, const std::string& value) {
     const auto* lit = dynamic_cast<const expr::identifier*>(&expr);
     EXPECT_FALSE(lit == nullptr);
-    EXPECT_EQ(value, lit->term.value);
+    EXPECT_EQ(value, lit->term.value());
   }
 
   template <typename T>
@@ -98,7 +98,7 @@ TEST_F(ParserTest, Call) {
 
   auto* call_ = cast<expr::call*>(p.parse_expr());
   EXPECT_TRUE(call_);
-  EXPECT_EQ("exit", call_->ident.value);
+  EXPECT_EQ("exit", call_->ident.value());
   EXPECT_EQ(2, call_->args.size());
 
   auto it                = (*call_).args.begin();
@@ -113,10 +113,10 @@ TEST_F(ParserTest, Vardecl) {
   auto* elements = p.parse_declaration();
   auto* vardecl  = cast<decl::variable*>(elements);
 
-  EXPECT_EQ(vardecl->ident->value, "var");
+  EXPECT_EQ(vardecl->ident->value(), "var");
   auto* expr = cast<expr::literal*>(vardecl->init);
-  EXPECT_EQ("5", expr->term.value);
-  EXPECT_EQ(type_category_t::sint_t, expr->type);
+  EXPECT_EQ("5", expr->term.value());
+  EXPECT_EQ(type_category_t::sint_t, expr->type->category);
 }
 
 #define PRINT(x) \
@@ -167,16 +167,16 @@ TEST_F(ParserTest, multi_operator) {
   CAST(&first->left, expr::unary_operator*, first_left);
   EXPECT_EQ(operator_t::pre_inc, first_left->operator_.type);
   CAST(&first_left->expr, expr::identifier*, left_id);
-  EXPECT_EQ("exit", left_id->term.value);
+  EXPECT_EQ("exit", left_id->term.value());
 
   CAST(&first->right, expr::binary_operator*, first_right);
   EXPECT_EQ(operator_t::star, first_right->operator_.type);
   CAST(&first_right->left, expr::identifier*, right_left);
-  EXPECT_EQ("12", right_left->term.value);
+  EXPECT_EQ("12", right_left->term.value());
   CAST(&first_right->right, expr::unary_operator*, right_right);
   EXPECT_EQ(operator_t::post_dec, right_right->operator_.type);
   CAST(&right_right->expr, expr::identifier*, right_right_right);
-  EXPECT_EQ("var", right_right_right->term.value);
+  EXPECT_EQ("var", right_right_right->term.value());
 }
 
 TEST_F(ParserTest, IfElse) {

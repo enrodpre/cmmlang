@@ -62,5 +62,8 @@ constexpr bool types::is_indirect_v::operator()(cr_type t) {
   }
   return value;
 }
+constexpr bool types::is_reference_v::operator()(cr_type t) {
+  return types::belongs_to(t.category, type_category_t::reference_t);
+}
 
 } // namespace cmm

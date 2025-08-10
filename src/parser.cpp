@@ -44,7 +44,7 @@ compound* parser::parse_compound() {
   }
 
   auto tok = m_tokens.peek();
-  throw unexpected_token(tok);
+  throw_error<_error_t::UNEXPECTED_TOKEN>(tok);
 }
 
 statement* parser::parse_statement() {
@@ -209,7 +209,7 @@ ast::expr::expression* parser::parse_lhs_expr() {
     return m_arena.emplace<expr::unary_operator>(operand, std::move(term));
   }
 
-  throw unexpected_token(token);
+  throw_error<error_t::UNEXPECTED_TOKEN>(token);
 }
 
 expr::expression* parser::parse_expr(uint8_t min_prec) {
@@ -276,12 +276,12 @@ ast::decl::specifiers parser::parse_specifiers() {
 
 term::identifier parser::parse_identifier() {
   if (m_tokens.next_is(token_t::ident)) {
-    const auto& next = m_tokens.next();
+    auto&& next = m_tokens.next();
     DEBUG_ASSERT(!next.value.empty(), std::format("Identifier must have a value. token: {}", next));
     return {next};
   }
 
-  throw unexpected_token(m_tokens.peek());
+  throw_error<error_t::UNEXPECTED_TOKEN>(m_tokens.peek());
 }
 
 decl::variable* parser::parse_variable(ast::decl::specifiers&& mods, ast::term::identifier id) {
@@ -291,8 +291,8 @@ decl::variable* parser::parse_variable(ast::decl::specifiers&& mods, ast::term::
     init = parse_expr();
   }
 
-  const auto* id_ptr = m_arena.emplace<term::identifier>(id);
-  return m_arena.emplace<decl::variable>(std::move(mods), id_ptr, init);
+  return m_arena.emplace<decl::variable>(
+      std::move(mods), m_arena.emplace<term::identifier>(id), init);
 }
 
 template <typename T, typename Func>

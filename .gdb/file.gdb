@@ -1,1 +1,1 @@
-set args examples/reassign.cmm
+set args examples/binop2.cmm

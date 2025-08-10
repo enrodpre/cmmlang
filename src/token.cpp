@@ -41,7 +41,7 @@ bool tokens::has_next() const noexcept { return pointer() < size(); }
   return has_next() && m_tokens.at(m_pointer).type.is(other);
 }
 
-RCtoken tokens::next() {
+token tokens::next() {
   const auto& t = peek(0);
   advance();
   return t;
