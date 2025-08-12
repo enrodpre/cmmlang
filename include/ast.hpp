@@ -35,6 +35,8 @@ public:
 
 namespace expr {
   struct expression;
+  struct identifier;
+  struct literal;
   struct call;
   struct arguments;
   struct unary_operator;
@@ -552,6 +554,30 @@ using program = scopes::translation_unit;
   REGISTER_TRACE("{} visited {}", \
                  cpptrace::demangle(typeid(this).name()), \
                  cpptrace::demangle(typeid(OBJ).name()))
+
+#define TERM_TYPES \
+  ast::terms::literal, ast::terms::identifier, ast::terms::keyword, ast::terms::operator_, \
+      ast::terms::storage, ast::terms::linkage, ast::terms::type
+
+#define GLOBAL_TYPES ast::decl::function, ast::decl::variable
+
+#define STATEMENT_TYPES \
+  ast::decl::label, ast::iteration::for_, ast::iteration::while_, ast::selection::if_, \
+      ast::jump::break_, ast::jump::continue_, ast::jump::goto_, ast::jump::return_
+
+#define CHILDREN_TYPES ast::expr::arguments, ast::decl::function::parameters, ast::decl::specifiers
+
+#define LITERAL_TYPES \
+  \ ast::expr::string_literal, ast::expr::sint_literal, ast::expr::uint_literal, \
+      ast::expr::char_literal, ast::expr::float_literal, ast::expr::false_literal, \
+      ast::expr::true_literal
+#define EXPRESSION_TYPES \
+  ast::expr::binary_operator, ast::expr::unary_operator, ast::expr::call, ast::expr::literal, \
+      ast::expr::identifier
+#define NODE_TYPES STATEMENT_TYPES, EXPRESSION_TYPES, TERM_TYPES, CHILDREN_TYPES, GLOBAL_TYPES
+
+struct ast_visitor : visitor<NODE_TYPES> {};
+struct const_ast_visitor : const_visitor<NODE_TYPES> {};
 } // namespace cmm::ast
 
 #include "ast.inl"
