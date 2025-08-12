@@ -2,6 +2,8 @@
 
 #include "asm.hpp"
 #include "ast.hpp"
+#include "ir.hpp"
+#include "visitor.hpp"
 #include <cstdint>
 
 namespace cmm::ir {
@@ -23,7 +25,7 @@ public:
   NOT_COPYABLE_CLS(ast_traverser)
 
   void generate_program(const ast::program&);
-  void generate_statements(const ast::compound&);
+  void generate_statements(const ast::scope::block&);
   void generate_statement(const ast::statement*);
   assembly::operand* generate_expr(const ast::expr::expression&,
                                    ir::intents::intent_t,
@@ -41,9 +43,14 @@ private:
   template <typename Jump>
   void generate_continue_break(const Jump&);
   instruction_t generate_condition(const ast::expr::expression&);
-  void begin_scope(const ast::compound*);
+  void begin_scope(const ast::scope::block*);
   void end_scope();
   std::optional<assembly::operand*> call_function(const ast::term::term&,
+                                                  const std::vector<ptr_type>&,
+                                                  const ast::expr::call::arguments&);
+  std::optional<assembly::operand*> call_function(const ast::term::term&,
+                                                  const ast::expr::call::arguments&);
+  std::optional<assembly::operand*> call_function(const function*,
                                                   const ast::expr::call::arguments&);
   [[nodiscard]] std::optional<std::tuple<std::string, std::string>> get_label_interation_scope()
       const;
@@ -53,14 +60,14 @@ private:
   friend global_visitor;
 };
 
-struct global_visitor : public cref_visitor<GLOBAL_TYPES> {
+struct global_visitor : public const_visitor<GLOBAL_TYPES> {
   ast_traverser* gen;
   global_visitor(ast_traverser*);
   void visit(const ast::decl::variable&) override;
   void visit(const ast::decl::function&) override;
 };
 
-struct expression_visitor : public cref_visitor<EXPRESSION_TYPES> {
+struct expression_visitor : public const_visitor<EXPRESSION_TYPES> {
   ast_traverser* gen;
   assembly::operand* in;
   assembly::operand* out;
@@ -70,16 +77,28 @@ struct expression_visitor : public cref_visitor<EXPRESSION_TYPES> {
   void visit(const ast::expr::call&) override;
   void visit(const ast::expr::binary_operator&) override;
   void visit(const ast::expr::unary_operator&) override;
-  void visit(const ast::expr::literal&) override;
+  void visit(const ast::expr::float_lit& c) override;
+  void visit(const ast::expr::int_lit& c) override;
+  void visit(const ast::expr::string_lit& c) override;
+  void visit(const ast::expr::char_lit& c) override;
+  void visit(const ast::expr::false_lit& c) override;
+  void visit(const ast::expr::true_lit& c) override;
   void visit(const ast::expr::identifier&) override;
 };
 
 struct statement_visitor : public expression_visitor,
-                           public cref_visitor<STATEMENT_TYPES, GLOBAL_TYPES> {
+                           virtual public const_visitor<STATEMENT_TYPES,
+                                                        ast ::scope ::block,
+                                                        // ast ::scope ::function,
+                                                        // ast ::scope ::namespace_,
+                                                        // ast ::scope ::file,
+                                                        GLOBAL_TYPES> {
   ast_traverser* gen;
   statement_visitor(ast_traverser*);
 
-  void visit(const ast::compound& scope) override;
+  void visit(const ast::scope::block& scope) override;
+  // void visit(const ast::scope::namespace_& scope) override;
+  // void visit(const ast::scope::function& scope) override;
   void visit(const ast::decl::variable& vardecl) override;
   void visit(const ast::decl::label& label_) override;
   void visit(const ast::decl::function& func) override;

@@ -1,8 +1,12 @@
 #pragma once
 
+#include "common.hpp"
+#include "token.hpp"
+#include <algorithm>
 #include <cpptrace/utils.hpp>
 #include <stdexcept>
-namespace cmm {
+
+namespace cmm::ast {
 
 template <class... Ts>
 struct visitor : visitor<Ts>... {
@@ -17,7 +21,7 @@ struct visitor<T> : virtual visitor<> {
 namespace detail {
   template <class T>
   struct visitor_no_warn : visitor<T> {
-    void visit(T t) override { visit((const T)t); }
+    void visit(T& t) override { visit((const T&)t); }
     virtual void visit(const T&) = 0;
   };
 } // namespace detail
@@ -28,16 +32,7 @@ struct visitor<const T> : detail::visitor_no_warn<T> {
 };
 
 template <typename... Ts>
-using ref_visitor = visitor<Ts&...>;
-
-template <typename... Ts>
-using cref_visitor = visitor<const Ts&...>;
-
-template <typename... Ts>
-using ptr_visitor = visitor<Ts*...>;
-
-template <typename... Ts>
-using cptr_visitor = visitor<const Ts*...>;
+using const_visitor = visitor<const Ts...>;
 
 namespace detail {
   struct dummy {};
@@ -169,4 +164,57 @@ struct fn_visitor<Ret(), VisitableTypes...> : visitor<VisitableTypes...> {
   }
 };
 
-} // namespace cmm
+struct node : virtual visitable<> {
+  ~node() override = default;
+  node()           = default;
+  virtual const node* get_parent() const { return m_parent; }
+  virtual void set_parent(node* parent_) const { m_parent = parent_; }
+  virtual cmm::location location() const = 0;
+  operator node*() { return static_cast<node*>(this); }
+
+private:
+  mutable node* m_parent = nullptr;
+};
+
+template <typename T>
+concept is_node = std::is_base_of_v<ast::node, T>;
+
+struct leaf : public virtual node {
+  leaf() = default;
+  leaf(cmm::location);
+  leaf(const token&);
+
+  cmm::location location() const override { return m_location; }
+
+private:
+  cmm::location m_location;
+};
+
+struct composite : public node, public virtual vector<node*> {
+  virtual void add(node* n) { push_back(n); }
+
+  composite() = default;
+  composite(std::initializer_list<node*> init)
+      : vector(init) {}
+  template <typename... Args>
+  composite(Args&&... args)
+      : vector{std::forward<Args>(args)...} {}
+
+  void set_parent(node* n) const override {
+    set_parent(n);
+    for (const node* a : *this) {
+      a->set_parent(n);
+    }
+  }
+  [[nodiscard]] cmm::location location() const override {
+    return std::ranges::fold_left(
+        *this | std::views::transform([](const node* n) { return n->location(); }),
+        location(),
+        std::plus<cmm::location>{});
+  }
+};
+
+struct statement : public composite {
+  using composite::composite;
+};
+} // namespace cmm::ast

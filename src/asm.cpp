@@ -1,4 +1,5 @@
 #include "asm.hpp"
+#include "ast.hpp"
 #include "ir.hpp"
 #include <cstdint>
 #include <libassert/assert.hpp>
@@ -93,7 +94,8 @@ stack_memory::stack_memory(int64_t offset)
     : reg_memory("rsp", offset) {}
 
 std::string stack_memory::value() const {
-  const auto& v          = ir::compilation_unit::instance();
+  // const auto& v          = ast::scopes::translation_unit::instance();
+  ir::compilation_unit v;
   int64_t current_casted = 0;
   if (v.table.is_global_scope()) {
     current_casted = static_cast<int64_t>(v.table.active_scope().variables.size());
@@ -121,6 +123,10 @@ label::label(std::string name)
 
 [[nodiscard]] std::string label_memory::value() const { return std::format("[{}]", m_name); }
 
+[[nodiscard]] std::string label_literal::label_length() const {
+  return std::format("{}_len", value());
+}
+
 registers::registers()
     : m_registers(initialize_registers()),
       parameters(*this) {}
@@ -133,7 +139,7 @@ registers::parameters_t::parameters_t(registers& regs)
   return m_registers.at(magic_enum::enum_index(name).value());
 }
 
-const ir::variable* registers::find_var(const ast::term::identifier& id) {
+const ir::variable* registers::find_var(const ast::terms::identifier& id) {
   for (const auto* r : m_registers) {
     if (const auto* var = r->variable()) {
       if (var->identifier() == id) {
@@ -203,7 +209,9 @@ std::string asmgen::end() {
   if (!m_sections.data.empty()) {
     res << "section .data\n";
     for (const auto& line : m_sections.data) {
-      res << line << "\n";
+      const auto& [name, value] = line;
+      res << std::format("  {} db \'{}\', 10", name, value) << "\n";
+      res << std::format("  {}_len equ $ - {}", name, name) << "\n";
     }
     res << "\n";
   }
@@ -213,18 +221,9 @@ std::string asmgen::end() {
   return res.dump();
 }
 
-void asmgen::add_section_data(Section section_enum, cstring ident, cstring type, cstring size) {
-  switch (section_enum) {
-    case Section::DATA:
-      m_sections.data.emplace_back(std::format("{} {} {}", ident, type, size));
-      return;
-    case Section::BS:
-      m_sections.bss.emplace_back(std::format("{} {} {}", ident, type, size));
-      return;
-    case Section::TEXT:
-    default:
-      UNREACHABLE("NOT IMPLEMENTED");
-  }
+void asmgen::add_data(cstring name, cstring value) { m_sections.data.emplace_back(name, value); }
+void asmgen::add_bss(cstring ident, cstring type, cstring size) {
+  m_sections.bss.emplace_back(std::format("{} {} {}", ident, type, size));
 }
 
 void asmgen::register_labeled_code_block(cstring name, std::string&& asm_code) {

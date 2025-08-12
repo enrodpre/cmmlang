@@ -430,3 +430,14 @@ struct polymorphic_traits {
       is_base_polymorphic && is_derived_polymorphic && is_base_of && is_convertible;
 };
 #define DERIVE_OK(BASE, DERIVED) static_assert(polymorphic_traits<BASE, DERIVED>::value);
+
+template <typename T>
+concept should_use_arrow = std::is_pointer_v<std::remove_cvref_t<T>>;
+#define CONDITIONAL_CALL(OBJ, FUNC) \
+  if constexpr (requires { OBJ.operator->(); }) { \
+    OBJ->FUNC \
+  } else if constexpr (should_use_arrow<decltype(OBJ)>) { \
+    OBJ->FUNC \
+  } else { \
+    OBJ.FUNC \
+  }

@@ -46,7 +46,6 @@ ofile compiler::compile(const source_code& src) {
     // std::print("{}\n", compound.join('\n'));
   }
   ir::compilation_unit& cunit = ir::compilation_unit::instance();
-  auto& fn                    = compound.at(0);
 
   fs::ofile asm_file(m_output_filename);
   asm_file = asm_file.replace_extension("asm");

@@ -1,6 +1,8 @@
 #include "ast.hpp"
+#include "asm.hpp"
 #include "common.hpp"
-#include <algorithm>
+#include "lang.hpp"
+#include "types.hpp"
 #include <ranges>
 #include <type_traits>
 #include <utility>
@@ -8,258 +10,179 @@
 
 namespace cmm::ast {
 
-namespace {
-  template <typename>
-  inline constexpr bool always_false = false;
-  auto extract_location() { return location(); }
-  template <typename T>
-  auto extract_location(T&& t) {
-    if constexpr (Allocated<T>) {
-      return t.location();
-    } else if constexpr (AllocatedPtr<T>) {
-      return t == nullptr ? location() : t->location();
-    } else if constexpr (std::is_same_v<location, std::remove_cvref_t<T>>) {
-      return t;
-    } else {
-      return location();
-    }
+// std ::string expr ::call ::arguments ::repr(size_t n) const {
+//   return std ::format("{}{}",
+//                       std ::string(2, ' '),
+//                       std ::format("{}({}):\n{}",
+//                                    "Arguments",
+//                                    vector<expr::expression*>::size(),
+//                                    vector<expr::expression*>::join('\n', n)));
+// }
+// std ::string expr ::call ::arguments ::format() const {
+//   return cpptrace ::demangle(typeid(this).name());
+// }
+// JOIN_INDENT_IMPL(decl::function::parameters, "Parameters", '\n')
+// FORMAT_INDENT_IMPL(decl::specifiers, "Specifiers:\n{}\n{}\n{}", type, linkage, storage)
+// FORMAT_INDENT_IMPL(expr::identifier, "Identifier:\n{}", (*this));
+// FORMAT_INDENT_IMPL(expr::literal, "Literal:\n{}", (*this));
+// FORMAT_INDENT_IMPL(expr::unary_operator, "Unary:\n{}\n{}", operator_, expr);
+// FORMAT_INDENT_IMPL(expr::binary_operator, "Binary:\n{}\n{}\n{}\n", operator_, left, right);
+// FORMAT_INDENT_IMPL(expr::call, "Call:\n{}\n{}\n", ident, args);
+// FORMAT_INDENT_IMPL(decl::label, "Label:\n{}", ident);
+// FORMAT_INDENT_IMPL(decl::variable, "Variable:\n{}", specs);
+// std ::string decl ::function ::repr(size_t n) const {
+//   auto params_str = params.vector<parameter>::transform(
+//                         [n](const decl::function::parameter& param) -> std::string {
+//                           return param.repr(n + 1);
+//                         }) |
+//                     std::views::join_with('\n') | std::ranges::to<std::string>();
+//   auto elems = body->vector<statement*>::transform(
+//                    [n](const statement* stmt) -> std::string { return stmt->repr(n + 1); }) |
+//                std::views::join_with('\n') | std::ranges::to<std::string>();
+//   auto res =
+//       std::format("{}{}",
+//                   std::string(n * 2, ' '),
+//                   std::format("Function:\n{}\n{}\n{}", ident.repr(n + 1), params_str, elems));
+//   return res;
+// };
+// std::string decl::function::format() const { return cpptrace::demangle(typeid(this).name()); }
+// std ::string iteration ::while_ ::repr(size_t n) const {
+//   return std ::format(
+//       "{}{}", std ::string(n * 2, ' '), std ::format("While:\n{}", condition.repr(n + 1)));
+// }
+// std ::string iteration ::while_ ::format() const { return "while"; };
+// std ::string iteration ::for_ ::repr(size_t n) const {
+//   return std ::format(
+//       "{}{}", std ::string(n * 2, ' '), std ::format("For:\n{}", (*condition).repr(n + 1)));
+// }
+// std ::string iteration ::for_ ::format() const { return "for"; };
+// std ::string selection ::if_ ::repr(size_t n) const {
+//   return std ::format("{}{}",
+//                       std ::string(n * 2, ' '),
+//                       std ::format("If:\n{}\n{}\n", condition.repr(n + 1), (*block).repr(n +
+//                       1)));
+// }
+// std ::string selection ::if_ ::format() const { return "if"; };
+// INDENT_IMPL(jump::break_, "{}", "Break");
+// INDENT_IMPL(jump::continue_, "{}", "Continue");
+// FORMAT_INDENT_IMPL(jump::return_, "Return:\n{}", (*expr));
+// FORMAT_INDENT_IMPL(jump::goto_, "Goto({})", term);
+
+template <typename T>
+[[nodiscard]] std::vector<const node*> identifiable<T>::path() const {
+  std::vector<const node*> result;
+  const auto* child = static_cast<const T*>(this);
+  if (child == nullptr) {
+    return result;
   }
-  template <typename... Ts>
-  constexpr location sum_locations(Ts&&... ts) {
-    return (extract_location(std::forward<Ts>(ts)) + ...);
+
+  const node* current = child->get_parent();
+  while (current != nullptr) {
+    result.push_back(current);
+    current = current->get_parent();
   }
-} // namespace
-
-std::optional<cmm::location> operator+(const std::optional<cmm::location>& lhs,
-                                       const cmm::location& rhs) {
-  if (lhs) {
-    return *lhs + rhs;
-  }
-  return std::nullopt;
+  return result;
 }
 
-std::optional<cmm::location> operator+(const cmm::location& lhs,
-                                       const std::optional<cmm::location>& rhs) {
-  if (rhs) {
-    return lhs + *rhs;
-  }
-  return std::nullopt;
-}
-
-std::optional<cmm::location> operator+(const std::optional<cmm::location>& lhs,
-                                       const std::optional<cmm::location>& rhs) {
-  if (lhs && rhs) {
-    return *lhs + *rhs;
-  }
-  return std::nullopt;
-}
-
-#define CTOR_PARAMS_2(t1, n1)                         t1 _##n1
-#define CTOR_PARAMS_4(t1, n1, t2, n2)                 t1 _##n1, t2 _##n2
-#define CTOR_PARAMS_6(t1, n1, t2, n2, t3, n3)         t1 _##n1, t2 _##n2, t3 _##n3
-#define CTOR_PARAMS_8(t1, n1, t2, n2, t3, n3, t4, n4) t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4
-#define CTOR_PARAMS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
-  t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5
-#define CTOR_PARAMS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
-  t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5, t6 _##n6
-
-#define ADD_FMT_0(lvl, a1)
-#define ADD_FMT_1(lvl, a1) \
-  \n {}
-#define ADD_FMT_2(lvl, a1, a2) \
-  \n {} \
-  \n {}
-#define ADD_FMT_3(lvl, a1, a2, a3) \
-  \n {} \
-  \n {} \
-  \n {}
-
-#define FORMAT_ARGS_0(lvl, a1)
-#define FORMAT_ARGS_1(lvl, a1)         a1.repr(lvl + 1)
-#define FORMAT_ARGS_2(lvl, a1, a2)     a1.repr(lvl + 1), a2.repr(lvl + 1)
-#define FORMAT_ARGS_3(lvl, a1, a2, a3) a1.repr(lvl + 1), a2.repr(lvl + 1), a3.repr(lvl + 1)
-
-#define CTOR_ADD_FMT(...) CONCAT(ADD_FMT_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
-#define CTOR_FORMAT_ARGS(lvl, ...) \
-  CONCAT(FORMAT_ARGS_, GET_ARG_COUNT(__VA_ARGS__))(lvl, __VA_ARGS__)
-
-#define INDENT_IMPL(TYPE, stdstr, ...) \
-  std::string TYPE::repr(size_t n) const { \
-    return std::format("{}{}", std::string(n * 2, ' '), std::format(stdstr, __VA_ARGS__)); \
-  } \
-  std::string TYPE::format() const { return std::format(stdstr, __VA_ARGS__); }
-#define FORMAT_INDENT_IMPL(TYPE, stdstr, ...) \
-  std::string TYPE::repr(size_t n) const { \
-    return std::format( \
-        "{}{}", std::string(n * 2, ' '), std::format(stdstr, CTOR_FORMAT_ARGS(n, __VA_ARGS__))); \
-  } \
-  std::string TYPE::format() const { return std::format(stdstr, __VA_ARGS__); }
-
-#define JOIN_INDENT_IMPL(TYPE, NAME, DELIM) \
-  std::string TYPE::repr(size_t n) const { \
-    return std::format( \
-        "{}{}", std::string(2, ' '), std::format("{}({}):\n{}", NAME, size(), join(DELIM, n))); \
-  } \
-  std::string TYPE::format() const { return cpptrace::demangle(typeid(this).name()); }
-
-std ::string compound ::format() const { return cpptrace::demangle(typeid(this).name()); }
-std ::string compound ::repr(size_t n) const {
-  return std ::format("{}{}",
-                      std ::string(n * 2, ' '),
-                      std ::format("{}({}):\n{}", "Compound", size(), join('\n', n)));
-}
-std ::string expr ::call ::arguments ::repr(size_t n) const {
-  return std ::format("{}{}",
-                      std ::string(2, ' '),
-                      std ::format("{}({}):\n{}", "Arguments", size(), join('\n', n)));
-}
-std ::string expr ::call ::arguments ::format() const {
-  return cpptrace ::demangle(typeid(this).name());
-}
-JOIN_INDENT_IMPL(decl::function::parameters_t, "Parameters", '\n')
-JOIN_INDENT_IMPL(decl::specifiers, "Specifiers", ' ')
-std ::string program ::repr(size_t n) const {
-  std::string res;
-  for (const global_statement* decl : *this) {
-    res += decl->repr(n + 1) + '\n';
-  }
-  return std ::format(
-      "{}{}", std ::string(2, ' '), std ::format("{}({}):\n{}", "Program", size(), res));
-}
-std ::string program ::format() const { return cpptrace ::demangle(typeid(this).name()); }
-FORMAT_INDENT_IMPL(expr::identifier, "Identifier:\n{}", term);
-FORMAT_INDENT_IMPL(expr::literal, "Literal:\n{}", term);
-FORMAT_INDENT_IMPL(expr::unary_operator, "Unary:\n{}\n{}", operator_, expr);
-FORMAT_INDENT_IMPL(expr::binary_operator, "Binary:\n{}\n{}\n{}\n", operator_, left, right);
-FORMAT_INDENT_IMPL(expr::call, "Call:\n{}\n{}\n", ident, args);
-FORMAT_INDENT_IMPL(decl::label, "Label:\n{}", term);
-FORMAT_INDENT_IMPL(decl::variable, "Variable:\n{}", specifiers);
-std ::string decl ::function ::repr(size_t n) const {
-  auto params = parameters.transform(
-                    [n](const decl::variable& param) -> std::string { return param.repr(n + 1); }) |
-                std::views::join_with('\n') | std::ranges::to<std::string>();
-  auto elems =
-      body->transform([n](const statement* stmt) -> std::string { return stmt->repr(n + 1); }) |
-      std::views::join_with('\n') | std::ranges::to<std::string>();
-  auto res = std::format("{}{}",
-                         std::string(n * 2, ' '),
-                         std::format("Function:\n{}\n{}\n{}", ident.repr(n + 1), params, elems));
-  return res;
-};
-std::string decl::function::format() const { return cpptrace::demangle(typeid(this).name()); }
-std ::string iteration ::while_ ::repr(size_t n) const {
-  return std ::format(
-      "{}{}", std ::string(n * 2, ' '), std ::format("While:\n{}", condition.repr(n + 1)));
-}
-std ::string iteration ::while_ ::format() const { return "while"; };
-std ::string iteration ::for_ ::repr(size_t n) const {
-  return std ::format(
-      "{}{}", std ::string(n * 2, ' '), std ::format("For:\n{}", (*condition).repr(n + 1)));
-}
-std ::string iteration ::for_ ::format() const { return "for"; };
-std ::string selection ::if_ ::repr(size_t n) const {
-  return std ::format("{}{}",
-                      std ::string(n * 2, ' '),
-                      std ::format("If:\n{}\n{}\n", condition.repr(n + 1), (*block).repr(n + 1)));
-}
-std ::string selection ::if_ ::format() const { return "if"; };
-INDENT_IMPL(jump::break_, "{}", "Break");
-INDENT_IMPL(jump::continue_, "{}", "Continue");
-FORMAT_INDENT_IMPL(jump::return_, "Return:\n{}", (*expr));
-FORMAT_INDENT_IMPL(jump::goto_, "Goto({})", term);
-
-expr::expression::expression()
-    : semantics() {}
-
-void expr::expression::load_semantics(ptr_type t, value_category_t v) const {
-  semantics.loaded         = true;
-  semantics.original_type  = t;
-  semantics.value_category = v;
-}
 leaf::leaf(cmm::location loc)
     : m_location(std::move(loc)) {}
 
-compound::compound(std::vector<statement*>&& v)
-    : siblings(std::move(v)) {}
-expr::identifier::identifier(ast::term::identifier&& id)
-    : term(std::move(id)) {}
-std::optional<cmm::location> expr::identifier::location() const { return term.location(); }
-
-expr::literal::literal(const token& token)
-    : term(token),
-      type(&type::create(token.type.get_properties().type.value())) {}
-
-std::optional<cmm::location> expr::literal::location() const { return term.location(); }
-expr::call::call(decltype(ident)&& ident_, decltype(args)&& args)
-    : ident(std::move(ident_)),
-      args(std::move(args)) {
-  // ident.set_parent(this);
-  args.set_parent(this);
-}
-std::optional<cmm::location> expr::call::location() const {
-  return ident.location() + args.location();
-}
-
-expr::unary_operator::unary_operator(expression* expression, term::operator_&& op)
-    : expr(*expression),
-      operator_(std::move(op)) {
-  expr.set_parent(this);
-  operator_.set_parent(this);
-}
-std::optional<cmm::location> expr::unary_operator::location() const {
-  return expr.location() + operator_.location();
-}
-std::optional<cmm::location> expr::binary_operator::location() const {
-  return left.location() + operator_.location() + right.location();
-}
+leaf::leaf(const token& t)
+    : m_location(t.location()) {}
+terms::literal::literal(cmm::location l, std::string s)
+    : visitable(std::move(l)),
+      m_value(std::move(s)) {}
 using namespace decl;
 
-bool expr::expression::is_category(value_category_t cat) const {
-  return semantics.value_category == cat;
-}
 label::label(const token& label_)
-    : term(label_) {}
+    : visitable(label_) {
+  ident.set_parent(this);
+}
 
-variable::variable(decl::specifiers&& mods, decltype(ident) id, decltype(init) i)
-    : specifiers(std::move(mods)),
-      ident(id),
+specifiers::specifiers(terms::type t, terms::linkage l, terms::storage s)
+    : type(std::move(t)),
+      linkage(std::move(l)),
+      storage(std::move(s)) {}
+
+variable::variable(specifiers&& spec, terms::identifier&& id, decltype(init) i)
+    : specs(std::move(spec)),
+      visitable(std::move(id)),
       init(i) {
-  specifiers.set_parent(this);
-  if (ident != nullptr) {
-    ident->set_parent(this);
-  }
+  specs.set_parent(this);
   if (init != nullptr) {
     init->set_parent(this);
   }
 }
-
-std::optional<cmm::location> decl::label::location() const { return term.location(); }
-
-std::optional<cmm::location> decl::variable::location() const {
-  return specifiers.location() + GET_LOC(ident) + GET_LOC(init);
+variable::variable(cr_type t, decltype(ident)&& id, decltype(init) init)
+    : variable(specifiers(t), std::move(id), init) {}
+variable::variable(cr_type t, std::string s)
+    : variable(t, terms::identifier(std::move(s)), nullptr) {}
+cmm::location decl::label::location() const { return ident.location(); }
+cmm::location decl::variable::location() const {
+  return specs.location() + ident.location() + GET_LOC(init);
 }
-function::function(decl::specifiers&& mods,
+
+function::function(decltype(specs)&& s,
                    decltype(ident)&& ident_,
-                   decltype(parameters)&& args,
+                   decltype(params)&& args,
                    decltype(body) body_)
-    : specifiers(std::move(mods)),
-      ident(std::move(ident_)),
-      parameters(std::move(args)),
-      body(body_) {}
-
-std::optional<cmm::location> decl::function::location() const {
-  return specifiers.location() + ident.location() + parameters.location() + GET_LOC(body);
+    : specs(std::move(s)),
+      visitable(std::move(ident_)),
+      params(std::move(args)),
+      body(body_) {
+  specs.set_parent(this);
+  ident.set_parent(this);
+  params.set_parent(this);
+  if (body != nullptr) {
+    body->local_scope::set_parent(this);
+  }
 }
 
-expr::binary_operator::binary_operator(expression* left, expression* right, term::operator_&& op)
-    : left(*left),
-      right(*right),
-      operator_(std::move(op)) {
-  left->set_parent(this);
-  right->set_parent(this);
-  operator_.set_parent(this);
+// decl::conversion_function::conversion_function(const decltype(body)& body)
+//     : function(nullptr, body, false),
+//       type(conversion_type_t::IMPLICIT),
+//       body(body) {}
+
+assembly::operand* decl::conversion_function::operator()(assembly::operand* reg) const noexcept {
+  cr_type from = reg->content_type();
+  ASSERT(is_convertible(from));
+  cr_type to_t = to(from);
+
+  // return run(compilation_unidecl::t::instance());
 }
-selection::if_::if_(term::keyword&& k,
+decl::direct_conversion::direct_conversion(const decltype(body)& body, cr_type from, cr_type to)
+    : conversion_function(body),
+      from_type(from),
+      to_type(to) {}
+decl::glob_conversion::glob_conversion(std::string desc,
+                                       const decltype(body)& body,
+                                       const condition_t& from,
+                                       const extractor_t& to)
+    : conversion_function(body),
+      description(std::move(desc)),
+      condition(from),
+      extractor(to) {}
+
+void function::parameters::load_arguments(const ast::expr::arguments& args) {
+  for (int i = 0; i < vector<parameter>::size(); ++i) {
+    auto& param              = vector<parameter>::at(i);
+    expr::expression* n_expr = param.init;
+    if (i < args.vector<expr::expression*>::size()) {
+      n_expr = args.vector<expr::expression*>::at(i);
+    }
+    if (n_expr != nullptr) {
+      throw_error<error_t::BAD_FUNCTION_CALL>(param);
+    }
+    param.init = n_expr;
+  }
+}
+
+cmm::location decl::function::location() const {
+  return specs.location() + ident.location() + params.location() +
+         (body == nullptr ? location() : body->local_scope::location());
+}
+
+selection::if_::if_(terms::keyword&& k,
                     decltype(condition) condition,
                     decltype(block) block_,
                     decltype(else_) else_)
@@ -277,20 +200,20 @@ selection::if_::if_(term::keyword&& k,
   }
 }
 
-std::optional<cmm::location> selection::if_::location() const {
+cmm::location selection::if_::location() const {
   return keyword.location() + condition.location() + GET_LOC(else_) + GET_LOC(block);
 }
 
 template <typename It>
 std::string iteration::iteration<It>::condition_label() const {
-  return std::format("cond_{}", static_cast<const It*>(this)->format());
+  return std::format("cond_{}", typeid(It).name());
 }
 template <typename It>
 std::string iteration::iteration<It>::exit_label() const {
-  return std::format("exit_{}", static_cast<const It*>(this)->format());
+  return std::format("exit_{}", typeid(It).name());
 }
 
-iteration::while_::while_(term::keyword&& k, expr::expression& condition_, statement* block)
+iteration::while_::while_(terms::keyword&& k, expr::expression& condition_, statement* block)
     : keyword(std::move(k)),
       condition(condition_),
       body(block) {
@@ -301,11 +224,11 @@ iteration::while_::while_(term::keyword&& k, expr::expression& condition_, state
   }
 }
 
-std::optional<cmm::location> iteration::while_::location() const {
+cmm::location iteration::while_::location() const {
   return keyword.location() + condition.location() + GET_LOC(body);
 }
 
-iteration::for_::for_(term::keyword&& k,
+iteration::for_::for_(terms::keyword&& k,
                       decl::variable* start_,
                       expr::expression* condition_,
                       expr::expression* step_,
@@ -330,7 +253,7 @@ iteration::for_::for_(term::keyword&& k,
   }
 }
 
-std::optional<cmm::location> iteration::for_::location() const {
+cmm::location iteration::for_::location() const {
   return keyword.location() + GET_LOC(condition) + GET_LOC(body) + GET_LOC(start) + GET_LOC(step);
 }
 
@@ -338,81 +261,299 @@ jump::goto_::goto_(const token& token)
     : term(token) {
   term.set_parent(this);
 }
-std::optional<cmm::location> jump::goto_::location() const { return term.location(); }
+cmm::location jump::goto_::location() const { return term.location(); }
 
 jump::break_::break_(const token& token)
     : keyword(token) {
   keyword.set_parent(this);
 }
-std::optional<cmm::location> jump::break_::location() const { return keyword.location(); }
+cmm::location jump::break_::location() const { return keyword.location(); }
 jump::continue_::continue_(const token& token)
     : keyword(token) {
   keyword.set_parent(this);
 }
-std::optional<cmm::location> jump::continue_::location() const { return keyword.location(); }
-jump::return_::return_(term::keyword k, expr::expression* expr_)
+cmm::location jump::continue_::location() const { return keyword.location(); }
+jump::return_::return_(terms::keyword k, expr::expression* expr_)
     : keyword(std::move(k)),
       expr(expr_) {
   keyword.set_parent(this);
 }
-std::optional<cmm::location> jump::return_::location() const {
-  return keyword.location() + GET_LOC(expr);
-}
+cmm::location jump::return_::location() const { return keyword.location() + GET_LOC(expr); }
 
-linkage_t decl::specifiers::parse_linkage() const {
-  auto res = std::ranges::find_if(
-      cbegin(), cend(), [](const auto& spec) { return spec.type == token_t::static_; });
-  if (res != cend()) {
-    return linkage_t::internal;
-  }
-  return linkage_t::normal;
-}
-
-storage_t decl::specifiers::parse_storage() const {
-  auto storages = data() |
-                  std::views::filter([](const auto& spec) { return spec.type.is_storage(); }) |
-                  std::ranges::to<std::vector>();
-  if (storages.size() == 0) {
-    return storage_t::normal;
-  }
-  if (storages.size() == 1) {
-    return storages[0].type.cast<storage_t>();
-  }
-
-  throw_error<error_t::INCOMPATIBLE_TOKEN>(storages[1], storages[1], storages[0]);
-}
-namespace {
-  constexpr type_category_t parse_enum_type(const token_t& token_type, bool unsigned_) {
-    if (token_type == token_t::int_t) {
-      return unsigned_ ? type_category_t::uint_t : type_category_t::sint_t;
-    }
-    return token_type.cast<type_category_t>();
-  }
-}; // namespace
-cr_type decl::specifiers::parse_type() const {
-  bool const_    = false;
-  bool volatile_ = false;
-  bool unsigned_ = false;
-  std::optional<token_t> type_;
-  for (const auto& t : *this) {
-    if (t.type == token_t::const_) {
-      const_ = true;
-    } else if (t.type == token_t::volatile_) {
-      volatile_ = true;
-    } else if (t.type.is_type()) {
-      type_.emplace(t.type);
-    } else if (t.type == token_t::unsigned_) {
-      unsigned_ = true;
+bool conversion_store::is_convertible(const type& from, const type& to) const {
+  auto mangled_from = from.format();
+  bool res          = false;
+  if (const auto& outer = m_direct_store.at(mangled_from); m_direct_store.contains(mangled_from)) {
+    if (outer->contains(to.format())) {
+      return true;
     }
   }
 
-  if (!type_.has_value()) {
-    auto r = *this | std::views::transform([](const auto& spec) -> std::optional<cmm::location> {
-      return spec.location();
-    }) | std::ranges::to<std::vector>();
+  return std::ranges::any_of(
+      m_glob_store, [&to](const glob_conversion& fn) -> bool { return fn.is_convertible(to); });
+}
 
-    throw_error<error_t::REQUIRED_TYPE>(*this);
+std::vector<ptr_type> conversion_store::get_convertible_types(cr_type from) const {
+  return get_conversions(from) | std::views::transform([&from](const auto& conversion) -> ptr_type {
+           return &conversion->to(from);
+         }) |
+         std::ranges::to<std::vector>();
+}
+
+std::vector<const conversion_function*> conversion_store::get_conversions(cr_type from) const {
+  auto mangled_from = from.format();
+  auto glob_range =
+      m_glob_store | std::views::filter([&from](const glob_conversion& fn) -> bool {
+        return fn.is_convertible(from);
+      }) |
+      std::views::transform([](const glob_conversion& fn) -> const conversion_function* {
+        return static_cast<const conversion_function*>(&fn);
+      }) |
+      std::ranges::to<std::vector>();
+  if (m_direct_store.contains(mangled_from)) {
+    auto range =
+        m_direct_store.at(mangled_from) | std::views::values |
+        std::views::transform(
+            [](const direct_conversion& ptr) -> const conversion_function* { return &ptr; }) |
+        std::ranges::to<std::vector>();
+    glob_range.insert(glob_range.end(), range.begin(), range.end());
   }
-  return type::create_fundamental(parse_enum_type(type_.value(), unsigned_), const_, volatile_);
+  return glob_range;
+}
+
+void conversion_store::emplace_direct(const decltype(conversion_function::body)& body,
+                                      cr_type f,
+                                      cr_type t) {
+  const auto* value = m_direct_store[f.format()];
+  value->emplace(t.format(), direct_conversion(body, f, t));
+}
+
+void conversion_store::emplace_glob(std::string&& desc,
+                                    const decltype(conversion_function::body)& body,
+                                    const glob_conversion::condition_t& c,
+                                    const glob_conversion::extractor_t& e) {
+  m_glob_store.emplace_back(std::move(desc), body, c, e);
+}
+
+frame::frame(const ast::decl::function* fn)
+    : function(fn) {
+  create_scope(fn);
+}
+
+void frame::clear() noexcept {
+  while (!local_scopes.empty()) {
+    destroy_scope();
+  }
+  local_scopes.clear();
+}
+
+local_scope& frame::active_scope() {
+  DEBUG_ASSERT(!local_scopes.empty());
+  return local_scopes.top();
+}
+[[nodiscard]] const local_scope& frame::active_scope() const {
+  DEBUG_ASSERT(!local_scopes.empty());
+  return local_scopes.top();
+}
+
+[[nodiscard]] bool frame::is_declared(const ast::terms::identifier& ident) const noexcept {
+  return std::ranges::any_of(
+      local_scopes.cbegin(), local_scopes.cend(), [ident](const local_scope& scope_) {
+        return scope_.variables.contains(ident.value());
+      });
+}
+
+[[nodiscard]] variable* frame::get(const ast::terms::identifier& ident) {
+  if (!is_declared(ident)) {
+    throw_error<_error_t::UNDECLARED_SYMBOL>(ident);
+  }
+
+  for (auto& scope : local_scopes) {
+    if (scope.variables.contains(ident.value())) {
+      return scope.variables.at(ident.value());
+    }
+  }
+  UNREACHABLE();
+}
+
+using translation_unit = scopes::translation_unit;
+
+[[nodiscard]] const variable* frame::get(const ast::terms::identifier& ident) const {
+  if (!is_declared(ident)) {
+    throw_error<_error_t::UNDECLARED_SYMBOL>(ident);
+  }
+
+  for (const auto& scope : local_scopes) {
+    if (scope.variables.contains(ident.value())) {
+      return scope.variables.at(ident.value());
+    }
+  }
+
+  UNREACHABLE("Unrecheable");
+}
+
+static_assert(std::is_class_v<frame>);
+
+size_t translation_unit::pop_frame() {
+  DEBUG_ASSERT(!is_global_scope());
+  size_t ditched = 0;
+  for (int i = 0; i < active_frame().local_scopes.size(); ++i) {
+    ditched += active_frame().destroy_scope();
+  }
+  m_stackframe.pop();
+  return ditched;
+};
+
+void frame::create_scope(const ast::scopes::function_scope& comp) noexcept {
+  local_scopes.emplace_back(std::move(comp));
+}
+
+size_t frame::destroy_scope() noexcept {
+  size_t ditched = local_scopes.top().variables.size();
+  DEBUG_ASSERT(!local_scopes.empty());
+  local_scopes.pop();
+  REGISTER_TRACE("Cleared local scope: ditched {} elements", ditched);
+  return ditched;
+}
+
+void translation_unit::clear() noexcept {
+  m_stackframe.clear();
+  m_functions.clear();
+  m_global_scope.variables.clear();
+}
+
+[[nodiscard]] frame& translation_unit::active_frame() noexcept {
+  DEBUG_ASSERT(!m_stackframe.empty());
+  return m_stackframe.top();
+}
+
+[[nodiscard]] const frame& translation_unit::active_frame() const noexcept {
+  DEBUG_ASSERT(!m_stackframe.empty());
+  return m_stackframe.top();
+}
+
+bool translation_unit::is_entry_point_defined() const noexcept {
+  builtin_signature_t a = builtin_signature_t::MAIN;
+  return m_functions.at(a.mangle()) != nullptr;
+}
+// std::string translation_unit::format() const {
+// return "";
+// m_global_scope.variables.join(", ");
+//}
+
+const decl::label* translation_unit::get_label(const ast::terms::identifier& ident) const {
+  return active_frame().labels.at(ident.value());
+}
+
+const variable* translation_unit::get_variable(const ast::terms::identifier& ident) const {
+  if (m_global_scope.variables.contains(ident.value())) {
+    return m_global_scope.variables.at(ident.value());
+  }
+
+  return active_frame().get(ident);
+}
+
+std::optional<const function*> translation_unit::progressive_prefix_match(
+    const std::vector<ptr_type>& argument_types,
+    const std::vector<const function*>& possible_fns) const {
+  auto range =
+      argument_types | std::views::enumerate |
+      std::views::transform([this, &possible_fns](const auto& pair) {
+        auto i                 = std::get<0>(pair);
+        ptr_type castable_type = std::get<1>(pair);
+
+        auto r                 = m_conversions.get_convertible_types(*castable_type) |
+                 std::views::transform([this, i, &possible_fns](ptr_type casted_type) {
+                   auto p = possible_fns |
+                            std::views::filter([this, i, casted_type](const function* fn) {
+                              return fn->argument_types().at(i)->format() == casted_type->format();
+                            });
+                   return p;
+                 }) |
+                 std::views::join | std::ranges::to<std::vector>();
+        return r;
+      }) |
+      std::views::join | std::ranges::to<std::vector>();
+  if (range.size() == 1) {
+    return range[0];
+  }
+
+  return std::nullopt; // no unique match found
+}
+
+const function* translation_unit::get_function(const function_signature& sig) const {
+  const auto& [name, args_types] = sig;
+  if (const auto* candidate = m_functions.get(name); candidate != nullptr) {
+    return candidate;
+  }
+  auto f            = m_conversions.get_convertible_types(args_types.at(0)->specs.type);
+  auto candidates   = m_functions.get_by_name(name);
+  auto filtered_map = candidates | std::views::filter([&sig, &args_types](const auto& fn) {
+                        return fn->paramers.size() == args_types.size();
+                      }) |
+                      std::ranges::to<std::vector>();
+  if (!filtered_map.empty()) {
+    auto opt = progressive_prefix_match(args_types, filtered_map);
+    if (opt.has_value()) {
+      return opt.value();
+    }
+  }
+
+  throw_error<_error_t::UNDECLARED_SYMBOL>(ast::terms::identifier(name));
+}
+
+void translation_unit::declare_function(const ast::decl::function* func, bool inline_) {
+  REGISTER_TRACE("Creating func {}", func->ident.value());
+  m_functions.emplace_user_provided(func, inline_);
+}
+
+const function* translation_unit::get_entry_point() {
+  builtin_signature_t a = builtin_signature_t::MAIN;
+  return m_functions.at(a.MAIN);
+}
+
+void translation_unit::link_entry_point(const ast::decl::function* fn) {
+  if (!is_entry_point_defined()) {
+    m_entry_point = std::make_unique<function>(fn, fn->body, true);
+  } else {
+    throw_error<_error_t::ALREADY_DECLARED_SYMBOL>(*fn);
+  }
+}
+
+bool translation_unit::is_global_scope() const noexcept { return m_stackframe.empty(); }
+
+bool translation_unit::in_main() const noexcept {
+  const auto* parent = m_stackframe.top().function->get_parent();
+  const auto* fn     = dynamic_cast<const ast::decl::function*>(parent);
+  return fn->ident.value() == "main";
+}
+scopes::block::block(block&& v) noexcept
+    : visitable(std::move(v)) {
+  local_scope::set_parent(static_cast<local_scope*>(this));
+}
+template <typename T>
+bool translation_unit::is_declarable(const ast::terms::identifier&) const noexcept {
+  if constexpr (std::is_same_v<ir::variable, T>) {
+    // Only check current scope
+    return !active_scope().variables.contains(ident.value());
+  } else if constexpr (std::is_same_v<ir::function, T>) {
+    return m_functions.get_by_name(ident.value()).size() > 0;
+  } else {
+    return active_frame().labels.contains(ident.value());
+  }
+}
+
+template <typename T>
+bool translation_unit::is_declared(symbol_table::identifier_type ident) const noexcept {
+  if constexpr (std::is_same_v<ir::variable, T>) {
+    // Only check current scope
+
+    return (!is_global_scope() && !m_stackframe.empty() && active_frame().is_declared(ident)) ||
+           m_global_scope.variables.contains(ident.value());
+  } else if constexpr (std::is_same_v<ir::function, T>) {
+    return m_functions.get_by_name(ident.value()).size() > 0;
+  } else {
+    return active_frame().labels.contains(ident.value());
+  }
 }
 } // namespace cmm::ast

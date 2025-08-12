@@ -1,6 +1,5 @@
 #include "semantic.hpp"
 
-#include "allocator.hpp"
 #include "ast.hpp"
 #include "common.hpp"
 #include "ir.hpp"
@@ -31,19 +30,39 @@ void semantics::visitor::visit(const ast::expr::identifier& c) {
   c.load_semantics(var->type, ast::expr::value_category_t::LVALUE);
   c.semantics.is_constant_evaluable = false;
 }
-void semantics::visitor::visit(const ast::expr::literal& c) {
+void semantics::visitor::visit(const ast ::expr ::float_lit& c) {
   TRACE_VISITOR(c);
   c.load_semantics(c.type, ast::expr::value_category_t::RVALUE);
-  c.semantics.is_constant_evaluable = true;
-}
+};
+
+void semantics::visitor::visit(const ast ::expr ::int_lit& c) {
+  TRACE_VISITOR(c);
+  c.load_semantics(c.type, ast::expr::value_category_t::RVALUE);
+};
+void semantics::visitor::visit(const ast ::expr ::string_lit& c) {
+  TRACE_VISITOR(c);
+  c.load_semantics(c.type, ast::expr::value_category_t::RVALUE);
+};
+void semantics::visitor::visit(const ast ::expr ::false_lit& c) {
+  TRACE_VISITOR(c);
+  c.load_semantics(c.type, ast::expr::value_category_t::RVALUE);
+};
+void semantics::visitor::visit(const ast ::expr ::true_lit& c) {
+  TRACE_VISITOR(c);
+  c.load_semantics(c.type, ast::expr::value_category_t::RVALUE);
+};
+void semantics::visitor::visit(const ast ::expr ::char_lit& c) {
+  TRACE_VISITOR(c);
+  c.load_semantics(c.type, ast::expr::value_category_t::RVALUE);
+};
 
 namespace {
-  constexpr ptr_type get_function_type(ir::compilation_unit& v,
-                                       const ast::term::term& name,
-                                       const std::vector<ptr_type>& types) {
+  constexpr const ir::function* get_function(ir::compilation_unit& v,
+                                             const ast::term::term& name,
+                                             const std::vector<ptr_type>& types) {
     ir::function::signature_t sig(name, types);
     if (const auto* fn = v.table.get_function(sig)) {
-      return fn->return_type;
+      return fn;
     }
     throw_error<error_t::UNDECLARED_SYMBOL>(name);
   }
@@ -51,10 +70,12 @@ namespace {
                                          const ast::expr::expression& expr,
                                          const ast::term::term& name,
                                          const std::vector<ptr_type>& types) {
-    const auto* type = get_function_type(v, name, types);
-    auto cat = types::is_reference_v::operator()(*type) ? ast::expr::value_category_t::LVALUE
-                                                        : ast::expr::value_category_t::RVALUE;
-    expr.load_semantics(type, cat);
+    const auto* fn = get_function(v, name, types);
+    cr_type type   = fn->declaration()->specifiers.type;
+    auto cat       = types::is_reference_v::operator()(type) ? ast::expr::value_category_t::LVALUE
+                                                             : ast::expr::value_category_t::RVALUE;
+    expr.load_semantics(&type, cat);
+    expr.semantics.fn = fn;
   }
 }; // namespace
 void semantics::visitor::visit(const ast::expr::unary_operator& c) {
@@ -63,6 +84,11 @@ void semantics::visitor::visit(const ast::expr::unary_operator& c) {
   }
   TRACE_VISITOR(c);
   c.expr.accept(*this);
+  if (c.operator_.type == operator_t::post_dec || c.operator_.type == operator_t::post_inc) {
+    load_operator_semantics(v, c, c.operator_, {c.expr.type(), SINT_T});
+  } else {
+    load_operator_semantics(v, c, c.operator_, {c.expr.type()});
+  }
   load_operator_semantics(v, c, c.operator_, {c.expr.type()});
   c.semantics.is_constant_evaluable = c.expr.semantics.is_constant_evaluable;
 }
@@ -95,41 +121,41 @@ void semantics::visitor::visit(const ast::expr::call::arguments& args) {
     arg->accept(*this);
   }
 }
-shortener::visitor::visitor()
-    : v(ir::compilation_unit::instance()),
-      allocator(memory::Allocator::instance()),
-      res() {}
-// void semantics::visitor::visit(const ast::iteration::while_& c) {}
-// void semantics::visitor::visit(const ast::iteration::for_& c) {}
-// void semantics::visitor::visit(const ast::selection::if_& c) {}
-// void semantics::visitor::visit(const ast::jump::goto_& c) {}
-// void semantics::visitor::visit(const ast::jump::return_& c) {}
-ast::expr::expression* shortener::shorten_expression(ast::expr::expression* expr) {
-  visitor vis;
-  expr->accept(vis);
-  return vis.res;
-}
-void shortener::visitor::visit(ast::expr::identifier* c) {}
-void shortener::visitor::visit(ast::expr::literal* c) {}
-void shortener::visitor::visit(ast::expr::unary_operator* c) {}
-void shortener::visitor::visit(ast::expr::binary_operator* c) {
-  if (c->semantics.is_constant_evaluable) {
-    int res     = 0;
-    int left_i  = std::stoi(c->left.format());
-    int right_t = std::stoi(c->right.format());
-    if (c->operator_.type == operator_t::plus) {
-      res = left_i + right_t;
-    } else if (c->operator_.type == operator_t::star) {
-      res = left_i * right_t;
-    } else if (c->operator_.type == operator_t::minus) {
-      res = left_i - right_t;
-    } else if (c->operator_.type == operator_t::fslash) {
-      res = left_i / right_t;
-    } else {
-      NOT_IMPLEMENTED;
-    }
-    allocator.emplace<ast::expr::literal>(std::to_string(res), type_category_t::sint_t);
-  }
-}
-void shortener::visitor::visit(ast::expr::call* c) {}
+// shortener::visitor::visitor()
+//     : v(ir::compilation_unit::instance()),
+//       allocator(memory::Allocator::instance()),
+//       res() {}
+// // void semantics::visitor::visit(const ast::iteration::while_& c) {}
+// // void semantics::visitor::visit(const ast::iteration::for_& c) {}
+// // void semantics::visitor::visit(const ast::selection::if_& c) {}
+// // void semantics::visitor::visit(const ast::jump::goto_& c) {}
+// // void semantics::visitor::visit(const ast::jump::return_& c) {}
+// ast::expr::expression* shortener::shorten_expression(ast::expr::expression* expr) {
+//   visitor vis;
+//   expr->accept(vis);
+//   return vis.res;
+// }
+// void shortener::visitor::visit(ast::expr::identifier* c) {}
+// void shortener::visitor::visit(ast::expr::literal* c) {}
+// void shortener::visitor::visit(ast::expr::unary_operator* c) {}
+// void shortener::visitor::visit(ast::expr::binary_operator* c) {
+//   if (c->semantics.is_constant_evaluable) {
+//     int res     = 0;
+//     int left_i  = std::stoi(c->left.format());
+//     int right_t = std::stoi(c->right.format());
+//     if (c->operator_.type == operator_t::plus) {
+//       res = left_i + right_t;
+//     } else if (c->operator_.type == operator_t::star) {
+//       res = left_i * right_t;
+//     } else if (c->operator_.type == operator_t::minus) {
+//       res = left_i - right_t;
+//     } else if (c->operator_.type == operator_t::fslash) {
+//       res = left_i / right_t;
+//     } else {
+//       NOT_IMPLEMENTED;
+//     }
+//     allocator.emplace<ast::expr::literal>(std::to_string(res), type_category_t::sint_t);
+//   }
+// }
+// void shortener::visitor::visit(ast::expr::call* c) {}
 }; // namespace cmm

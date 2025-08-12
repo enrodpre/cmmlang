@@ -4,6 +4,7 @@
 #include "common.hpp"
 #include "lang.hpp"
 #include <cstdint>
+#include <magic_enum/magic_enum.hpp>
 #include <utility>
 
 namespace cmm::ir {
@@ -11,7 +12,7 @@ struct variable;
 struct variable_store;
 } // namespace cmm::ir
 
-namespace cmm::ast::term {
+namespace cmm::ast::terms {
 struct identifier;
 }
 
@@ -23,6 +24,15 @@ namespace bits {
     constexpr auto TO_BOOL = 0x1;
   }
 } // namespace bits
+
+enum class syscall_t : uint8_t {
+  READ,
+  WRITE,
+  EXIT,
+};
+
+CREATE_ENUMERATION_CLASS(syscall, syscall_t, self, size_t, n_param, size_t, number)
+
 struct operand : public formattable {
   using content_t = const ir::variable*;
   struct symbol_container {
@@ -138,6 +148,13 @@ struct label_memory : public label {
   [[nodiscard]] std::string value() const override;
 };
 
+struct label_literal : public label {
+  using label::hold_address;
+  using label::hold_value;
+  using label::label;
+  [[nodiscard]] std::string label_length() const;
+};
+
 struct operand_factory : public default_singleton<operand_factory> {
   template <typename V, typename... Args>
     requires std::is_constructible_v<V, Args...>
@@ -171,7 +188,7 @@ struct registers {
   [[nodiscard]] reg* get(registers_t) const;
 
   // reg* last_opfunction_result;
-  const ir::variable* find_var(const ast::term::identifier&);
+  const ir::variable* find_var(const ast::terms::identifier&);
 
   struct parameters_t {
     parameters_t(registers&);
@@ -254,6 +271,7 @@ struct assembly_code_line : public assembly_line {
 
 class comment_block;
 
+using constant_data_descriptor = std::pair<assembly::label*, assembly::label*>;
 class asmgen {
 public:
   enum class Section : uint8_t { TEXT = 0, DATA, BS };
@@ -267,7 +285,8 @@ public:
   void write_comment(cstring) noexcept;
   template <typename... Args>
   void write_instruction(const instruction_t&, Args&&...);
-  void add_section_data(Section, cstring, cstring, cstring);
+  void add_data(cstring, cstring);
+  void add_bss(cstring, cstring, cstring);
   void register_labeled_code_block(cstring, std::string&&);
 
   // Helpers
@@ -289,7 +308,7 @@ private:
   struct {
     std::vector<std::pair<std::string, std::string>> procedures;
     std::vector<std::string> bss;
-    std::vector<std::string> data;
+    std::vector<std::pair<std::string, std::string>> data;
   } m_sections;
 
   constexpr static cstring PLACEHOLDER_TEMPLATE = "||{}||";

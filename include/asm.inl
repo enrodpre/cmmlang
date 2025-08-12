@@ -6,6 +6,12 @@
 
 namespace cmm::assembly {
 
+[[nodiscard]] constexpr const syscall::properties_map& syscall::properties_array() {
+  using enum syscall_t;
+  static properties_map MAP{{{{READ, 3, 0}, {WRITE, 3, 1}, {EXIT, 1, 60}}}};
+  return MAP;
+}
+
 constexpr std::string registers::to_realname(registers_t r) {
   switch (r) {
     case RSP:

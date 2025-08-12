@@ -6,6 +6,22 @@
 //   return std::hash<cmm::type_info>{}(*this);
 // }
 namespace cmm {
+
+mangled_name mangled_name::function(cstring name, const std::vector<const type*>& t) {
+  return std::format("{}_{}", name, types(t));
+}
+
+std::string mangled_name::types(const std::vector<ptr_type>& types) {
+  return types | std::views::transform([](ptr_type t) { return t->format(); }) |
+         std::views::join_with('_') | std::ranges::to<std::string>();
+}
+
+mangled_name mangled_name::direct_conversion_function(cr_type f, cr_type t) {
+  return function("conv_{}", std::vector<ptr_type>{&f, &t});
+}
+
+mangled_name mangled_name::label(cstring name) { return std::string(name); }
+mangled_name mangled_name::variable(cstring name, cr_type) { return std::string(name); }
 [[nodiscard]] std::string operator_t::caller_function() const {
   return std::format("operator{}", repr);
 }

@@ -34,13 +34,20 @@ struct semantics {
     visitor();
     ir::compilation_unit& v;
     void visit(const ast::expr::identifier&) override;
-    void visit(const ast::expr::literal&) override;
+    template <typename T>
+    void visit(const T&);
     void visit(const ast::expr::unary_operator&) override;
     void visit(const ast::expr::binary_operator&) override;
     void visit(const ast::expr::call&) override;
+    void visit(const ast ::expr ::float_lit& c) override;
+    void visit(const ast ::expr ::int_lit& c) override;
+    void visit(const ast ::expr ::string_lit& c) override;
+    void visit(const ast ::expr ::false_lit& c) override;
+    void visit(const ast ::expr ::true_lit& c) override;
+    void visit(const ast ::expr ::char_lit& c) override;
     // void visit(const ast::decl::variable&) override;
     // void visit(const ast::decl::function&) override;
-    void visit(const ast::expr::call::arguments&) override;
+    void visit(const ast::expr::arguments&) override;
     // void visit(ast::compound& c) override;
     // void visit(ast::decl::label& c) override;
     // void visit(ast::iteration::while_& c) override;
@@ -51,18 +58,18 @@ struct semantics {
   };
 };
 
-struct shortener {
-  static ast::expr::expression* shorten_expression(ast::expr::expression*);
-  struct visitor : public cmm::ptr_visitor<EXPRESSION_TYPES> {
-    visitor();
-    ir::compilation_unit& v;
-    memory::Allocator& allocator;
-    ast::expr::expression* res;
-    void visit(ast::expr::identifier*) override;
-    void visit(ast::expr::literal*) override;
-    void visit(ast::expr::unary_operator*) override;
-    void visit(ast::expr::binary_operator*) override;
-    void visit(ast::expr::call*) override;
-  };
-};
+// struct shortener {
+//   static ast::expr::expression* shorten_expression(ast::expr::expression*);
+//   struct visitor : public cmm::ptr_visitor<EXPRESSION_TYPES> {
+//     visitor();
+//     ir::compilation_unit& v;
+//     memory::Allocator& allocator;
+//     ast::expr::expression* res;
+//     void visit(ast::expr::identifier*) override;
+//     void visit(ast::expr::literal*) override;
+//     void visit(ast::expr::unary_operator*) override;
+//     void visit(ast::expr::binary_operator*) override;
+//     void visit(ast::expr::call*) override;
+//   };
+// };
 }; // namespace cmm

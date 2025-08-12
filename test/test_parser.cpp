@@ -16,9 +16,11 @@ class ParserTest : public ::testing::Test {
     --i;
     return {i, i, i, i};
   }
-  static token create_token(cmm::token_t type, cmm::cstring value = "") {
+  static token create_token(cmm::token_t type, std::string value = "") {
     location loc = create_location();
-    return {std::move(type), location(loc.rows.start, 1, loc.cols.start, loc.cols.length), value};
+    return {std::move(type),
+            location(loc.rows.start, 1, loc.cols.start, loc.cols.length),
+            std::move(value)};
   }
 
 protected:
@@ -49,7 +51,7 @@ protected:
   token if_        = create_token(token_t::if_);
   token oparen     = create_token(token_t::o_paren);
   token cparen     = create_token(token_t::c_paren);
-  token true_      = create_token(token_t::bool_lit, "true");
+  token true_      = create_token(token_t::true_lit);
   token else_      = create_token(token_t::else_);
 
   size_t row;
@@ -197,8 +199,8 @@ TEST_F(ParserTest, IfElse) {
 
   auto* elems = p.parse_if();
   auto* if_   = cast<selection::if_*>(elems);
-  auto* block = cast<compound*>(if_->block);
-  auto* else_ = cast<compound*>(if_->else_);
+  auto* block = cast<scope::block*>(if_->block);
+  auto* else_ = cast<scope::block*>(if_->else_);
 
   EXPECT_EQ(block->size(), 0);
   EXPECT_TRUE(if_->else_);
@@ -212,7 +214,7 @@ TEST_F(ParserTest, Block) {
   EXPECT_EQ(block->size(), 2);
 
   auto* first_stmt = *block->begin();
-  auto* comp       = cast<compound*>(first_stmt);
+  auto* comp       = cast<scope::block*>(first_stmt);
   EXPECT_EQ(0, comp->size());
 }
 

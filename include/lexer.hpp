@@ -21,15 +21,13 @@ private:
   size_t m_column;
 
   [[nodiscard]] bool has_next() const;
-  [[nodiscard]] cmm::cstring peek(size_t) const;
+  [[nodiscard]] cstring peek(int) const;
+  [[nodiscard]] cstring peek(size_t) const;
   [[nodiscard]] char peek() const;
-  [[nodiscard]] cmm::cstring peek_remaining() const;
   void advance(size_t);
   void parse_token();
   [[nodiscard]] static auto constexpr single_patterns();
   [[nodiscard]] static auto constexpr multi_patterns();
   [[nodiscard]] static auto constexpr regex_patterns();
-  void create_token(cmm::token_t&&, size_t);
-  void create_token(cmm::token_t&&, cmm::cstring);
 };
 }; // namespace cmm

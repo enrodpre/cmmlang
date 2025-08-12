@@ -107,15 +107,6 @@ auto formattable_range<T>::element_merger() const {
 
 constexpr formattable::operator std::string() const { return format(); }
 
-template <typename Derived, typename P, typename... Parents>
-identifiable<Derived, P, Parents...>::identifiable()
-    : m_id(m_constructions++) {}
-
-template <typename Derived, typename P, typename... Parents>
-identifiable<Derived, P, Parents...>::~identifiable() {
-  m_destructions++;
-}
-
 namespace {
   template <typename T>
   std::string classname_only() {
@@ -128,37 +119,6 @@ namespace {
   }
 } // namespace
 
-template <typename Derived, typename P, typename... Parent>
-[[nodiscard]] std::string identifiable<Derived, P, Parent...>::id() const {
-  return std::format("{}{}", classname_only<Derived>(), id_n());
-}
-
-template <typename Derived, typename P, typename... Parent>
-[[nodiscard]] std::string identifiable<Derived, P, Parent...>::repr() const {
-  if constexpr (sizeof...(Parent) > 0) {
-    return id() + (identifiable<Parent>::repr() + ...);
-  } else {
-    return id();
-  }
-}
-
-template <typename Derived, typename P, typename... Parents>
-[[nodiscard]] size_t identifiable<Derived, P, Parents...>::id_n() const {
-  return m_id;
-}
-
-template <typename Derived, typename P, typename... Parents>
-size_t identifiable<Derived, P, Parents...>::constructed() {
-  return m_constructions;
-}
-template <typename Derived, typename P, typename... Parents>
-size_t identifiable<Derived, P, Parents...>::destructed() {
-  return m_constructions;
-}
-template <typename Derived, typename P, typename... Parents>
-size_t identifiable<Derived, P, Parents...>::active() {
-  return m_constructions - m_destructions;
-}
 constexpr location::location(size_t row, size_t row_len, size_t col, size_t col_length)
     : rows({row, static_cast<size_t>(row_len - 1)}),
       cols({col, static_cast<size_t>(col_length - 1)}) {}
@@ -456,6 +416,14 @@ template <typename T>
   return m_data.size();
 }
 template <typename T>
+void vector<T>::push_back(const T& t) {
+  m_data.push_back(t);
+}
+template <typename T>
+void vector<T>::push_back(T&& t) {
+  m_data.push_back(std::move(t));
+}
+template <typename T>
 template <typename Fn>
 vector<T>::pointer_type vector<T>::find(Fn fn) {
   return *(m_data | std::ranges::find_if(fn));
@@ -507,5 +475,52 @@ template <std::move_constructible Func, std::ranges::forward_range Pattern>
 std::string vector<T>::join(Func&& fn, Pattern&& p, size_t) const {
   return data() | std::views::transform(fn) | std::views::join_with(p) |
          std::ranges::to<std::string>();
+}
+
+template <typename K, typename V>
+hashmap<K, V>::hashmap() = default;
+
+template <typename K, typename V>
+bool hashmap<K, V>::contains(const K& id) const {
+  return m_store.contains(id);
+}
+
+template <typename K, typename V>
+hashmap<K, V>::value_type* hashmap<K, V>::at(const K& id) {
+  return &m_store.at(id);
+}
+template <typename K, typename V>
+[[nodiscard]] const hashmap<K, V>::value_type* hashmap<K, V>::at(const K& id) const {
+  return &m_store.at(id);
+}
+template <typename K, typename V>
+hashmap<K, V>::value_type* hashmap<K, V>::operator[](const key_type& k) {
+  return m_store[k];
+}
+template <typename K, typename V>
+const hashmap<K, V>::value_type* hashmap<K, V>::operator[](const key_type& k) const {
+  return m_store[k];
+}
+template <typename K, typename V>
+size_t hashmap<K, V>::size() const noexcept {
+  return m_store.size();
+}
+template <typename K, typename V>
+void hashmap<K, V>::put(value_type&& v) {
+  m_store.insert(std::make_pair(v.identifier(), std::move(v)));
+}
+
+template <typename K, typename V>
+void hashmap<K, V>::clear() {
+  m_store.clear();
+}
+template <typename K, typename V>
+std::vector<const V*> hashmap<K, V>::get_by_name(cstring name) const {
+  return m_store | std::views::filter([name](const auto& pair) -> bool {
+           const auto& [k, v] = pair;
+           return k == name;
+         }) |
+         std::views::transform([name](const auto& pair) -> const V* { return pair.second.get(); }) |
+         std::ranges::to<std::vector>();
 }
 }; // namespace cmm

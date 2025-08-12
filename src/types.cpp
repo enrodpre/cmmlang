@@ -1,4 +1,6 @@
 #include "types.hpp"
+#include "ir.hpp"
+#include <algorithm>
 
 #define TYPE_FORMAT_IMPL(TYPE, stdstr, ...) \
   std::string TYPE::name() const { \
@@ -55,6 +57,24 @@ cr_type type::create_pointer(const type* t, bool b, bool v) {
 cr_type type::create_lvalue(const type* t, bool b, bool v) {
   return create(type_category_t::lvalue_ref_t, t, b, v);
 }
+
+cr_type type::create_array(const type* t, size_t n, bool b, bool v) {
+  return create(type_category_t::array_t, t, n, b, v);
+}
+
+cr_type type::create_string(size_t n, bool b, bool v) {
+  const auto& under = create_fundamental(type_category_t::char_t, b, v);
+  return create_array(&under, n, b, v);
+}
+
+result<ptr_type> is_assignable(cr_type from, cr_type to) {
+  if (from == to) {
+    return {&to};
+  }
+  auto conversions = ir::compilation_unit::instance().table.get_conversions(from);
+  return {*std::ranges::find_if(conversions, [&to](ptr_type t) { return (*t) == to; })};
+}
+
 namespace types {
   type_metadata_t get_metadata_of(type_category_t c) {
     return type_metadata_store.at(magic_enum::enum_index<type_category_t>(c).value());

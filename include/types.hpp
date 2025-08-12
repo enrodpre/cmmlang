@@ -99,6 +99,12 @@ private:
         underlying(u),
         c(c),
         v(v) {}
+  constexpr type(type_category_t t, const type* u, size_t n, bool c, bool v)
+      : category(t),
+        underlying(u),
+        rank(n),
+        c(c),
+        v(v) {}
 
 public:
   bool operator==(const type& other) const {
@@ -112,6 +118,8 @@ public:
   static const type& create_fundamental(type_category_t, bool = false, bool = false);
   static const type& create_pointer(const type*, bool, bool);
   static const type& create_lvalue(const type*, bool, bool);
+  static const type& create_array(const type*, size_t, bool, bool);
+  static const type& create_string(size_t, bool = false, bool = false);
 };
 
 using ptr_type = const type*;
@@ -151,10 +159,19 @@ struct type_mask {
 };
 
 // Implicit conversion from lvalue of int to int and vice versa
-struct conversion {
-  type from;
-  type to;
+
+template <typename T>
+struct result {
+  result()
+      : ok(false) {}
+  result(const T& t)
+      : ok(true),
+        data(t) {}
+  bool ok;
+  T data;
+  operator bool() const { return ok; }
 };
+result<ptr_type> is_assignable(cr_type from, cr_type to);
 
 namespace types {
   template <type_category_t C>

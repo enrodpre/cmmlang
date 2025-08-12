@@ -2,14 +2,13 @@
 
 #include "common.hpp"
 #include "lang.hpp"
-#include "macros.hpp"
 #include "token.hpp"
 #include "traits.hpp"
+#include "types.hpp"
 #include "visitor.hpp"
 #include <algorithm>
 #include <bits/ranges_algo.h>
 #include <cpptrace/utils.hpp>
-#include <initializer_list>
 #include <libassert/assert.hpp>
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_format.hpp>
@@ -17,746 +16,542 @@
 #include <type_traits>
 #include <utility>
 
+namespace cmm::assembly {
+struct operand;
+};
+
 namespace cmm::ast {
+
+template <typename T>
+struct identifiable {
+private:
+  identifiable() = default;
+
+public:
+  virtual ~identifiable() = default;
+  [[nodiscard]] virtual std::vector<const ast::node*> path() const;
+  friend T;
+};
+
+namespace expr {
+  struct expression;
+  struct call;
+  struct arguments;
+  struct unary_operator;
+  struct binary_operator;
+  struct string_literal;
+  struct char_literal;
+  struct sint_literal;
+  struct uint_literal;
+  struct false_literal;
+  struct true_literal;
+  struct float_literal;
+}; // namespace expr
+class node;
+
+template <typename T>
+concept has_type = requires(T t) {
+  { t.type() } -> std::same_as<cmm::location>;
+};
+
+template <has_type T>
+constexpr static auto EXTRACT_TYPE = [](const T& t) { return t.type(); };
+
+using mangled_key                  = std::string;
 
 #define FORMAT_DECL_IMPL() \
   std::string repr(size_t = 0) const override; \
   std::string format() const override;
 
-using cmm::visitable;
+template <typename Repr>
+struct term : visitable<leaf> {
+  term() = default;
+  term(cmm::location l)
+      : visitable(std::move(l)) {}
+  term(const token& t)
+      : visitable<leaf>(t) {}
 
-struct node : virtual visitable<>, public formattable {
-  node() = default;
-  virtual const node* get_parent() const { return m_parent; }
-  virtual void set_parent(node* parent_) const { m_parent = parent_; }
-  virtual std::optional<cmm::location> location() const = 0;
-
-private:
-  mutable node* m_parent = nullptr;
+  // [[nodiscard]] std::string repr(size_t) const override { return std::format("{}", value()); }
+  // [[nodiscard]] std::string format() const override { return std::format("{}", value()); }
+  operator const Repr&() const { return value(); }
+  [[nodiscard]] virtual const Repr& value() const;
 };
 
-std::optional<cmm::location> operator+(const std::optional<cmm::location>& lhs,
-                                       const cmm::location& rhs);
-std::optional<cmm::location> operator+(const cmm::location& lhs,
-                                       const std::optional<cmm::location>& rhs);
-std::optional<cmm::location> operator+(const std::optional<cmm::location>& lhs,
-                                       const std::optional<cmm::location>& rhs);
+namespace terms {
+  struct keyword : visitable<term<keyword_t>, keyword> {
+    using visitable::visitable;
+    [[nodiscard]] const keyword_t& value() const override { return m_value; }
 
-struct leaf : public node {
-  leaf() = default;
-  explicit leaf(cmm::location);
+  private:
+    keyword_t m_value;
+  };
+  struct literal : visitable<term<std::string>, literal> {
+    using visitable::visitable;
+    literal(cmm::location, std::string);
+    [[nodiscard]] const std::string& value() const override { return m_value; }
 
-  std::optional<cmm::location> location() const override { return m_location; };
+  private:
+    std::string m_value;
+  };
+  struct operator_ : visitable<term<operator_t>, operator_> {
+    [[nodiscard]] const operator_t& value() const override { return m_value; }
 
-private:
-  std::optional<cmm::location> m_location;
+  private:
+    operator_t m_value;
+  };
+  template <typename T>
+  struct specifier : term<T> {
+    using parent_t = term<T>;
+    using parent_t::parent_t;
+    specifier() = default;
+    specifier(const token& x)
+        : parent_t(x) {}
+    friend T;
+  };
+  struct storage : visitable<specifier<storage_t>, storage> {
+  private:
+    storage_t m_value{};
+  };
+  struct linkage : visitable<specifier<linkage_t>, linkage> {
+
+  private:
+    linkage_t m_value{};
+  };
+  struct type : visitable<specifier<cr_type>, type> {
+    type(cr_type t)
+        : visitable(),
+          m_value(t) {}
+
+  private:
+    cr_type m_value;
+  };
+  struct identifier : visitable<term<std::string>, identifier> {
+    using visitable::visitable;
+    identifier(std::string name)
+        : m_value(std::move(name)) {}
+    identifier(const operator_& op)
+        : visitable(op.location()),
+          m_value(std::format("operator{}", op.value())) {}
+
+    [[nodiscard]] const std::string& value() const override { return m_value; }
+
+  private:
+    std::string m_value;
+  };
+} // namespace terms
+
+struct declaration : public statement {
+  declaration() = default;
+  terms::identifier ident;
+  declaration(decltype(ident)&& t)
+      : ident(std::move(t)) {}
 };
 
-struct composite : public node {};
-
-struct statement : visitable<composite, statement> {
-  statement() = default;
+namespace decl {
+  class variable;
 };
 
-struct global_statement : visitable<statement, global_statement> {
-  global_statement() = default;
+using variable_store = hashmap<mangled_key, decl::variable>;
+template <typename T>
+class base_scope : public vector<T>, public composite {
+public:
+  using vector<T>::begin;
+  using vector<T>::end;
+  using vector<T>::cbegin;
+  using vector<T>::cend;
+  base_scope() = default;
+  base_scope(std::vector<T>&& s) noexcept
+      : vector<T>(std::move(s)) {}
+
+  [[nodiscard]] cmm::location location() const override {
+    return std::ranges::fold_left(*this | std::views::transform([](const T& n) {
+      if constexpr (std::is_pointer_v<std::remove_cvref_t<T>>) {
+        return n->location();
+      } else {
+        return n.location();
+      }
+    }),
+                                  location(),
+                                  std::plus<cmm::location>{});
+  }
+  // FORMAT_DECL_IMPL();
+
+  variable_store variables;
 };
 
 DERIVE_OK(composite, statement);
 
-template <typename...>
-inline constexpr bool dependent_false = false;
-
-template <typename T, typename Cls, typename Parent = composite>
-struct siblings : public vector<T>, public visitable<Parent, Cls> {
-private:
-  siblings() = default;
-  siblings(const std::vector<T>& s)
-      : vector<T>(s) {}
-  siblings(std::vector<T>&& s) noexcept
-      : vector<T>(std::move(s)) {}
-  siblings(std::initializer_list<T> list)
-      : vector<T>(list) {}
-
-public:
-  friend Cls;
-
-  [[nodiscard]] std::optional<cmm::location> location() const override {
-    return std::ranges::fold_left(this->cbegin(),
-                                  this->cend(),
-                                  cmm::location(),
-                                  [](const cmm::location& acum, const auto& elem) {
-                                    if constexpr (requires { elem.operator->(); }) {
-                                      return acum + elem->location().value_or(cmm::location());
-                                    } else if constexpr (std::is_pointer_v<T>) {
-                                      return acum + elem->location().value_or(cmm::location());
-                                    } else {
-                                      return acum + elem.location().value_or(cmm::location());
-                                    }
-                                  });
-  }
-};
-
-struct compound : public siblings<statement*, compound, statement> {
-  compound(std::vector<statement*>&&);
-  using siblings::location;
-  FORMAT_DECL_IMPL();
-};
-
-DERIVE_OK(statement, compound);
-
-template <typename T>
-concept ZeroParamConstructible = requires {
-  { T() } -> std::same_as<T>;
-  { T{} } -> std::same_as<T>;
-};
-
-namespace term {
-  template <typename T>
-    requires(Formattable<T>)
-  struct lazy_format {
-    lazy_format(const T& t)
-        : m_obj(t),
-          m_func([](const T& t) { return t.format(); }) {}
-
-    cr_string value(const T& t) const {
-      if (!m_value.has_value()) {
-        m_value = m_func(t);
-      }
-      return m_value.value();
-    }
-
-  private:
-    mutable std::optional<std::string> m_value;
-    std::reference_wrapper<const T> m_obj;
-    std::function<std::string(const T&)> m_func;
-  };
-  struct term : visitable<leaf, term> {
-    term() = default;
-    term(const token& tok)
-        : visitable(tok.location()) {}
-    virtual const std::string& value() const = 0;
-    std::string repr(size_t n = 0) const override {
-      return std::format("{}{}", std::string(n * 2, ' '), value());
-    };
-    std::string format() const override { return value(); }
-  };
-  struct keyword : visitable<term, keyword> {
-    token_t kind;
-    keyword(const token& token)
-        : visitable(token),
-          kind(token.type),
-          m_value(kind) {}
-    const std::string& value() const override { return m_value.value(kind); }
-
-  private:
-    lazy_format<token_t> m_value;
-  };
-
-  struct identifier : visitable<term, identifier> {
-    identifier(std::string v)
-        : m_value(std::move(v)) {}
-    identifier(const token& token)
-        : visitable(token),
-          m_value(token.value) {}
-    operator cstring() const { return m_value; }
-    const std::string& value() const override { return m_value; }
-
-  private:
-    std::string m_value;
-  };
-
-  static_assert(maybe_allocated<const identifier&>);
-  static_assert(std::formattable<identifier, char>);
-  DERIVE_OK(node, identifier);
-
-  static bool operator==(const identifier& r, const identifier& l) {
-    return r.location() == l.location() && r.value() == l.value();
-  }
-  struct literal : visitable<term, literal> {
-    literal(const token& token)
-        : visitable(token),
-          m_value(token.value) {}
-    const std::string& value() const override { return m_value; }
-
-  private:
-    std::string m_value;
-  };
-
-  DERIVE_OK(node, literal);
-
-  struct operator_ : visitable<term, operator_> {
-    operator_t type;
-    operator_(const token& loc)
-        : visitable(loc),
-          type(loc.type.cast<operator_t>()),
-          m_value(type) {}
-    operator_(const token& loc, operator_t type_)
-        : visitable(loc),
-          type(std::move(type_)),
-          m_value(type) {}
-    const std::string& value() const override { return m_value.value(type); }
-
-  private:
-    lazy_format<operator_t> m_value;
-  };
-
-  struct specifier : visitable<term, specifier> {
-    token_t type;
-    specifier(const token& token)
-        : visitable(token),
-          type(token.type),
-          m_value(type) {}
-    const std::string& value() const override { return m_value.value(type); }
-
-  private:
-    lazy_format<token_t> m_value;
-  };
-
-} // namespace term
-
-namespace expr {
-  struct compilation_unit;
-
-  enum class value_category_t : uint8_t {
-    NOT_PROCESSED = 0,
-    GLVALUE,
-    PRVALUE,
-    XVALUE,
-    LVALUE,
-    RVALUE
-  };
-
-  struct semantics {
-    bool loaded;
-    value_category_t value_category;
-    ptr_type original_type;
-    bool is_constant_evaluable;
-    ptr_type casted_type;
-  };
-
-  struct expression : visitable<statement, expression, expression> {
-    expression();
-    NOT_COPYABLE_CLS(expression);
-    MOVABLE_CLS(expression);
-    ptr_type type() const { return semantics.original_type; }
-    value_category_t category() const { return semantics.value_category; }
-    bool is_category(value_category_t) const;
-    bool are_semantics_loaded() const { return semantics.loaded; }
-    void load_semantics(ptr_type, value_category_t) const;
-
-    mutable expr::semantics semantics;
-  };
-
-  static_assert(std::is_base_of_v<statement, expression>);
-
-  struct identifier : visitable<expression, identifier> {
-    ast::term::identifier term;
-    identifier(ast::term::identifier&& id);
-    std::optional<cmm::location> location() const override;
-    FORMAT_DECL_IMPL();
-    static_assert(!std::is_pointer_v<decltype(term)>);
-  };
-
-  DERIVE_OK(expression, identifier);
-
-  struct literal : visitable<expression, literal> {
-    ast::term::literal term;
-    literal(std::string, type_category_t);
-    literal(const token& token);
-    std::optional<cmm::location> location() const override;
-    FORMAT_DECL_IMPL();
-    ptr_type type;
-  };
-
-  struct call : visitable<expression, call> {
-    struct arguments : public siblings<expression*, arguments> {
-      arguments() = default;
-      arguments(std::initializer_list<expression*> l)
-          : siblings(l) {}
-      arguments(std::vector<expression*>&& v)
-          : siblings(std::move(v)) {}
-      FORMAT_DECL_IMPL();
-
-      std::vector<ptr_type> types() const {
-        return *this | std::views::transform([this](const auto& expr) -> ptr_type {
-          return expr->type();
-        }) | std::ranges::to<std::vector>();
-      }
-    };
-    term::identifier ident;
-    arguments args;
-
-    call(decltype(ident)&& ident_, arguments&& args = {});
-    std::optional<cmm::location> location() const override;
-    FORMAT_DECL_IMPL();
-  };
-
-  struct unary_operator : visitable<expression, unary_operator> {
-    expression& expr;
-    term::operator_ operator_;
-
-    unary_operator(expression* expression, term::operator_&& op);
-    std::optional<cmm::location> location() const override;
-    FORMAT_DECL_IMPL();
-  };
-
-  struct binary_operator : visitable<expression, binary_operator> {
-    expression& left;
-    expression& right;
-    term::operator_ operator_;
-
-    binary_operator(expression* left, expression* right, term::operator_&& op);
-    std::optional<cmm::location> location() const override;
-    FORMAT_DECL_IMPL();
-  };
-
-  static_assert(!std::is_copy_constructible_v<binary_operator>);
-
-#define EXPRESSION_TYPES \
-  ast::expr::binary_operator, ast::expr::unary_operator, ast::expr::call, ast::expr::literal, \
-      ast::expr::identifier
-}; // namespace expr
+class declaration;
 
 namespace decl {
-  struct specifiers : public siblings<term::specifier, specifiers> {
-    specifiers(std::vector<term::specifier>&& v)
-        : siblings(std::move(v)) {}
-    FORMAT_DECL_IMPL();
-    cr_type parse_type() const;
-    storage_t parse_storage() const;
-    linkage_t parse_linkage() const;
-  };
+  class function;
+  class variable;
+}; // namespace decl
 
-  struct declaration {};
-  struct label : public visitable<statement, label>, declaration {
-    term::identifier term;
+class stackframe;
+
+struct global_scope : virtual visitable<base_scope<declaration*>, global_scope> {};
+struct local_scope : virtual visitable<base_scope<statement*>, local_scope> {};
+using function_store = hashmap<mangled_key, std::unique_ptr<decl::function>>;
+
+namespace scopes {
+  struct block : public declaration, virtual visitable<local_scope, block> {
+    block(block&& v) noexcept
+        : visitable(std::move(v)) {
+      local_scope::set_parent(static_cast<local_scope*>(this));
+    }
+  };
+  using function_scope = block;
+}; // namespace scopes
+// struct enum_ : visitable<statement, block> {};
+// struct class_ : visitable<statement, block> {};
+
+// template <typename T>
+//   requires(Formattable<T>)
+// struct lazy_format {
+//   lazy_format(const T& t)
+//       : m_obj(t),
+//         m_func([](const T& t) { return t.format(); }) {}
+//
+//   cr_string value(const T& t) const {
+//     if (!m_value.has_value()) {
+//       m_value = m_func(t);
+//     }
+//     return m_value.value();
+//   }
+//
+// private:
+//   mutable std::optional<std::string> m_value;
+//   std::reference_wrapper<const T> m_obj;
+//   std::function<std::string(const T&)> m_func;
+// };
+
+namespace decl {
+  struct specifiers : visitable<composite, specifiers> {
+    terms::type type;
+    terms::linkage linkage;
+    terms::storage storage;
+    specifiers(terms::type, terms::linkage, terms::storage);
+    specifiers(cr_type t, decltype(linkage) l = {}, decltype(storage) s = {})
+        : type(t),
+          linkage(std::move(l)),
+          storage(std::move(s)) {}
+    // FORMAT_DECL_IMPL();
+    cmm::location location() const override {
+      return type.location() + linkage.location() + storage.location();
+    }
+  };
+  struct label : public visitable<declaration, label> {
     label(const token&);
-    FORMAT_DECL_IMPL();
-    std::optional<cmm::location> location() const override;
+    // FORMAT_DECL_IMPL();
+    cmm::location location() const override;
   };
 
-  static_assert(std::is_copy_assignable<label>());
-  static_assert(std::is_copy_constructible<label>());
-  static_assert(std::is_move_constructible<label>());
-  static_assert(std::is_move_assignable<label>());
-
-  struct variable : visitable<global_statement, variable>, declaration {
-    decl::specifiers specifiers;
-    term::identifier* ident; // Can be null, used for function parameters
+  struct variable : visitable<declaration, variable>, public identifiable<variable> {
+    specifiers specs;
     expr::expression* init;
 
-    variable(decl::specifiers&&, decltype(ident), decltype(init));
-    [[nodiscard]] std::string label() const noexcept {
-      return std::format("{}_{}", "variable", ident->value());
-    }
-
-    FORMAT_DECL_IMPL();
-    std::optional<cmm::location> location() const override;
+    variable(specifiers&&, terms::identifier&&, decltype(init));
+    variable(cr_type, decltype(ident)&&, decltype(init));
+    variable(cr_type, std::string);
+    // FORMAT_DECL_IMPL();
+    cmm::location location() const override;
+    std::vector<const node*> path() const override;
   };
-  static_assert(std::is_copy_assignable<variable>());
-  static_assert(std::is_copy_constructible<variable>());
-  static_assert(std::is_move_constructible<term::identifier>());
-  static_assert(std::is_move_assignable<term::identifier>());
 
-  struct function : visitable<global_statement, function>, declaration {
-    struct parameters_t : public siblings<variable, parameters_t> {
-      parameters_t() = default;
-      parameters_t(std::vector<variable>&& v)
-          : siblings(std::move(v)) {}
-      FORMAT_DECL_IMPL();
+  struct function : visitable<declaration, function> {
+    using parameter         = variable;
+    using loaded_parameters = std::vector<parameter>;
+
+    struct parameters : public visitable<base_scope<parameter>, parameters> {
+      using parent_t = base_scope<parameter>;
+      using vector_t = vector<parameter>;
+      parameters()   = default;
+      parameters(std::vector<parameter>&& v)
+          : visitable(std::move(v)) {}
+      parameters(const std::vector<ptr_type>& t)
+          : visitable(t | std::views::transform([](ptr_type t) -> variable {
+                        return {*t, {t->format()}};
+                      }) |
+                      std::ranges::to<std::vector>()) {}
+      void load_arguments(const expr::arguments&);
+      // FORMAT_DECL_IMPL();
+      std::vector<ptr_type> types() const {
+        return vector<parameter>::data() |
+               std::views::transform(
+                   [](const parameter& param) -> ptr_type { return &param.specs.type.value(); }) |
+               std::ranges::to<std::vector>();
+      }
     };
-    static_assert(std::is_object_v<parameters_t>);
+    struct signature;
 
-    decl::specifiers specifiers;
-    term::identifier ident;
-    parameters_t parameters;
-    compound* body;
+    specifiers specs;
+    decl::function::parameters params;
+    scopes::function_scope* body;
 
-    function(decl::specifiers&&,
-             decltype(ident)&&,
-             decltype(parameters)&&,
-             decltype(body) = nullptr);
-    FORMAT_DECL_IMPL();
-    std::optional<cmm::location> location() const override;
+    function(decltype(specs)&&, decltype(ident)&&, decltype(params)&&, decltype(body));
+    function(const terms::operator_& name,
+             ptr_type ret,
+             const std::vector<ptr_type>& params,
+             decltype(body) b)
+        : specs(*ret),
+          visitable(name),
+          params(params),
+          body(b) {}
+    // FORMAT_DECL_IMPL();
+    cmm::location location() const override;
   };
 
-  static_assert(std::formattable<function, char>);
+  struct function::signature {
+    cstring name;
+    std::vector<ptr_type> types;
+
+    bool operator==(const signature& other) const {
+      return name == other.name &&
+             std::ranges::all_of(std::views::zip(types, other.types), [](const auto& type_pair) {
+               const auto& [t, other_t] = type_pair;
+               return t == other_t;
+             });
+    }
+  };
+
+  // static_assert(std::formattable<function, char>);
   static_assert(std::is_polymorphic_v<statement>);
   static_assert(std::is_polymorphic_v<variable>);
   static_assert(std::is_base_of_v<statement, variable>);
   DERIVE_OK(statement, variable);
   DERIVE_OK(statement, label);
   DERIVE_OK(statement, function);
+
+  struct conversion_function : public function {
+    enum class conversion_type_t : uint8_t { IMPLICIT, EXPLICIT };
+    conversion_type_t type;
+    conversion_function(const decltype(body)&);
+    [[nodiscard]] virtual bool is_convertible(cr_type) const noexcept = 0;
+    [[nodiscard]] virtual cr_type to(cr_type) const noexcept          = 0;
+    [[nodiscard]] virtual assembly::operand* operator()(assembly::operand*) const noexcept;
+    [[nodiscard]] bool is_implicit() const { return type == conversion_type_t::IMPLICIT; };
+    [[nodiscard]] bool is_explicit() const { return type == conversion_type_t::EXPLICIT; };
+  };
+
+  struct direct_conversion : public conversion_function {
+    cr_type from_type;
+    cr_type to_type;
+
+    [[nodiscard]] bool is_convertible(cr_type t) const noexcept override { return from_type == t; }
+    [[nodiscard]] cr_type to(cr_type) const noexcept override { return to_type; };
+
+    direct_conversion(const decltype(body)&, cr_type, cr_type);
+  };
+  struct glob_conversion : public conversion_function {
+    std::string description;
+    using condition_t = std::function<bool(cr_type)>;
+    using extractor_t = std::function<cr_type(cr_type)>;
+    condition_t condition;
+    extractor_t extractor;
+
+    [[nodiscard]] bool is_convertible(cr_type t) const noexcept override { return condition(t); }
+    [[nodiscard]] cr_type to(cr_type t) const noexcept override { return extractor(t); };
+
+    glob_conversion(std::string, const decltype(body)&, const condition_t&, const extractor_t&);
+  };
 }; // namespace decl
-//
+
+struct stack_counter {
+  // assembly_stack() = default;
+  [[nodiscard]] size_t size() const { return stack_size; };
+  void push() { stack_size++; };
+  void pop(size_t times = 1) { stack_size -= times; }
+
+private:
+  size_t stack_size = 0;
+};
+
+using direct_conversion_store = hashmap<mangled_key, decl::direct_conversion>;
+class conversion_store {
+public:
+  using key_type     = mangled_key;
+  using value_type   = direct_conversion_store;
+
+  conversion_store() = default;
+  [[nodiscard]] bool is_convertible(const type&, const type&) const;
+  [[nodiscard]] std::vector<ptr_type> get_convertible_types(const type&) const;
+  [[nodiscard]] std::vector<const decl::conversion_function*> get_conversions(const type&) const;
+  void emplace_direct(const decltype(decl::conversion_function::body)&, cr_type, cr_type);
+  void emplace_glob(std::string&&,
+                    const decltype(decl::conversion_function::body)&,
+                    const decl::glob_conversion::condition_t&,
+                    const decl::glob_conversion::extractor_t&);
+
+private:
+  direct_conversion_store m_direct_store;
+  std::vector<decl::glob_conversion> m_glob_store;
+};
+
+using label_store = hashmap<mangled_key, decl::label>;
+class frame : public node {
+public:
+  frame(const ast::decl::function*);
+  const decl::function* function;
+  stack_counter local_stack;
+  label_store labels;
+  stack<scopes::function_scope> local_scopes;
+
+  local_scope& active_scope();
+  [[nodiscard]] const local_scope& active_scope() const;
+  void clear() noexcept;
+  [[nodiscard]] bool is_declared(const ast::terms::identifier&) const noexcept;
+  [[nodiscard]] decl::variable* get(const ast::terms::identifier&);
+  [[nodiscard]] const decl::variable* get(const ast::terms::identifier&) const;
+  void create_scope(const ast::scopes::function_scope&) noexcept;
+  size_t destroy_scope() noexcept;
+};
+
+using stackframe_store = stack<frame>;
+
 namespace selection {
   struct if_ : visitable<statement, if_> {
-    term::keyword keyword;
+    terms::keyword keyword;
     expr::expression& condition;
     statement* block;
     statement* else_;
 
-    if_(term::keyword&&, expr::expression&, statement*, statement* = nullptr);
-    FORMAT_DECL_IMPL();
-    std::optional<cmm::location> location() const override;
+    if_(terms::keyword&&, expr::expression&, statement*, statement* = nullptr);
+    // FORMAT_DECL_IMPL();
+    cmm::location location() const override;
   };
 
 }; // namespace selection
 
 namespace iteration {
   template <typename It>
-  struct iteration {
+  struct iteration : public visitable<statement, It> {
   private:
     iteration() = default;
 
   public:
-    virtual ~iteration() = default;
+    ~iteration() override = default;
     [[nodiscard]] virtual std::string condition_label() const;
     [[nodiscard]] virtual std::string exit_label() const;
     friend It;
   };
 
-  struct while_ : visitable<statement, while_>, public iteration<while_> {
-    term::keyword keyword;
+  struct while_ : visitable<iteration<while_>, while_> {
+    terms::keyword keyword;
     expr::expression& condition;
     statement* body;
-    while_(term::keyword&&, expr::expression&, statement*);
-    FORMAT_DECL_IMPL();
-    std::optional<cmm::location> location() const override;
+    while_(terms::keyword&&, expr::expression&, statement*);
+    // FORMAT_DECL_IMPL();
+    cmm::location location() const override;
   };
 
   DERIVE_OK(statement, while_);
   static_assert(!std::is_abstract_v<while_>);
 
-  struct for_ : visitable<statement, for_>, public iteration<for_> {
-    term::keyword keyword;
+  struct for_ : visitable<iteration<for_>, for_> {
+    terms::keyword keyword;
     decl::variable* start;
     expr::expression* condition;
     expr::expression* step;
     statement* body;
-    for_(term::keyword&& k,
+    for_(terms::keyword&& k,
          decl::variable* start_,
          expr::expression* condition_,
          expr::expression* step_,
          statement* block);
-    FORMAT_DECL_IMPL();
-    std::optional<cmm::location> location() const override;
+    // FORMAT_DECL_IMPL();
+    cmm::location location() const override;
   };
 
 }; // namespace iteration
 
 namespace jump {
   struct goto_ : visitable<statement, goto_> {
-    term::identifier term;
+    terms::identifier term;
     goto_(const token&);
-    FORMAT_DECL_IMPL();
-    std::optional<cmm::location> location() const override;
+    // FORMAT_DECL_IMPL();
+    cmm::location location() const override;
   };
   struct break_ : visitable<statement, break_> {
-    term::keyword keyword;
+    terms::keyword keyword;
     explicit break_(const token& token);
-    FORMAT_DECL_IMPL();
-    std::optional<cmm::location> location() const override;
+    // FORMAT_DECL_IMPL();
+    cmm::location location() const override;
   };
 
   struct continue_ : visitable<statement, continue_> {
-    term::keyword keyword;
+    terms::keyword keyword;
     explicit continue_(const token& token);
-    FORMAT_DECL_IMPL();
-    std::optional<cmm::location> location() const override;
+    // FORMAT_DECL_IMPL();
+    cmm::location location() const override;
   };
 
   struct return_ : visitable<statement, return_> {
-    term::keyword keyword;
+    terms::keyword keyword;
     expr::expression* expr;
-    return_(term::keyword k, expr::expression* expr_);
-    FORMAT_DECL_IMPL();
-    std::optional<cmm::location> location() const override;
+    return_(terms::keyword k, expr::expression* expr_);
+    // FORMAT_DECL_IMPL();
+    cmm::location location() const override;
   };
 
 } // namespace jump
 
-struct program : public siblings<ast::global_statement*, program> {
-  program(std::vector<ast::global_statement*>&& v)
-      : siblings(std::move(v)) {}
-  FORMAT_DECL_IMPL();
-};
+namespace scopes {
+  struct translation_unit : public declaration, visitable<global_scope, translation_unit> {
+    using visitable::visitable;
+
+    void clear() noexcept;
+    [[nodiscard]] frame& active_frame() noexcept;
+    [[nodiscard]] const frame& active_frame() const noexcept;
+    template <typename Scope>
+    [[nodiscard]] Scope&& active_scope() noexcept;
+
+    // Frames
+    void push_frame(const function_scope*);
+    size_t pop_frame();
+
+    template <typename T>
+    bool is_declared(const ast::terms::identifier&) const noexcept;
+    template <typename T>
+    bool is_declarable(const ast::terms::identifier&) const noexcept;
+    const decl::label* get_label(const ast::terms::identifier&) const;
+    const decl::variable* get_variable(const ast::terms::identifier&) const;
+    const decl::function* get_function(const function_signature&) const;
+    void declare_function(const ast::decl::function*, bool = false);
+    template <typename T>
+    T* load_symbol(const ast::terms::identifier&);
+    std::vector<ptr_type> get_conversions(cr_type t) {
+      return m_conversions.get_convertible_types(t);
+    }
+
+    bool is_entry_point_defined() const noexcept;
+    const decl::function* get_entry_point();
+    void link_entry_point(const ast::decl::function*);
+    [[nodiscard]] bool is_global_scope() const noexcept;
+    bool in_main() const noexcept;
+
+    // std::string format() const override;
+
+  private:
+    variable_store m_variables;
+    function_store m_functions;
+    stackframe_store m_stackframe;
+    conversion_store m_conversions;
+    global_scope m_global_scope;
+
+    std::optional<const decl::function*> progressive_prefix_match(
+        const std::vector<ptr_type>&,
+        const std::vector<const decl::function*>&) const;
+  };
+  using namespace_ = translation_unit;
+} // namespace scopes
+
+using program = scopes::translation_unit;
 
 #define TRACE_VISITOR(OBJ) \
   REGISTER_TRACE("{} visited {}", \
                  cpptrace::demangle(typeid(this).name()), \
                  cpptrace::demangle(typeid(OBJ).name()))
-#define TERM_TYPES \
-  ast::term::literal, ast::term::identifier, ast::term::keyword, ast::term::specifier, \
-      ast::term::operator_
-
-#define GLOBAL_TYPES ast::decl::function, ast::decl::variable
-
-#define STATEMENT_TYPES \
-  ast::compound, ast::decl::label, ast::iteration::for_, ast::iteration::while_, \
-      ast::selection::if_, ast::jump::break_, ast::jump::continue_, ast::jump::goto_, \
-      ast::jump::return_
-
-#define CHILDREN_TYPES \
-  ast::expr::call::arguments, ast::decl::function::parameters_t, ast::decl::specifiers, ast::program
-
-#define NODE_TYPES STATEMENT_TYPES, EXPRESSION_TYPES, TERM_TYPES, CHILDREN_TYPES, GLOBAL_TYPES
-
-struct ast_visitor : cmm::ref_visitor<NODE_TYPES> {
-  void visit(ast::term::operator_& c) override { TRACE_VISITOR(c); }
-  void visit(ast::term::literal& c) override { TRACE_VISITOR(c); }
-  void visit(ast::term::keyword& c) override { TRACE_VISITOR(c); }
-  void visit(ast::term::specifier& c) override { TRACE_VISITOR(c); }
-  void visit(ast::term::identifier& c) override { TRACE_VISITOR(c); }
-  void visit(ast::expr::call::arguments& a) override {
-    TRACE_VISITOR(a);
-    for (auto&& arg : a) {
-      arg->accept(*this);
-    }
-  };
-  void visit(ast::decl::function::parameters_t& p) override {
-    TRACE_VISITOR(p);
-    for (auto&& par : p) {
-      par.accept(*this);
-    }
-  };
-  void visit(ast::decl::specifiers& s) override {
-    TRACE_VISITOR(s);
-    for (auto&& par : s) {
-      par.accept(*this);
-    }
-  };
-  void visit(ast ::expr ::identifier& c) override {
-    TRACE_VISITOR(c);
-    c.term.accept(*this);
-  };
-  void visit(ast ::expr ::literal& c) override {
-    TRACE_VISITOR(c);
-    c.term.accept(*this);
-  };
-  void visit(ast ::expr ::unary_operator& c) override {
-    TRACE_VISITOR(c);
-    c.operator_.accept(*this);
-    c.expr.accept(*this);
-  };
-  void visit(ast ::expr ::binary_operator& c) override {
-    TRACE_VISITOR(c);
-    c.operator_.accept(*this);
-    c.left.accept(*this);
-    c.right.accept(*this);
-  };
-  void visit(ast ::expr ::call& c) override {
-    TRACE_VISITOR(c);
-    c.ident.accept(*this);
-    c.args.accept(*this);
-  };
-  void visit(ast ::compound& c) override {
-    TRACE_VISITOR(c);
-    for (auto&& d : c) {
-      d->accept(*this);
-    }
-  };
-  void visit(ast ::decl ::variable& c) override {
-    TRACE_VISITOR(c);
-    if (auto* ident = c.ident) {
-      ident->accept(*this);
-    }
-    c.specifiers.accept(*this);
-    if (auto* init = c.init) {
-      init->accept(*this);
-    }
-  };
-  void visit(ast ::decl ::function& c) override {
-    TRACE_VISITOR(c);
-    c.specifiers.accept(*this);
-    c.ident.accept(*this);
-    c.parameters.accept(*this);
-    if (auto* body = c.body) {
-      body->accept(*this);
-    }
-  };
-  void visit(ast ::decl ::label& c) override {
-    TRACE_VISITOR(c);
-    c.term.accept(*this);
-  };
-  void visit(ast ::iteration ::while_& c) override {
-    TRACE_VISITOR(c);
-    c.condition.accept(*this);
-    if (auto* body = c.body) {
-      body->accept(*this);
-    }
-  };
-  void visit(ast ::iteration ::for_& c) override {
-    TRACE_VISITOR(c);
-    c.start->accept(*this);
-    if (auto* cond = c.condition) {
-      cond->accept(*this);
-    }
-    if (auto* step = c.step) {
-      step->accept(*this);
-    }
-    if (auto* body = c.body) {
-      body->accept(*this);
-    }
-  };
-  void visit(ast ::selection ::if_& c) override {
-    TRACE_VISITOR(c);
-    c.condition.accept(*this);
-    if (auto* block = c.block) {
-      block->accept(*this);
-    }
-    if (auto* else_ = c.else_) {
-      else_->accept(*this);
-    }
-  };
-  void visit(ast ::jump ::goto_& c) override {
-    TRACE_VISITOR(c);
-    c.term.accept(*this);
-  };
-  void visit(ast ::jump ::return_& c) override {
-    TRACE_VISITOR(c);
-    if (auto* expr = c.expr) {
-      expr->accept(*this);
-    }
-  }
-  void visit(ast::jump::continue_& c) override { TRACE_VISITOR(c); }
-  void visit(ast::jump::break_& c) override { TRACE_VISITOR(c); }
-  void visit(ast::program& p) override {
-    TRACE_VISITOR(p);
-    for (auto&& d : p) {
-      p.accept(*this);
-    }
-  }
-};
-struct const_ast_visitor : cmm::cref_visitor<NODE_TYPES> {
-  void visit(const ast::term::operator_& c) override { TRACE_VISITOR(c); }
-  void visit(const ast::term::literal& c) override { TRACE_VISITOR(c); }
-  void visit(const ast::term::keyword& c) override { TRACE_VISITOR(c); }
-  void visit(const ast::term::specifier& c) override { TRACE_VISITOR(c); }
-  void visit(const ast::term::identifier& c) override { TRACE_VISITOR(c); }
-  void visit(const ast::expr::call::arguments& a) override {
-    TRACE_VISITOR(a);
-    for (auto&& arg : a) {
-      arg->accept(*this);
-    }
-  };
-  void visit(const ast::decl::function::parameters_t& p) override {
-    TRACE_VISITOR(p);
-    for (auto&& par : p) {
-      par.accept(*this);
-    }
-  };
-  void visit(const ast::decl::specifiers& s) override {
-    TRACE_VISITOR(s);
-    for (auto&& par : s) {
-      par.accept(*this);
-    }
-  };
-  void visit(const ast ::expr ::identifier& c) override {
-    TRACE_VISITOR(c);
-    c.term.accept(*this);
-  };
-  void visit(const ast ::expr ::literal& c) override {
-    TRACE_VISITOR(c);
-    c.term.accept(*this);
-  };
-  void visit(const ast ::expr ::unary_operator& c) override {
-    TRACE_VISITOR(c);
-    c.operator_.accept(*this);
-    c.expr.accept(*this);
-  };
-  void visit(const ast ::expr ::binary_operator& c) override {
-    TRACE_VISITOR(c);
-    c.operator_.accept(*this);
-    c.left.accept(*this);
-    c.right.accept(*this);
-  };
-  void visit(const ast ::expr ::call& c) override {
-    TRACE_VISITOR(c);
-    c.ident.accept(*this);
-    c.args.accept(*this);
-  };
-  void visit(const ast ::compound& c) override {
-    TRACE_VISITOR(c);
-    for (auto&& d : c) {
-      d->accept(*this);
-    }
-  };
-  void visit(const ast ::decl ::variable& c) override {
-    TRACE_VISITOR(c);
-    if (auto* ident = c.ident) {
-      ident->accept(*this);
-    }
-    c.specifiers.accept(*this);
-    if (auto* init = c.init) {
-      init->accept(*this);
-    }
-  };
-  void visit(const ast ::decl ::function& c) override {
-    TRACE_VISITOR(c);
-    c.specifiers.accept(*this);
-    c.ident.accept(*this);
-    c.parameters.accept(*this);
-    if (auto* body = c.body) {
-      body->accept(*this);
-    }
-  };
-  void visit(const ast ::decl ::label& c) override {
-    TRACE_VISITOR(c);
-    c.term.accept(*this);
-  };
-  void visit(const ast ::iteration ::while_& c) override {
-    TRACE_VISITOR(c);
-    c.condition.accept(*this);
-    if (auto* body = c.body) {
-      body->accept(*this);
-    }
-  };
-  void visit(const ast ::iteration ::for_& c) override {
-    TRACE_VISITOR(c);
-    c.start->accept(*this);
-    if (auto* cond = c.condition) {
-      cond->accept(*this);
-    }
-    if (auto* step = c.step) {
-      step->accept(*this);
-    }
-    if (auto* body = c.body) {
-      body->accept(*this);
-    }
-  };
-  void visit(const ast ::selection ::if_& c) override {
-    TRACE_VISITOR(c);
-    c.condition.accept(*this);
-    if (auto* block = c.block) {
-      block->accept(*this);
-    }
-    if (auto* else_ = c.else_) {
-      else_->accept(*this);
-    }
-  };
-  void visit(const ast ::jump ::goto_& c) override {
-    TRACE_VISITOR(c);
-    c.term.accept(*this);
-  };
-  void visit(const ast ::jump ::return_& c) override {
-    TRACE_VISITOR(c);
-    if (auto* expr = c.expr) {
-      expr->accept(*this);
-    }
-  }
-  void visit(const ast::jump::continue_& c) override { TRACE_VISITOR(c); }
-  void visit(const ast::jump::break_& c) override { TRACE_VISITOR(c); }
-  void visit(const ast::program& p) override {
-    TRACE_VISITOR(p);
-    for (auto&& d : p) {
-      p.accept(*this);
-    }
-  }
-};
-static_assert(std::is_constructible_v<expr::call::arguments>);
 } // namespace cmm::ast
 
-static_assert(std::is_base_of_v<cmm::ast::node, cmm::ast::term::identifier>);
 #include "ast.inl"

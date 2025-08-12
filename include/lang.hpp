@@ -11,6 +11,30 @@
 
 namespace cmm {
 
+namespace ast::decl {
+  class function;
+}
+using function_signature = std::pair<std::string, std::vector<ptr_type>>;
+class mangled_name {
+
+public:
+  using value_type = std::string;
+  explicit mangled_name(const value_type&);
+  mangled_name(value_type&&);
+
+  static mangled_name variable(cstring, cr_type);
+  static mangled_name label(cstring);
+  static mangled_name function(cstring, const std::vector<ptr_type>&);
+  static mangled_name direct_conversion_function(cr_type, cr_type);
+  static std::string types(const std::vector<const type*>&);
+
+  [[nodiscard]] const value_type& str() const;
+  operator std::string() const;
+
+private:
+  value_type m_string;
+};
+
 enum class _instruction_t : uint8_t {
   nop = 0,
 
@@ -58,6 +82,10 @@ enum class _instruction_t : uint8_t {
 
   // Variables
   global,
+
+  // Not instructions
+  address_of,
+  deref,
 };
 
 enum class _operator_t : uint8_t {
@@ -91,6 +119,16 @@ enum class _operator_t : uint8_t {
   ampersand,
   assign,
 };
+
+enum class _builtin_signature_t : uint8_t { MAIN, SYSCALL, EXIT, PRINT };
+using header_arguments_t = std::vector<ptr_type>;
+struct builtin_signature_t : public cmm::enumeration<_builtin_signature_t> {
+  BUILD_ENUMERATION(builtin_signature_t, std::string_view, function_name, header_arguments_t, args);
+
+  [[nodiscard]] function_signature signature() const { return {std::string(function_name), args}; }
+  [[nodiscard]] std::string mangle() const { return mangled_name::function(function_name, args); }
+};
+enum class keyword_t : uint8_t { IF, WHILE, FOR, GOTO, BREAK, CONTINUE, RETURN };
 
 enum class associativity_t : uint8_t { Either, L2R, R2L };
 

@@ -11,7 +11,6 @@
 #include <exception>
 #include <format>
 #include <functional>
-#include <iostream>
 #include <libassert/assert.hpp>
 #include <magic_enum/magic_enum_all.hpp>
 #include <magic_enum/magic_enum_format.hpp>
@@ -144,6 +143,56 @@ struct formattable {
   [[nodiscard]] virtual std::string format() const = 0;
   [[nodiscard]] virtual std::string repr(size_t = 0) const { return format(); }
 };
+
+#define CTOR_PARAMS_2(t1, n1)                         t1 _##n1
+#define CTOR_PARAMS_4(t1, n1, t2, n2)                 t1 _##n1, t2 _##n2
+#define CTOR_PARAMS_6(t1, n1, t2, n2, t3, n3)         t1 _##n1, t2 _##n2, t3 _##n3
+#define CTOR_PARAMS_8(t1, n1, t2, n2, t3, n3, t4, n4) t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4
+#define CTOR_PARAMS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
+  t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5
+#define CTOR_PARAMS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
+  t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5, t6 _##n6
+
+#define ADD_FMT_0(lvl, a1)
+#define ADD_FMT_1(lvl, a1) \
+  \n {}
+#define ADD_FMT_2(lvl, a1, a2) \
+  \n {} \
+  \n {}
+#define ADD_FMT_3(lvl, a1, a2, a3) \
+  \n {} \
+  \n {} \
+  \n {}
+
+#define FORMAT_ARGS_0(lvl, a1)
+#define FORMAT_ARGS_1(lvl, a1)         a1.repr(lvl + 1)
+#define FORMAT_ARGS_2(lvl, a1, a2)     a1.repr(lvl + 1), a2.repr(lvl + 1)
+#define FORMAT_ARGS_3(lvl, a1, a2, a3) a1.repr(lvl + 1), a2.repr(lvl + 1), a3.repr(lvl + 1)
+
+#define CTOR_ADD_FMT(...) CONCAT(ADD_FMT_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
+#define CTOR_FORMAT_ARGS(lvl, ...) \
+  CONCAT(FORMAT_ARGS_, GET_ARG_COUNT(__VA_ARGS__))(lvl, __VA_ARGS__)
+
+#define INDENT_IMPL(TYPE, stdstr, ...) \
+  std::string TYPE::repr(size_t n) const { \
+    return std::format("{}{}", std::string(n * 2, ' '), std::format(stdstr, __VA_ARGS__)); \
+  } \
+  std::string TYPE::format() const { return std::format(stdstr, __VA_ARGS__); }
+#define FORMAT_INDENT_IMPL(TYPE, stdstr, ...) \
+  std::string TYPE::repr(size_t n) const { \
+    return std::format( \
+        "{}{}", std::string(n * 2, ' '), std::format(stdstr, CTOR_FORMAT_ARGS(n, __VA_ARGS__))); \
+  } \
+  std::string TYPE::format() const { return std::format(stdstr, __VA_ARGS__); }
+
+#define JOIN_INDENT_IMPL(TYPE, NAME, DELIM) \
+  std::string TYPE::repr(size_t n) const { \
+    return std::format( \
+        "{}{}", \
+        std::string(2, ' '), \
+        std::format("{}({}):\n{}", NAME, vector_t::size(), vector_t::join(DELIM, n))); \
+  } \
+  std::string TYPE::format() const { return cpptrace::demangle(typeid(this).name()); }
 
 template <typename T>
 concept Formattable =
@@ -461,6 +510,25 @@ protected:
 #define PAIR_COUNT_20          10
 #define PAIR_COUNT_22          11
 
+#define CREATE_ENUMERATION(TYPE, ...) \
+  using value_type   = CONCAT(TYPE, _t); \
+  using element_type = TYPE; \
+  using enumeration<value_type>::enumeration; \
+  using enum value_type; \
+  DECLARE_VARS(__VA_ARGS__) \
+  using member_types   = std::tuple<GET_TYPES(__VA_ARGS__)>; \
+  using properties_map = magic_enum::containers::array<value_type, member_types>; \
+  static_assert(std::is_constant_evaluated()); \
+  [[nodiscard]] static constexpr const properties_map& properties_array(); \
+  constexpr TYPE(value_type e) \
+      : enumeration<value_type>(e), \
+        CTOR_ASSIGN(__VA_ARGS__) {}
+
+#define CREATE_ENUMERATION_CLASS(TYPE, ...) \
+  struct TYPE : public cmm::enumeration<CONCAT(TYPE, _t)> { \
+    CREATE_ENUMERATION(TYPE, __VA_ARGS__) \
+  };
+
 #define BUILD_ENUMERATION(TYPE, ...) \
   using value_type   = CONCAT(_, TYPE); \
   using element_type = TYPE; \
@@ -543,8 +611,6 @@ protected:
 
 // template <typename... Args>
 // concept all_are_identifiable = (is_identifiable<Args> && ...);
-template <typename Cls, typename Parent, typename... Parents>
-struct identifiable;
 
 template <typename Base, typename Derived>
 struct is_direct_child_of {
@@ -553,42 +619,6 @@ struct is_direct_child_of {
       !std::is_base_of_v<Base,
                          typename std::remove_pointer_t<decltype(static_cast<void*>(
                              static_cast<Base*>(static_cast<Derived*>(nullptr))))>>;
-};
-
-template <typename Cls, typename Parent = void, typename... Parents>
-struct identifiable {
-  using id_type = size_t;
-  identifiable();
-  virtual ~identifiable();
-
-  [[nodiscard]] virtual std::string repr() const;
-  [[nodiscard]] virtual std::string id() const;
-  [[nodiscard]] size_t id_n() const;
-
-  using return_type = std::conditional_t<std::is_void_v<Parent>, std::nullptr_t, const Parent*>;
-
-  virtual return_type parent() const;
-
-  static id_type constructed();
-  static id_type destructed();
-  static id_type active();
-
-private:
-  id_type m_id;
-  static inline id_type m_constructions = 0;
-  static inline id_type m_destructions  = 0;
-};
-
-template <typename T, typename... Ts>
-struct identifiable_child : public identifiable<T, Ts...> {
-  using identifiable<T, Ts...>::identifiable;
-};
-
-template <typename T>
-struct identifiable_parent : public identifiable<T> {
-  using identifiable<T>::identifiable;
-  [[nodiscard]] identifiable<T>::return_type parent() const final { return nullptr; };
-  // std::nullptr_t parent() override { return nullptr; }
 };
 
 struct mangable {
@@ -790,11 +820,6 @@ struct error_t : public cmm ::enumeration<_error_t> {
 };
 ;
 
-template <typename T>
-concept maybe_allocated = requires(T t) {
-  { t.location() } -> std::same_as<std::optional<cmm::location>>;
-};
-
 struct compilation_error : public cmm::error {
   cmm::os::status status;
   std::optional<cmm::location> loc;
@@ -803,6 +828,11 @@ struct compilation_error : public cmm::error {
       : error(str),
         status(err.status),
         loc(std::move(loc)) {}
+};
+
+template <typename T>
+concept is_allocated = requires(T t) {
+  { t.location() } -> std::same_as<cmm::location>;
 };
 
 template <_error_t Err, typename... Args>
@@ -814,7 +844,7 @@ template <_error_t Err, typename... Args>
 }
 
 template <_error_t Err, typename L, typename... Args>
-  requires(maybe_allocated<L> || Allocated<L>)
+  requires(is_allocated<L>)
 [[noreturn]] void throw_error(L&& l, Args&&... args) {
   constexpr auto err = error_t(Err);
   auto msg           = std::format(err.fmt, l, std::forward<Args>(args)...);
@@ -1018,6 +1048,8 @@ template <typename T> struct vector {
   [[nodiscard]] const_reverse_iterator rend() const;
   [[nodiscard]] bool empty() const;
   [[nodiscard]] size_t size() const;
+  void push_back(const T&);
+  void push_back(T&&);
   template <typename Fn>
   pointer_type find(Fn);
   template <typename Fn>
@@ -1036,6 +1068,33 @@ private:
   container_type m_data;
 };
 
+template <typename K, typename V>
+class hashmap {
+public:
+  using key_type       = K;
+  using value_type     = V;
+  using container_type = std::unordered_map<key_type, value_type>;
+  hashmap();
+  [[nodiscard]] bool contains(const key_type&) const;
+  [[nodiscard]] size_t size() const noexcept;
+  container_type::const_iterator begin() const { return m_store.begin(); }
+  container_type::const_iterator end() const { return m_store.end(); }
+  container_type::const_iterator cbegin() const { return m_store.begin(); }
+  container_type::const_iterator cend() const { return m_store.cend(); }
+  value_type* at(const key_type&);
+  const value_type* at(const key_type&) const;
+  value_type* operator[](const key_type&);
+  const value_type* operator[](const key_type&) const;
+  void put(value_type&&);
+  template <typename... Args>
+    requires std::is_constructible_v<V, Args...>
+  value_type& emplace(key_type, Args&&...);
+  void clear();
+  std::vector<const V*> get_by_name(cstring) const;
+
+private:
+  std::unordered_map<key_type, value_type> m_store;
+};
 static_assert(std::is_copy_constructible_v<vector<int>>);
 
 template <typename T>
@@ -1083,49 +1142,6 @@ concept is_constructible = requires(Args&&... args) {
 template <typename T>
 constexpr inline auto generate = [](T& t) { return t; };
 
-struct semantic_extension {
-  ~semantic_extension() = default;
-};
-
-struct allocated_extension {
-  ~allocated_extension() = default;
-};
-
-struct loaded_extension {
-  ~loaded_extension() = default;
-};
-
-struct loaded_decorable {
-  virtual ~loaded_decorable() = default;
-  virtual loaded_extension* data() { return nullptr; }
-  using extension_t = loaded_extension;
-};
-
-struct allocated_decorable {
-  virtual ~allocated_decorable() = default;
-  virtual allocated_extension* declaration() { return nullptr; }
-  using extension_t = allocated_extension;
-};
-struct semantic_decorable {
-  virtual ~semantic_decorable() = default;
-  virtual semantic_extension* semantics() { return nullptr; }
-  using extension_t = semantic_extension;
-};
-struct base_decorable {
-  virtual ~base_decorable() = default;
-};
-
-template <typename T, typename Type, typename Ext>
-struct decorable : public base_decorable, public Type {
-  using extension_t     = Type::extension_t;
-  ~decorable() override = default;
-  decorable(T&& t)
-      : m_decorated(std::move(t)) {}
-
-private:
-  T m_decorated;
-};
-
 #define GET_MEMBER(OBJ, MEMBER) \
   if constexpr (requires { OBJ.operator->(); }) { \
     OBJ->MEMBER \
@@ -1134,6 +1150,12 @@ private:
   } else { \
     OBJ.MEMBER \
   }
+
+template <typename... Ts> // (7)
+struct overload : Ts... {
+  using Ts::operator()...;
+};
+template <class... Ts> overload(Ts...) -> overload<Ts...>;
 
 } // namespace cmm
 

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "common.hpp"
-#include "types.hpp"
 #include <cstdint>
 #include <initializer_list>
 #include <ranges>
@@ -94,10 +93,11 @@ enum class _token_t : uint8_t {
 
   // literal
   literal_begin,
-  bool_lit,
+  false_lit,
+  true_lit,
   int_lit,
   float_lit,
-  str_lit,
+  string_lit,
   char_lit,
   literal_end,
   ident,
@@ -134,9 +134,8 @@ struct token_t : public cmm::enumeration<_token_t> {
     enum class pattern_t : uint8_t { SINGLE_CHAR, MULTI_CHAR, REGEX };
     const pattern_t pattern_type;
     const cstring pattern;
-    std::optional<type_category_t> type;
 
-    constexpr properties(pattern_t, cstring, type_category_t = {}) noexcept;
+    constexpr properties(pattern_t, cstring) noexcept;
   };
 
   using value_type = _token_t;
@@ -170,10 +169,10 @@ struct token : public formattable, public self_allocated {
   token(token_t&& t, cmm::location&& loc)
       : self_allocated(std::move(loc)),
         type(std::move(t)) {}
-  token(token_t&& t, cmm::location&& loc, cmm::cstring value)
+  token(token_t&& t, cmm::location&& loc, std::string value)
       : self_allocated(std::move(loc)),
         type(std::move(t)),
-        value(value) {}
+        value(std::move(value)) {}
   bool operator==(const token& other) const { return value == other.value && type == other.type; }
   [[nodiscard]] std::string format() const override;
 };

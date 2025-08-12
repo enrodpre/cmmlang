@@ -1,1 +1,1 @@
-set args examples/binop2.cmm
+set args examples/post_dec.cmm

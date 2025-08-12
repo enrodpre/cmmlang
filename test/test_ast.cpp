@@ -13,8 +13,8 @@ using namespace memory;
 struct AstTest : public ::testing::Test {
   tokens* every_token;
   // ~AstTest() override { delete every_token; }
-  static token create_token(cmm::token_t type, cmm::cstring value = "") {
-    return {std::move(type), {}, value};
+  static token create_token(cmm::token_t type, std::string value = "") {
+    return {std::move(type), {}, std::move(value)};
   }
   token class_     = create_token(token_t::class_t);
   token constexpr_ = create_token(token_t::constexpr_);
@@ -42,7 +42,7 @@ struct AstTest : public ::testing::Test {
   token if_        = create_token(token_t::if_);
   token oparen     = create_token(token_t::o_paren);
   token cparen     = create_token(token_t::c_paren);
-  token true_      = create_token(token_t::bool_lit, "true");
+  token true_      = create_token(token_t::true_lit);
   token else_      = create_token(token_t::else_);
 
   template <typename T, typename U>

@@ -4,8 +4,7 @@
 #include <fcntl.h>
 #include <filesystem>
 
-#define LOG_PATH() \
-  REGISTER_INFO("Current path: {}", fs::current_path().string());
+#define LOG_PATH() REGISTER_INFO("Current path: {}", fs::current_path().string());
 
 namespace cmm::fs {
 using std::filesystem::absolute;
@@ -22,11 +21,9 @@ public:
   [[nodiscard]] bool exists() const noexcept { return fs::exists(m_path); }
   [[nodiscard]] const fs::path& path() const noexcept { return m_path; }
   [[nodiscard]] fs::path filename() const noexcept { return m_path.filename(); }
-  [[nodiscard]] fs::path absolute() const noexcept {
-    return std::filesystem::absolute(m_path);
-  }
+  [[nodiscard]] fs::path absolute() const noexcept { return std::filesystem::absolute(m_path); }
 
-  [[nodiscard]] file<T> replace_extension(fs::path ext) const {
+  [[nodiscard]] file<T> replace_extension(const fs::path& ext) const {
     auto new_path = m_path;
     return {new_path.replace_extension(ext)};
   }

@@ -2,7 +2,6 @@
 
 #include "allocator.hpp"
 #include "ast.hpp"
-#include "common.hpp"
 #include <format>
 
 #include "token.hpp"
@@ -41,21 +40,21 @@ public:
   ast::program parse();
   ast::program parse_program();
   ast::statement* parse_statement();
-  ast::compound* parse_compound();
+  ast::scope::block* parse_compound();
   ast::statement* parse_if();
   ast::statement* parse_goto();
   ast::statement* parse_label();
   ast::statement* parse_while();
   ast::statement* parse_for();
   ast::global_statement* parse_declaration();
-  ast::decl::variable* parse_variable(ast::decl::specifiers&&, ast::term::identifier);
-  ast::decl::function* parse_function(ast::decl::specifiers&&, ast::term::identifier);
+  ast::decl::variable* parse_variable(ast::decl::specifiers&&, ast::term::identifier&&);
+  ast::decl::function* parse_function(ast::decl::specifiers&&, ast::term::identifier&&);
 
   // EXPRESSIONS
   ast::expr::expression* parse_primary();
   ast::expr::expression* parse_condition();
   ast::expr::expression* parse_unary_expr();
-  ast::expr::expression* parse_call(ast::term::identifier ident);
+  ast::expr::expression* parse_call(ast::term::identifier&& ident);
   ast::expr::expression* parse_expr(uint8_t = 255);
 
   // Terms
@@ -68,6 +67,8 @@ private:
   std::vector<ast::global_statement*> m_global;
   template <typename T, typename Func>
   std::vector<T> parse_varargs(Func&&, const token_t&, const token_t&, const token_t&);
+  template <typename T, typename... Args>
+  T* create_node(Args&&...);
   ast::expr::expression* parse_lhs_expr();
   static void want(const token&, const token_t&, bool = false);
   void want(const token_t&, bool = false);

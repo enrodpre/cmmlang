@@ -44,5 +44,6 @@ else
     else
       echo -e "\033[1;31mERROR\033[0m"
     fi
+    exit $code
   fi
 fi

@@ -1,5 +1,4 @@
 #include "parser.hpp"
-#include "allocator.hpp"
 #include "ast.hpp"
 #include "common.hpp"
 
@@ -12,6 +11,7 @@
 namespace cmm::parser {
 
 using namespace ast;
+using namespace scope;
 // using namespace messaging;
 
 parser::parser(tokens tokens)
@@ -27,7 +27,7 @@ ast::program parser::parser::parse_program() {
   return {std::move(m_global)};
 }
 
-compound* parser::parse_compound() {
+block* parser::parse_compound() {
   want(token_t::o_curly);
   std::vector<ast::statement*> comp;
 
@@ -35,7 +35,7 @@ compound* parser::parse_compound() {
     if (m_tokens.peek().type == token_t::c_curly) {
       m_tokens.advance();
       need_semicolon_after_statement = false;
-      return m_arena.emplace<compound>(std::move(comp));
+      return create_node<block>(std::move(comp));
     }
 
     auto* stmt = parse_statement();
@@ -100,13 +100,13 @@ statement* parser::parse_statement() {
       }
     case token_t::continue_:
       {
-        auto* stmt = m_arena.emplace<jump::continue_>(m_tokens.next());
+        auto* stmt = create_node<jump::continue_>(m_tokens.next());
         want_semicolon();
         return stmt;
       }
     case token_t::break_:
       {
-        auto* stmt = m_arena.emplace<jump::break_>(m_tokens.next());
+        auto* stmt = create_node<jump::break_>(m_tokens.next());
         want_semicolon();
         return stmt;
       }
@@ -115,12 +115,12 @@ statement* parser::parse_statement() {
         auto return_       = m_tokens.next();
         auto* return_value = parse_expr();
         want_semicolon();
-        return m_arena.emplace<jump::return_>(return_, return_value);
+        return create_node<jump::return_>(return_, return_value);
       }
     case token_t::label:
       {
         auto label_ = m_tokens.next();
-        return m_arena.emplace<decl::label>(label_);
+        return create_node<decl::label>(label_);
       }
     case token_t::goto_:
       {
@@ -130,7 +130,7 @@ statement* parser::parse_statement() {
         auto label = m_tokens.next();
         DEBUG_ASSERT(!label.value.empty());
         want_semicolon();
-        return m_arena.emplace<jump::goto_>(label);
+        return create_node<jump::goto_>(label);
       }
     case token_t::o_curly:
       {
@@ -153,32 +153,50 @@ ast::global_statement* parser::parse_declaration() {
   auto ident = parse_identifier();
   if (m_tokens.peek().type == token_t::o_paren) {
     // Function
-    auto* funcdecl                 = parse_function(std::move(mods), ident);
+    auto* funcdecl                 = parse_function(std::move(mods), std::move(ident));
     need_semicolon_after_statement = false;
     return funcdecl;
   }
 
-  auto* vardecl = parse_variable(std::move(mods), ident);
+  auto* vardecl = parse_variable(std::move(mods), std::move(ident));
   want_semicolon();
   return vardecl;
 }
+
+#define CREATE_LITERAL(TOKEN, TYPE) create_node<expr::TYPE>(token);
 // FIXME
 ast::expr::expression* parser::parse_lhs_expr() {
   const auto& token = m_tokens.peek();
 
   if (token.type.is_literal()) {
     m_tokens.advance();
-    return m_arena.emplace<expr::literal>(token);
+    switch (token.type.inner()) {
+      case _token_t::false_lit:
+        return create_node<expr::false_lit>(token);
+      case _token_t::true_lit:
+        return create_node<expr::true_lit>(token);
+      case _token_t::int_lit:
+        return create_node<expr::int_lit>(token);
+      case _token_t::float_lit:
+        return create_node<expr::float_lit>(token);
+      case _token_t::string_lit:
+        return create_node<expr::string_lit>(token);
+      case _token_t::char_lit:
+        return create_node<expr::char_lit>(token);
+      default:
+        NOT_IMPLEMENTED;
+        break;
+    }
   }
 
   expr::expression* expr = nullptr;
   if (token.type.is(token_t::ident)) {
     auto ident = parse_identifier();
     if (m_tokens.next_is(token_t::o_paren)) {
-      return parse_call(ident);
+      return parse_call(std::move(ident));
     }
 
-    return m_arena.emplace<expr::identifier>(std::move(ident));
+    return create_node<expr::identifier>(std::move(ident));
   }
 
   if (token.type.is(token_t::o_paren)) {
@@ -206,7 +224,7 @@ ast::expr::expression* parser::parse_lhs_expr() {
     }
     term::operator_ term(token, op);
     auto* operand = parse_lhs_expr();
-    return m_arena.emplace<expr::unary_operator>(operand, std::move(term));
+    return create_node<expr::unary_operator>(operand, std::move(term));
   }
 
   throw_error<error_t::UNEXPECTED_TOKEN>(token);
@@ -232,7 +250,7 @@ expr::expression* parser::parse_expr(uint8_t min_prec) {
         NOT_IMPLEMENTED;
       }
       term::operator_ t(op, op_t);
-      lhs = m_arena.emplace<expr::unary_operator>(lhs, std::move(t));
+      lhs = create_node<expr::unary_operator>(lhs, std::move(t));
       continue;
     }
 
@@ -250,28 +268,20 @@ expr::expression* parser::parse_expr(uint8_t min_prec) {
     }
 
     expr::expression* rhs = parse_expr(prec);
-    lhs                   = m_arena.emplace<expr::binary_operator>(lhs, rhs, std::move(curr_op));
+    lhs                   = create_node<expr::binary_operator>(lhs, rhs, std::move(curr_op));
   }
 
   return lhs;
 }
 
-expr::expression* parser::parse_call(term::identifier ident) {
+expr::expression* parser::parse_call(term::identifier&& ident) {
   auto p = [this]() { return this->parse_expr(); };
   auto args =
       parse_varargs<expr::expression*>(p, token_t::o_paren, token_t::comma, token_t::c_paren);
 
   // No more parameters
   // but dont capture semicolon just jet
-  return m_arena.emplace<expr::call>(std::move(ident), std::move(args));
-}
-
-ast::decl::specifiers parser::parse_specifiers() {
-  std::vector<term::specifier> specs;
-  while (m_tokens.peek().type.is_specifier()) {
-    specs.emplace_back(m_tokens.next());
-  }
-  return {std::move(specs)};
+  return create_node<expr::call>(std::move(ident), std::move(args));
 }
 
 term::identifier parser::parse_identifier() {
@@ -284,15 +294,102 @@ term::identifier parser::parse_identifier() {
   throw_error<error_t::UNEXPECTED_TOKEN>(m_tokens.peek());
 }
 
-decl::variable* parser::parse_variable(ast::decl::specifiers&& mods, ast::term::identifier id) {
+decl::variable* parser::parse_variable(ast::decl::specifiers&& mods, ast::term::identifier&& id) {
   expr::expression* init = nullptr;
   if (m_tokens.peek().type == cmm::token_t::assign) {
     m_tokens.advance();
     init = parse_expr();
   }
 
-  return m_arena.emplace<decl::variable>(
-      std::move(mods), m_arena.emplace<term::identifier>(id), init);
+  return create_node<decl::variable>(std::move(mods), std::move(id), init);
+}
+
+namespace {
+  term::linkage parse_linkage(const std::vector<token>& ts) {
+    auto res =
+        std::ranges::find_if(ts, [](const auto& spec) { return spec.type == token_t::static_; });
+    if (res != ts.cend()) {
+      return linkage_t::internal;
+    }
+    return linkage_t::normal;
+  }
+
+  term::storage parse_storage(const std::vector<token>& ts) {
+    auto storages = ts |
+                    std::views::filter([](const auto& spec) { return spec.type.is_storage(); }) |
+                    std::ranges::to<std::vector>();
+    if (storages.size() == 0) {
+      return storage_t::normal;
+    }
+    if (storages.size() == 1) {
+      return {storage_t::static_};
+    }
+
+    throw_error<error_t::INCOMPATIBLE_TOKEN>(storages[1], storages[1], storages[0]);
+  }
+  constexpr type_category_t parse_enum_type(const token_t& token_type, bool unsigned_) {
+    if (token_type == token_t::int_t) {
+      return unsigned_ ? type_category_t::uint_t : type_category_t::sint_t;
+    } // namespace cmm::ast
+    return token_type.cast<type_category_t>();
+  }
+  cr_type parse_type(const std::vector<token>& ts) {
+    bool const_    = false;
+    bool volatile_ = false;
+    bool unsigned_ = false;
+    std::optional<token_t> type_;
+    for (const auto& t : ts) {
+      if (t.type == token_t::const_) {
+        const_ = true;
+      } else if (t.type == token_t::volatile_) {
+        volatile_ = true;
+      } else if (t.type.is_type()) {
+        type_.emplace(t.type);
+      } else if (t.type == token_t::unsigned_) {
+        unsigned_ = true;
+      }
+    }
+
+    if (!type_.has_value()) {
+      auto r = ts | std::views::transform([](const auto& spec) -> std::optional<cmm::location> {
+                 return spec.location();
+               }) |
+               std::ranges::to<std::vector>();
+
+      // throw_error<error_t::REQUIRED_TYPE>(t);
+    }
+    return type::create_fundamental(parse_enum_type(type_.value(), unsigned_), const_, volatile_);
+  }
+
+  void set_parent_node() {}
+  template <is_node Parent, is_node Node, is_node... Nodes>
+  void set_parent_node(Parent* parent, Node&& node, Nodes&&... args) {
+    if constexpr (requires { node.operator->(); }) {
+      node->set_parent(parent);
+    } else if constexpr (std::is_pointer_v<Node>) {
+      node->set_parent(parent);
+    } else {
+      node.set_parent(parent);
+    }
+    set_parent_node(parent, std::forward<Nodes>(args)...);
+  }
+} // namespace
+
+ast::decl::specifiers parser::parse_specifiers() {
+  std::vector<token> specs;
+  while (m_tokens.peek().type.is_specifier()) {
+    specs.push_back(m_tokens.next());
+  }
+
+  ast::decl::specifiers&& res = {parse_type(specs), parse_linkage(specs), parse_storage(specs)};
+  return std::move(res);
+}
+
+template <typename T, typename... Args>
+T* parser::create_node(Args&&... args) {
+  auto* obj = m_arena.emplace<T>(std::forward<Args>(args)...);
+  // set_parent_node(obj, std::forward<Args>(args)...);
+  return obj;
 }
 
 template <typename T, typename Func>
@@ -321,13 +418,13 @@ std::vector<T> parser::parse_varargs(Func&& inner,
   return res;
 }
 
-decl::function* parser::parse_function(decl::specifiers&& mods, term::identifier id) {
-  auto p = [this]() -> decl::variable {
+decl::function* parser::parse_function(decl::specifiers&& mods, term::identifier&& id) {
+  auto p = [this]() -> decl::function::parameter {
     decl::specifiers specs = parse_specifiers();
 
-    term::identifier* id   = nullptr;
+    std::optional<term::identifier> id;
     if (m_tokens.next_is(token_t::ident)) {
-      id = m_arena.emplace<term::identifier>(m_tokens.next());
+      id.emplace(m_tokens.next());
     }
 
     expr::expression* e = nullptr;
@@ -335,21 +432,21 @@ decl::function* parser::parse_function(decl::specifiers&& mods, term::identifier
       e = parse_expr();
     }
 
-    return {std::move(specs), id, e};
+    return {specs, id.value_or({}), e};
   };
 
-  auto params =
-      parse_varargs<decl::variable>(p, token_t::o_paren, token_t::comma, token_t::c_paren);
+  auto params = parse_varargs<decl::function::parameter>(
+      p, token_t::o_paren, token_t::comma, token_t::c_paren);
 
   // No more var decls
   // Block parsing
-  compound* compound_ = nullptr;
+  function* compound_ = nullptr;
   if (m_tokens.peek().type == token_t::o_curly) {
     compound_ = parse_compound();
   }
 
   auto* func =
-      m_arena.emplace<decl::function>(std::move(mods), std::move(id), std::move(params), compound_);
+      create_node<decl::function>(std::move(mods), std::move(id), std::move(params), compound_);
   return func;
 }
 
@@ -364,7 +461,7 @@ statement* parser::parser::parse_while() {
   auto token       = m_tokens.next();
   auto* condition  = parse_condition();
   auto* while_stmt = parse_statement();
-  return m_arena.emplace<iteration::while_>(token, *condition, while_stmt);
+  return create_node<iteration::while_>(token, *condition, while_stmt);
 }
 
 statement* parser::parser::parse_for() {
@@ -373,9 +470,9 @@ statement* parser::parser::parse_for() {
   // If has start statement (var decl for now)
   decl::variable* start = nullptr;
   if (m_tokens.peek().type != token_t::semicolon) {
-    auto mods = parse_specifiers();
-    auto id   = parse_identifier();
-    start     = parse_variable(std::move(mods), id);
+    auto specs = parse_specifiers();
+    auto ident = parse_identifier();
+    start      = parse_variable(std::move(specs), std::move(ident));
   }
   want_semicolon();
 
@@ -392,7 +489,7 @@ statement* parser::parser::parse_for() {
   want(token_t::c_paren);
 
   auto* for_stmt = parse_statement();
-  return m_arena.emplace<iteration::for_>(token, start, condition, step, for_stmt);
+  return create_node<iteration::for_>(token, start, condition, step, for_stmt);
 }
 
 statement* parser::parser::parse_if() {
@@ -407,7 +504,7 @@ statement* parser::parser::parse_if() {
     else_block = parse_statement();
   }
 
-  return m_arena.emplace<selection::if_>(term::keyword(token), *condition, if_block, else_block);
+  return create_node<selection::if_>(term::keyword(token), *condition, if_block, else_block);
 }
 
 void parser::parser::want(const token& token, const cmm::token_t& type, bool needed_value) {
