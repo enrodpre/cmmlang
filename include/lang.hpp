@@ -152,25 +152,13 @@ enum class operator_t : uint8_t {
   };
 
 enum class associativity_t : uint8_t { Either, L2R, R2L };
-struct operator_data : public displayable {
-  using value_type   = operator_t;
-  using element_type = operator_data;
-  using enum value_type;
-  const value_type self;
-  std ::string repr;
-  uint8_t precedence;
-  associativity_t assoc;
-  using member_types   = std ::tuple<value_type, std ::string, uint8_t, associativity_t>;
-  using properties_map = magic_enum ::containers ::array<value_type, member_types>;
-  std ::string string() const override { return std ::format("{}", self); }
-  static_assert(std ::is_constant_evaluated());
-  [[nodiscard]] static constexpr const properties_map& properties_array();
-  constexpr operator_data(value_type e)
-      : self(e),
-        repr(std ::get<0 + 1>(element_type ::properties_array().at(e))),
-        precedence(std ::get<1 + 1>(element_type ::properties_array().at(e))),
-        assoc(std ::get<2 + 1>(element_type ::properties_array().at(e))) {}
-};
+BUILD_ENUMERATION_DATA_CLASS(operator,
+                             std::string,
+                             repr,
+                             uint8_t,
+                             precedence,
+                             associativity_t,
+                             assoc)
 
 BUILD_ENUMERATION_DATA_CLASS(instruction,
                              short,
