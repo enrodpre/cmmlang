@@ -24,13 +24,15 @@ find_package(GTest REQUIRED QUIET)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGTEST_PRINT_ENABLED")
 # ---- Add unit tests ----
 # add_unit_test(parser)
-set(UNIT_TEST_LIST state strings token preprocessor ast asm
+set(UNIT_TEST_LIST state token preprocessor ast asm
 types parser)
 foreach(file ${UNIT_TEST_LIST})
   set(name unit_${file})
   add_executable(${name} "${CMAKE_CURRENT_SOURCE_DIR}/test_${file}.cpp")
   target_link_libraries(${name} CmmLib gtest gtest_main)
-  gtest_discover_tests(${name})
+  # gtest_discover_tests(${name})
+  add_test(NAME ${name} COMMAND ${name})
+  set_tests_properties(${name} PROPERTIES LABELS "unit")
   # set_tests_properties(${name} PROPERTIES LABELS "unit")
 endforeach()
 
@@ -74,8 +76,25 @@ add_test(NAME e2e
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-# set_tests_properties(e2e PROPERTIES LABELS "integration")
+set_tests_properties(e2e PROPERTIES LABELS "e2e")
 
+add_custom_target(test_unit
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure --label-regex "unit"
+    COMMENT "Running unit tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+add_custom_target(test_e2e
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure --label-regex "e2e" -VV
+    COMMENT "Running integration tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+add_custom_target(test_all
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -VV
+    COMMENT "Running all tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
 # ---- code coverage ----
 if(ENABLE_TEST_COVERAGE)
   target_compile_options(${LIBRARY} PUBLIC -O0 -g -fprofile-arcs

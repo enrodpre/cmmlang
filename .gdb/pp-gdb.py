@@ -5,17 +5,28 @@ import gdb.printing
 
 
 class token_pp:
+
     def __init__(self, val):
         self.val = val
 
-    def to_string(self):
-        namespace_type = self.val["type"]["m_value"]
-        type = str(namespace_type).split("::")[-1]
-        value = self.val["value"]
-        if len(str(value)) > 0:
-            return f"token({type}, {value})"
+    def _strip_namespace(self, full_name):
+        # Keep only the part after the last '::'
+        if "::" in full_name:
+            return full_name.split("::")[-1]
+        return full_name
 
-        return f"token({type})"
+    def to_string(self):
+        type_val = self.val["type"]
+        type_name = self._strip_namespace(str(type_val))
+
+        # Extract std::string value (libstdc++ layout)
+        value_str = self.val["value"]["_M_dataplus"]["_M_p"].string()
+        location_str = self.val["m_location"]
+
+        if value_str and value_str != "":
+            return f'token {{ {location_str}, {type_name}, "{value_str}" }}'
+        else:
+            return f"token {{ {location_str}, {type_name} }}"
 
     def display_hint(self):
         return "map"

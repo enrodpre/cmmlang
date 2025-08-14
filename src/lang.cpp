@@ -1,4 +1,5 @@
 #include "lang.hpp"
+#include "ast.hpp"
 #include "types.hpp"
 #include <sys/types.h>
 
@@ -6,6 +7,10 @@
 //   return std::hash<cmm::type_info>{}(*this);
 // }
 namespace cmm {
+
+[[nodiscard]] ast::decl::signature builtin_signature_data::signature() const {
+  return {ast::identifier(std::string(function_name)), args};
+}
 
 mangled_name mangled_name::function(cstring name, const std::vector<const type*>& t) {
   return std::format("{}_{}", name, types(t));
@@ -22,12 +27,8 @@ mangled_name mangled_name::direct_conversion_function(cr_type f, cr_type t) {
 
 mangled_name mangled_name::label(cstring name) { return std::string(name); }
 mangled_name mangled_name::variable(cstring name, cr_type) { return std::string(name); }
-[[nodiscard]] std::string operator_t::caller_function() const {
-  return std::format("operator{}", repr);
-}
 
-[[nodiscard]] std::string operator_t::format() const { return std::format("operator{}", repr); }
-
+mangled_name::operator std::string() const { return m_string; }
 // constexpr type_t typeof ::operator()(type) { return type_t::nullptr_t; }
 
 // constexpr category_t typeof ::operator()(const type& t) { return t.category; }

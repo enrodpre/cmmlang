@@ -1,20 +1,13 @@
 #pragma once
 
-#include "allocator.hpp"
+#include "ast.hpp"
 #include "common.hpp"
 #include "lang.hpp"
+#include "macros.hpp"
 #include <cstdint>
 #include <magic_enum/magic_enum.hpp>
+#include <type_traits>
 #include <utility>
-
-namespace cmm::ir {
-struct variable;
-struct variable_store;
-} // namespace cmm::ir
-
-namespace cmm::ast::terms {
-struct identifier;
-}
 
 namespace cmm::assembly {
 
@@ -31,10 +24,10 @@ enum class syscall_t : uint8_t {
   EXIT,
 };
 
-CREATE_ENUMERATION_CLASS(syscall, syscall_t, self, size_t, n_param, size_t, number)
+BUILD_ENUMERATION_DATA_CLASS(syscall, size_t, n_param, size_t, number)
 
 struct operand : public formattable {
-  using content_t = const ir::variable*;
+  using content_t = const ast::decl::variable*;
   struct symbol_container {
     enum symbol_attr : uint8_t { VALUE, ADDRESS };
     content_t content;
@@ -44,6 +37,11 @@ struct operand : public formattable {
     symbol_container(const symbol_container&)            = default;
     symbol_container& operator=(const symbol_container&) = default;
     [[nodiscard]] bool is_address() const;
+    [[nodiscard]] bool is_disposable() const noexcept { return m_disposable; }
+    void set_disposable() noexcept { m_disposable = true; }
+
+  private:
+    bool m_disposable;
   };
   using container_t = std::optional<symbol_container>;
 
@@ -68,11 +66,18 @@ struct operand : public formattable {
   operand* hold_value(content_t);
   operand* hold_address(content_t);
   [[nodiscard]] bool empty() const;
+  [[nodiscard]] bool is_writtable() const;
   void release();
 
 protected:
   std::optional<symbol_container> m_symbol;
 };
+
+template <typename T>
+concept Operand =
+    std::is_base_of_v<operand, std::remove_cvref_t<std::remove_pointer_t<std::remove_cvref_t<T>>>>;
+
+static_assert(Operand<operand*&>);
 
 struct memory : public operand {
   [[nodiscard]] type_t type() const override { return type_t::MEMORY; }
@@ -155,13 +160,15 @@ struct label_literal : public label {
   [[nodiscard]] std::string label_length() const;
 };
 
-struct operand_factory : public default_singleton<operand_factory> {
+struct operand_factory {
+  STATIC_CLS(operand_factory);
+  static stack_memory* create_stack_memory(uint64_t);
+  static label* create_label(const std::string&);
+  static label_memory* create_label_memory(std::string&&);
+  static label_literal* create_label_literal(std::string&&);
   template <typename V, typename... Args>
     requires std::is_constructible_v<V, Args...>
-  V* create(Args&&...);
-
-private:
-  cmm::memory::Allocator m_allocator;
+  static V* create(Args&&...);
 };
 
 struct registers {
@@ -170,7 +177,7 @@ struct registers {
 
   registers();
 
-  enum registers_t : uint8_t {
+  enum register_t : uint8_t {
     RSP,
     RBP,
     ACCUMULATOR,
@@ -184,27 +191,33 @@ struct registers {
     SCRATCH_4
   };
 
-  constexpr static std::string to_realname(registers_t);
-  [[nodiscard]] reg* get(registers_t) const;
-
+  constexpr static std::string to_realname(register_t);
+  [[nodiscard]] reg* get(register_t) const;
+  [[nodiscard]] size_t available_parameters() const {
+    return std::ranges::count_if(m_parameters,
+                                 [this](register_t r) { return get(r)->is_writtable(); });
+  }
   // reg* last_opfunction_result;
-  const ir::variable* find_var(const ast::terms::identifier&);
+  const ast::decl::variable* find_var(const ast::identifier&);
 
-  struct parameters_t {
-    parameters_t(registers&);
+  [[nodiscard]] constexpr reg* parameter_at(size_t i) const;
+  struct parameters_transaction {
+    parameters_transaction(registers* p)
+        : params(p) {}
+    ~parameters_transaction() { reset(); }
 
-    constexpr reg* next();
-    constexpr void reset();
-    [[nodiscard]] constexpr reg* at(size_t i) const;
+    reg* next();
+    void reset();
 
   private:
-    registers& regs;
-    size_t i;
-    constexpr static const std::array<registers_t, 6> m_parameters =
-        {SYSCALL_1, SYSCALL_2, SCRATCH_1, SCRATCH_4, SCRATCH_2, SCRATCH_3};
+    registers* params;
+    std::vector<reg*> m_regs;
   };
 
-  parameters_t parameters;
+  constexpr static const std::array<register_t, 6> m_parameters =
+      {SYSCALL_1, SYSCALL_2, SCRATCH_1, SCRATCH_4, SCRATCH_2, SCRATCH_3};
+
+  registers::parameters_transaction parameters();
 
 private:
   store_type m_registers;
@@ -276,7 +289,7 @@ class asmgen {
 public:
   enum class Section : uint8_t { TEXT = 0, DATA, BS };
 
-  asmgen() = default;
+  asmgen();
   void start();
   std::string end();
 
@@ -306,6 +319,7 @@ private:
   std::vector<std::string> m_comment_blocks;
 
   struct {
+    // std::unordered_map<std::string, string_buffer> procedurers;
     std::vector<std::pair<std::string, std::string>> procedures;
     std::vector<std::string> bss;
     std::vector<std::pair<std::string, std::string>> data;

@@ -35,6 +35,7 @@ file(GLOB_RECURSE sources CONFIGURE_DEPENDS
 find_package(magic_enum REQUIRED)
 find_package(cpptrace REQUIRED)
 find_package(libassert REQUIRED)
+# find_package(frozen REQUIRED)
 
 add_library(${LIBNAME} ${sources})
 target_compile_options(${LIBNAME} PRIVATE

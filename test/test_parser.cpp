@@ -1,9 +1,11 @@
 
 #include "ast.hpp"
+#include "expr.h"
 #include "lang.hpp"
 #include "parser.hpp"
 #include "types.hpp"
 #include <cpptrace/from_current.hpp>
+#include <cpptrace/utils.hpp>
 #include <gtest/gtest.h>
 #include <utility>
 
@@ -38,7 +40,7 @@ protected:
   token int_t      = create_token(token_t::int_t);
   token ident      = create_token(token_t::ident, "var");
   token lit        = create_token(token_t::int_lit, "5");
-  token zero       = create_token(token_t::int_lit, "10");
+  token diez       = create_token(token_t::int_lit, "10");
   token plus       = create_token(token_t::plus);
   token ocho       = create_token(token_t::int_lit, "8");
   token dos        = create_token(token_t::int_lit, "2");
@@ -68,18 +70,19 @@ protected:
 
 #define CAST(FROM, TO_T, TO) \
   auto* TO = dynamic_cast<TO_T>(FROM); \
-  EXPECT_TRUE(TO != nullptr) << std::format( \
-      "Type {} assumed to be {}", typeid(FROM).name(), typeid(TO_T).name());
+  EXPECT_TRUE(TO != nullptr) << std::format("Type {} assumed to be {}", \
+                                            cpptrace::demangle(typeid(FROM).name()), \
+                                            cpptrace::demangle(typeid(TO_T).name()));
 
   static void check_literal(const expr::expression& expr, const std::string& value) {
     const auto* lit = dynamic_cast<const expr::literal*>(&expr);
     EXPECT_FALSE(lit == nullptr);
-    EXPECT_EQ(value, lit->term.value());
+    EXPECT_EQ(value, lit->value());
   }
   static void require_identifier(const expr::expression& expr, const std::string& value) {
     const auto* lit = dynamic_cast<const expr::identifier*>(&expr);
     EXPECT_FALSE(lit == nullptr);
-    EXPECT_EQ(value, lit->term.value());
+    EXPECT_EQ(value, lit->value());
   }
 
   template <typename T>
@@ -96,7 +99,7 @@ using namespace std;
 using namespace expr;
 
 TEST_F(ParserTest, Call) {
-  parser::parser p({exit, oparen, zero, comma, doce, cparen, semi});
+  parser::parser p({exit, oparen, diez, comma, doce, cparen, semi});
 
   auto* call_ = cast<expr::call*>(p.parse_expr());
   EXPECT_TRUE(call_);
@@ -115,10 +118,10 @@ TEST_F(ParserTest, Vardecl) {
   auto* elements = p.parse_declaration();
   auto* vardecl  = cast<decl::variable*>(elements);
 
-  EXPECT_EQ(vardecl->ident->value(), "var");
+  EXPECT_EQ(vardecl->ident.value(), "var");
   auto* expr = cast<expr::literal*>(vardecl->init);
-  EXPECT_EQ("5", expr->term.value());
-  EXPECT_EQ(type_category_t::sint_t, expr->type->category);
+  EXPECT_EQ("5", expr->value());
+  EXPECT_EQ(type_category_t::sint_t, expr->type().category);
 }
 
 #define PRINT(x) \
@@ -132,11 +135,11 @@ TEST_F(ParserTest, Vardecl) {
 TEST_F(ParserTest, binop_expression) {
   // TODO terminar
 
-  parser::parser p({zero, plus, doce, star, ocho, plus, dos, star, quince});
+  parser::parser p({diez, plus, doce, star, ocho, plus, dos, star, quince});
   auto* top_expr  = p.parse_expr();
 
   auto* top_binop = unfold_expression<expr::binary_operator>(top_expr);
-  check_literal(top_binop->left, "0");
+  check_literal(top_binop->left, "10");
 
   auto* top_right = unfold_expression<expr::binary_operator>(&top_binop->right);
 
@@ -154,31 +157,31 @@ TEST_F(ParserTest, binop_expression) {
 TEST_F(ParserTest, unary_operator) {
   auto* expr   = parser::parser({inc, ident}).parse_expr();
   auto* preinc = cast<expr::unary_operator*>(expr);
-  EXPECT_EQ(operator_t::pre_inc, preinc->operator_.type);
+  EXPECT_EQ(operator_t::pre_inc, preinc->operator_.value());
 
   expr          = parser::parser({ident, dec}).parse_expr();
   auto* postdec = cast<expr::unary_operator*>(expr);
-  EXPECT_EQ(operator_t::post_dec, preinc->operator_.type);
+  EXPECT_EQ(operator_t::post_dec, preinc->operator_.value());
 }
 
 TEST_F(ParserTest, multi_operator) {
   auto* expr = parser::parser({inc, exit, plus, doce, star, ident, dec}).parse_expr();
   CAST(expr, expr::binary_operator*, first);
-  EXPECT_EQ(operator_t::plus, first->operator_.type);
+  EXPECT_EQ(operator_t::plus, first->operator_.value());
 
   CAST(&first->left, expr::unary_operator*, first_left);
-  EXPECT_EQ(operator_t::pre_inc, first_left->operator_.type);
+  EXPECT_EQ(operator_t::pre_inc, first_left->operator_.value());
   CAST(&first_left->expr, expr::identifier*, left_id);
-  EXPECT_EQ("exit", left_id->term.value());
+  EXPECT_EQ("exit", left_id->value());
 
   CAST(&first->right, expr::binary_operator*, first_right);
-  EXPECT_EQ(operator_t::star, first_right->operator_.type);
-  CAST(&first_right->left, expr::identifier*, right_left);
-  EXPECT_EQ("12", right_left->term.value());
+  EXPECT_EQ(operator_t::star, first_right->operator_.value());
+  CAST(&first_right->left, expr::literal*, right_left);
+  EXPECT_EQ("12", right_left->value());
   CAST(&first_right->right, expr::unary_operator*, right_right);
-  EXPECT_EQ(operator_t::post_dec, right_right->operator_.type);
+  EXPECT_EQ(operator_t::post_dec, right_right->operator_.value());
   CAST(&right_right->expr, expr::identifier*, right_right_right);
-  EXPECT_EQ("var", right_right_right->term.value());
+  EXPECT_EQ("var", right_right_right->value());
 }
 
 TEST_F(ParserTest, IfElse) {
@@ -199,23 +202,23 @@ TEST_F(ParserTest, IfElse) {
 
   auto* elems = p.parse_if();
   auto* if_   = cast<selection::if_*>(elems);
-  auto* block = cast<scope::block*>(if_->block);
-  auto* else_ = cast<scope::block*>(if_->else_);
+  auto* block = cast<ast::decl::block*>(if_->block);
+  auto* else_ = cast<ast::decl::block*>(if_->else_);
 
-  EXPECT_EQ(block->size(), 0);
+  EXPECT_EQ(block->stmts.size(), 0);
   EXPECT_TRUE(if_->else_);
-  EXPECT_EQ(else_->size(), 0);
+  EXPECT_EQ(else_->stmts.size(), 0);
 }
 
 TEST_F(ParserTest, Block) {
   parser::parser p({o_curly, o_curly, semi, c_curly, semi, o_curly, c_curly, c_curly});
 
-  auto* block = p.parse_compound();
-  EXPECT_EQ(block->size(), 2);
+  auto* block = p.parse_block();
+  EXPECT_EQ(block->stmts.size(), 2);
 
-  auto* first_stmt = *block->begin();
-  auto* comp       = cast<scope::block*>(first_stmt);
-  EXPECT_EQ(0, comp->size());
+  auto* first_stmt = *block->stmts.begin();
+  auto* comp       = cast<decl::block*>(first_stmt);
+  EXPECT_EQ(0, comp->stmts.size());
 }
 
 #if 0

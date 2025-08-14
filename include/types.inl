@@ -54,16 +54,16 @@ const type& type::create(type_category_t t, Args&&... args) {
 
 inline constexpr const type_metadata_store_t type_metadata_store = load_metadata();
 
-constexpr bool types::is_const_v::operator()(const type& t) { return t.c; }
-constexpr bool types::is_indirect_v::operator()(cr_type t) {
-  bool value = types::belongs_to(t.category, type_category_t::indirection_t);
+constexpr bool is_const_v::operator()(const type& t) { return t.c; }
+constexpr bool is_indirect_v::operator()(cr_type t) {
+  bool value = belongs_to(t.category, type_category_t::indirection_t);
   if (value) {
     ASSERT(t.underlying != nullptr);
   }
   return value;
 }
-constexpr bool types::is_reference_v::operator()(cr_type t) {
-  return types::belongs_to(t.category, type_category_t::reference_t);
+constexpr bool is_reference_v::operator()(cr_type t) {
+  return belongs_to(t.category, type_category_t::reference_t);
 }
 
 } // namespace cmm

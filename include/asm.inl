@@ -6,13 +6,13 @@
 
 namespace cmm::assembly {
 
-[[nodiscard]] constexpr const syscall::properties_map& syscall::properties_array() {
+[[nodiscard]] constexpr const syscall_data::properties_map& syscall_data::properties_array() {
   using enum syscall_t;
   static properties_map MAP{{{{READ, 3, 0}, {WRITE, 3, 1}, {EXIT, 1, 60}}}};
   return MAP;
 }
 
-constexpr std::string registers::to_realname(registers_t r) {
+constexpr std::string registers::to_realname(register_t r) {
   switch (r) {
     case RSP:
       return "rsp";
@@ -41,30 +41,20 @@ constexpr std::string registers::to_realname(registers_t r) {
   }
 }
 
-constexpr reg* registers::parameters_t::next() {
-  // if (i >= 6) {
-  //   throw cmm::error("No more registers available");
-  // }
-  return at((i++) % 6);
-}
-
-constexpr void registers::parameters_t::reset() {
-  i = 0;
-  for (int i = 0; i < 6; ++i) {
-    at(i)->release();
+[[nodiscard]] constexpr reg* registers::parameter_at(size_t i_) const {
+  auto* reg_ = get(magic_enum::enum_cast<registers::register_t>(m_parameters.at(i_)).value());
+  if (!reg_->is_writtable()) {
+    REGISTER_WARN("Overwriting not writtable register {}", reg_->format());
   }
-}
-[[nodiscard]] constexpr reg* registers::parameters_t::at(size_t i_) const {
-  auto* reg_ = regs.get(magic_enum::enum_cast<registers::registers_t>(m_parameters.at(i_)).value());
   reg_->release();
   return reg_;
 }
 namespace {
   constexpr reg* create_register(int i) {
 
-    auto idx         = magic_enum::enum_cast<registers::registers_t>(i);
+    auto idx         = magic_enum::enum_cast<registers::register_t>(i);
     std::string name = registers::to_realname(idx.value());
-    return operand_factory::instance().create<reg>(name);
+    return operand_factory::create<reg>(name);
   }
 }; // namespace
 
@@ -86,7 +76,7 @@ constexpr registers::store_type registers::initialize_registers() {
 template <typename V, typename... Args>
   requires std::is_constructible_v<V, Args...>
 V* operand_factory::create(Args&&... args) {
-  return m_allocator.emplace<V>(std::forward<Args>(args)...);
+  return ::cmm::memory::Allocator::instance().emplace<V>(std::forward<Args>(args)...);
 }
 
 namespace {
@@ -109,12 +99,13 @@ namespace {
 
 template <typename... Args>
 void asmgen::write_instruction(const instruction_t& ins, Args&&... args) {
+  instruction_data data(ins);
   if constexpr ((sizeof...(Args) == 0)) {
-    m_text.write<2>("{}", ins.name());
+    m_text.write<2>("{}", data.string());
   } else if constexpr ((sizeof...(Args) == 1)) {
-    m_text.write<2>("{} {}", ins.name(), std::forward<Args>(args)...);
+    m_text.write<2>("{} {}", data.string(), std::forward<Args>(args)...);
   } else if constexpr ((sizeof...(Args) == 2)) {
-    m_text.write<2>("{} {}, {}", ins.name(), std::forward<Args>(args)...);
+    m_text.write<2>("{} {}, {}", data.string(), std::forward<Args>(args)...);
   }
   m_text.write("\n");
 }

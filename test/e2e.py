@@ -36,9 +36,18 @@ def get_filename(path):
     return Path(path).name
 
 
+def get_ok_code(path) -> int:
+    splitted = path.parts
+    if len(splitted) == 3:
+        return splitted[1]
+    return OK_STATUS
+
+
 @pytest.mark.parametrize("filename", testfiles, ids=get_filename)
 @pytest.mark.timeout(3)
 def test_case(filename):
+    ok_code = get_ok_code(filename)
+    print("Expecting {}".format(ok_code))
     compiled_file = compile(filename)
     actual_status = run(compiled_file)
-    assert OK_STATUS == actual_status
+    assert OK_STATUS == ok_code

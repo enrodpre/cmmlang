@@ -81,8 +81,8 @@
 #endif
 
 #define MOVABLE_CLS(CLS) \
-  CLS(CLS&&)            = default; \
-  CLS& operator=(CLS&&) = default;
+  CLS(CLS&&) noexcept            = default; \
+  CLS& operator=(CLS&&) noexcept = default;
 
 #define COPYABLE_CLS(CLS) \
   CLS(const CLS&)            = default; \
@@ -107,3 +107,139 @@
   ~CLS() = delete; \
   NOT_COPYABLE_CLS(CLS) \
   NOT_MOVABLE_CLS(CLS)
+
+#define AST_SIBLINGS(...) \
+  std::string string() const override { return cpptrace::demangle(typeid(this).name()); }
+// std::vector<node*> children() const override { return transform(CAST_TO_NODE); }
+#define AST_COMPOSITE(...) \
+  std::string string() const override { return cpptrace::demangle(typeid(this).name()); }
+// std::vector<node*> children() const override { \
+  //   return std::vector<node*>{__VA_ARGS__} | \
+  //          std::views::transform([](auto&& elem) { return dynamic_cast<node*>(elem); }); \
+  // }
+#define AST_LEAF \
+  std::string string() const override { return cpptrace::demangle(typeid(this).name()); }
+// std::vector<node*> children() const override { return {}; }
+
+#define ENUM_PROPERTY(TYPE, NAME, N) TYPE NAME
+
+// Helper macro to extract types (every odd-positioned argument: 1st, 3rd, 5th,
+// etc.)
+#define GET_TYPES_1(t1, ...)                                             t1
+#define GET_TYPES_2(t1, n1, t2, ...)                                     t1, t2
+#define GET_TYPES_3(t1, n1, t2, n2, t3, ...)                             t1, t2, t3
+#define GET_TYPES_4(t1, n1, t2, n2, t3, n3, t4, ...)                     t1, t2, t3, t4
+#define GET_TYPES_5(t1, n1, t2, n2, t3, n3, t4, n4, t5, ...)             t1, t2, t3, t4, t5
+#define GET_TYPES_6(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, ...)     t1, t2, t3, t4, t5, t6
+#define GET_TYPES_7(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, ...) t1, t2, t3, t4, t5, t6, t7
+#define GET_TYPES_8(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8...) \
+  t1, t2, t3, t4, t5, t6, t7, t8
+#define GET_TYPES_9(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9...) \
+  t1, t2, t3, t4, t5, t6, t7, t8, t9
+#define GET_TYPES_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9, t10...) \
+  t1, t2, t3, t4, t5, t6, t7, t8, t9, t10
+#define GET_TYPES_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9, t10, t11, t12...) \
+  t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12
+
+// Helper macro to declare variables
+#define DECLARE_VARS_2(t1, n1) ENUM_PROPERTY(t1, n1, 0);
+
+#define DECLARE_VARS_4(t1, n1, t2, n2) \
+  ENUM_PROPERTY(t1, n1, 0); \
+  ENUM_PROPERTY(t2, n2, 1);
+#define DECLARE_VARS_6(t1, n1, t2, n2, t3, n3) \
+  ENUM_PROPERTY(t1, n1, 0); \
+  ENUM_PROPERTY(t2, n2, 1); \
+  ENUM_PROPERTY(t3, n3, 2);
+#define DECLARE_VARS_8(t1, n1, t2, n2, t3, n3, t4, n4) \
+  ENUM_PROPERTY(t1, n1, 0); \
+  ENUM_PROPERTY(t2, n2, 1); \
+  ENUM_PROPERTY(t3, n3, 2); \
+  ENUM_PROPERTY(t4, n4, 3);
+#define DECLARE_VARS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
+  ENUM_PROPERTY(t1, n1, 0); \
+  ENUM_PROPERTY(t2, n2, 1); \
+  ENUM_PROPERTY(t3, n3, 2); \
+  ENUM_PROPERTY(t4, n4, 3); \
+  ENUM_PROPERTY(t5, n5, 4);
+#define DECLARE_VARS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
+  ENUM_PROPERTY(t1, n1, 0); \
+  ENUM_PROPERTY(t2, n2, 1); \
+  ENUM_PROPERTY(t3, n3, 2); \
+  ENUM_PROPERTY(t4, n4, 3); \
+  ENUM_PROPERTY(t5, n5, 4); \
+  ENUM_PROPERTY(t6, n6, 5);
+
+#define CTOR_PARAMS_2(t1, n1)                         t1 _##n1
+#define CTOR_PARAMS_4(t1, n1, t2, n2)                 t1 _##n1, t2 _##n2
+#define CTOR_PARAMS_6(t1, n1, t2, n2, t3, n3)         t1 _##n1, t2 _##n2, t3 _##n3
+#define CTOR_PARAMS_8(t1, n1, t2, n2, t3, n3, t4, n4) t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4
+#define CTOR_PARAMS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
+  t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5
+#define CTOR_PARAMS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
+  t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5, t6 _##n6
+
+#define GET_DATA_VALUE(N)                  std::get<N + 1>(element_type::properties_array().at(e))
+#define CTOR_ASSIGN_DATA_2(t1, n1)         n1(GET_DATA_VALUE(0))
+#define CTOR_ASSIGN_DATA_4(t1, n1, t2, n2) n1(GET_DATA_VALUE(0)), n2(GET_DATA_VALUE(1))
+#define CTOR_ASSIGN_DATA_6(t1, n1, t2, n2, t3, n3) \
+  n1(GET_DATA_VALUE(0)), n2(GET_DATA_VALUE(1)), n3(GET_DATA_VALUE(2))
+#define CTOR_ASSIGN_DATA_8(t1, n1, t2, n2, t3, n3, t4, n4) \
+  n1(GET_DATA_VALUE(0)), n2(GET_DATA_VALUE(1)), n3(GET_DATA_VALUE(2)), n4(GET_DATA_VALUE(3))
+#define CTOR_ASSIGN_DATA_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
+  n1(GET_DATA_VALUE(0)), n2(GET_DATA_VALUE(1)), n3(GET_DATA_VALUE(2)), n4(GET_DATA_VALUE(3)), \
+      n5(GET_DATA_VALUE(4))
+#define CTOR_ASSIGN_DATA_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
+  n1(GET_DATA_VALUE(0)), n2(GET_DATA_VALUE(1)), n3(GET_DATA_VALUE(2)), n4(GET_DATA_VALUE(3)), \
+      n5(GET_DATA_VALUE(4)), n6(GET_DATA_VALUE(5))
+
+// Count arguments
+#define GET_ARG_COUNT(...) \
+  GET_ARG_COUNT_IMPL( \
+      __VA_ARGS__, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+#define GET_ARG_COUNT_IMPL(_1, \
+                           _2, \
+                           _3, \
+                           _4, \
+                           _5, \
+                           _6, \
+                           _7, \
+                           _8, \
+                           _9, \
+                           _10, \
+                           _11, \
+                           _12, \
+                           _13, \
+                           _14, \
+                           _15, \
+                           _16, \
+                           _17, \
+                           _18, \
+                           _19, \
+                           _20, \
+                           N, \
+                           ...) \
+  N
+
+#define CONSTRUCT_VARS_2(t1, n1) , n1()
+
+// Dispatch macros
+#define DECLARE_VARS(...)     CONCAT(DECLARE_VARS_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
+#define GET_TYPES(...)        CONCAT(GET_TYPES_, GET_PAIR_COUNT(__VA_ARGS__))(__VA_ARGS__)
+#define CTOR_PARAMS(...)      CONCAT(CTOR_PARAMS_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
+#define CTOR_ASSIGN_DATA(...) CONCAT(CTOR_ASSIGN_DATA_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
+
+// Calculate number of pairs (divide arg count by 2)
+#define GET_PAIR_COUNT(...)    GET_PAIR_COUNT_IMPL(GET_ARG_COUNT(__VA_ARGS__))
+#define GET_PAIR_COUNT_IMPL(n) CONCAT(PAIR_COUNT_, n)
+#define PAIR_COUNT_2           1
+#define PAIR_COUNT_4           2
+#define PAIR_COUNT_6           3
+#define PAIR_COUNT_8           4
+#define PAIR_COUNT_10          5
+#define PAIR_COUNT_12          6
+#define PAIR_COUNT_14          7
+#define PAIR_COUNT_16          8
+#define PAIR_COUNT_18          9
+#define PAIR_COUNT_20          10
+#define PAIR_COUNT_22          11

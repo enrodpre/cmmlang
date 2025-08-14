@@ -1,212 +1,34 @@
 #include "ir.hpp"
-#include "allocator.hpp"
 #include "asm.hpp"
 #include "ast.hpp"
 #include "common.hpp"
+#include "expr.h"
 #include "lang.hpp"
 #include "types.hpp"
-#include <algorithm>
 #include <bits/ranges_algo.h>
 #include <format>
 #include <libassert/assert.hpp>
 #include <magic_enum/magic_enum.hpp>
-#include <optional>
-#include <ranges>
-#include <tuple>
-
-#include <utility>
 namespace cmm::ir {
 
 using namespace cmm::assembly;
 using namespace cmm::ast;
 
-[[nodiscard]] std::vector<ptr_type> function::argument_types() const {
-  return declaration()->params |
-         std::views::transform([](const ast::decl::function::parameter& var) -> ptr_type {
-           return &var.specs.type.type_;
-         }) |
-         std::ranges::to<std::vector>();
-}
-
-FORMAT_IMPL(function, "function<{}>", identifier());
-
-std::optional<operand*> function::run(compilation_unit& ctx,
-                                      const ast::expr::call::arguments& args) const {
-  struct visitor {
-    visitor(compilation_unit& v, decltype(args) a, const function& f)
-        : v(v),
-          a(f.declaration()->params.load_arguments(a)),
-          fn(f) {}
-    compilation_unit& v;
-    loaded_parameters a;
-    const function& fn;
-    std::optional<operand*> operator()(ast::scope::block* b) {
-      for (const auto& param : a) {
-        auto* reg = v.runner.generate_expr(*param.init, param.specs.type, v.regs.parameters.next());
-        v.table.active_frame().active_scope().create_variable(&param,
-                                                              dynamic_cast<assembly::reg*>(reg));
-      }
-
-      if (!fn.inlined) {
-        // The rsp stored in the stack
-        v.table.active_frame().local_stack.push();
-        v.call(fn.identifier());
-        v.asmgen.create_delay();
-      }
-
-      v.runner.generate_statements(*b);
-
-      if (!fn.inlined) {
-        auto code = v.asmgen.dump_delayed();
-        v.asmgen.register_labeled_code_block(fn.identifier(), std::move(code));
-      }
-
-      size_t ditched = v.table.pop_frame();
-      // +1 because we pushed one due to function calling (ret address is pushed
-      // onto the stack)
-      if (!v.table.is_global_scope()) {
-        v.table.active_frame().local_stack.pop(ditched + 1);
-      }
-
-      if (fn.declaration()->specs.type.type_ != *VOID_T) {
-        return v.regs.get(registers::ACCUMULATOR);
-      }
-      return {};
-    }
-    std::optional<operand*> operator()(const builtin_body& b) {
-      // PREP
-      auto prep_b = v.asmgen.begin_comment_block("preprocess {}", fn.declaration()->ident.value());
-      auto ops    = b.pre(v, a);
-      auto* res   = b.body(v, ops);
-      return b.post(v, res);
-    }
-  };
-
-  visitor vis(ctx, args, *this);
-  return std::visit(vis, body);
-}
-
-using parameters_t = ast::decl::function::parameters;
-using arguments_t  = ast::expr::call::arguments;
-
-function_store::function_store()
-    : formattable_range(&m_store) {}
-
-operand* scope::create_variable(const ast::decl::variable* p, operand* o) {
-  auto& res = variables.emplace<variable>(p->ident.value(), p);
-  res.load(this, o);
-  o->hold_value(&res);
-  return o;
-}
-
-local_scope::local_scope(const frame& frame, const ast::scope::block& comp)
-    : frame_ref(frame),
-      compound(comp) {}
-
-void local_scope::load_argument(variable var) { variables.put(std::move(var)); }
-// const frame* local_scope::parent() const { return &frame_ref.get(); }
-
-using id = symbol_table::identifier_type;
-
-symbol_table::symbol_table()
-    : m_entry_point(nullptr),
-      m_global_scope() {
-  builtin::provider(*this).provide();
-
-} // namespace cmm::ir
-
-mangled_name::mangled_name(const std::string& str)
-    : m_string(str) {}
-
-mangled_name::mangled_name(std::string&& str)
-    : m_string(std::move(str)) {}
-
-[[nodiscard]] const std::string& mangled_name::str() const { return m_string; }
-
-mangled_name::operator std::string() const { return m_string; }
-
-std::optional<operand*> compilation_unit::call_builtin(
-    const builtin::function::builtin_signature_t& header,
-    const std::vector<operand*>& args) {
-  const auto* fn = table.get_function(header.signature());
-  // return fn->run(*this, args);
-}
-
 compilation_unit::compilation_unit()
-    : runner(*this) {}
+    : runner(*this),
+      ast() {}
 
-std::string compilation_unit::compile(ast::program& p, const source_code* src) {
+std::string compilation_unit::compile(ast::translation_unit& p, const source_code* src) {
   source = src;
+  ast    = &p;
+  p.set_context(this);
   start();
   runner.generate_program(p);
   return end();
 }
 
-std::string compilation_unit::current_line() const {
-  size_t line_n = current_statement->location()->rows.start;
-  return source->get_line(line_n);
-}
+void compilation_unit::call(cstring func) { asmgen.write_instruction(instruction_t::call, func); }
 
-const variable* compilation_unit::declare_global_variable(const ast::decl::variable& decl,
-                                                          operand* init) {
-  ASSERT(table.is_global_scope());
-  reserve_memory(decl.ident.format(), "resq", "1");
-  auto* addr = table.m_global_scope.create_variable(
-      &decl, operand_factory::instance().create<label_memory>(decl.ident.value()));
-  move(addr, init);
-  return addr->variable();
-}
-
-const variable* compilation_unit::declare_local_variable(const ast::decl::variable& decl,
-                                                         operand* init) {
-  // + 1 because not counted yet
-  const auto* var = table.active_frame()
-                        .active_scope()
-                        .create_variable(&decl,
-                                         operand_factory::instance().create<stack_memory>(
-                                             table.active_frame().local_stack.size() + 1))
-                        ->variable();
-  push(init);
-  return var;
-}
-
-void compilation_unit::create_frame(const ast::scope::function& fn) {
-  table.m_stackframe.emplace_back(fn);
-}
-
-operand* compilation_unit::get_variable_address(id ident) const {
-  const auto* var = table.get_variable(ident);
-  auto* addr      = var->address;
-  addr->hold_address(var);
-  return addr;
-}
-
-void compilation_unit::save_variable(const variable* var, operand* r) {
-  asmgen.write_instruction(_instruction_t::mov, var->address->value(), r->value());
-}
-
-void compilation_unit::declare_label(const ast::decl::label& l) {
-  if (table.is_global_scope()) {
-    throw_error<_error_t::LABEL_IN_GLOBAL>(l.term);
-  }
-
-  table.active_frame().labels.emplace(
-      std::piecewise_construct,
-      std::forward_as_tuple(l.term.value()),
-      std::forward_as_tuple(&l,
-                            &table.active_frame().active_scope(),
-                            operand_factory::instance().create<label_memory>(l.term.value())));
-}
-
-void compilation_unit::push(operand* r) {
-  asmgen.write_instruction(_instruction_t::push, r->value());
-  table.active_frame().local_stack.push();
-}
-void compilation_unit::pop(operand* r) {
-  asmgen.write_instruction(_instruction_t::pop, r->value());
-  table.active_frame().local_stack.pop();
-}
-void compilation_unit::call(cstring func) { asmgen.write_instruction(_instruction_t::call, func); }
 operand* compilation_unit::move(operand* to, operand* from) {
   if (to == from) {
     return to;
@@ -233,18 +55,18 @@ operand* compilation_unit::return_reg(operand* r) {
 }
 
 operand* compilation_unit::move_immediate(operand* r, cstring lit) {
-  asmgen.write_instruction(_instruction_t::mov, r->value(), lit);
+  asmgen.write_instruction(instruction_t::mov, r->value(), lit);
   return r;
 }
 
 operand* compilation_unit::lea(operand* to, operand* from) {
-  asmgen.write_instruction(_instruction_t::lea, to->value(), from->value());
+  asmgen.write_instruction(instruction_t::lea, to->value(), from->value());
   to->hold_address(from->variable());
   return to;
 }
 
 operand* compilation_unit::zero(operand* reg) {
-  asmgen.write_instruction(_instruction_t::xor_, reg->value(), reg->value());
+  asmgen.write_instruction(instruction_t::xor_, reg->value(), reg->value());
   return reg;
 }
 
@@ -252,37 +74,35 @@ void compilation_unit::reserve_memory(cstring name, cstring kw, cstring times) {
   asmgen.add_bss(name, kw, times);
 }
 
+void compilation_unit::reserve_static_var(cstring name) { reserve_memory(name, "resb", "8"); }
+
 assembly::label_literal* compilation_unit::reserve_constant(cstring value) {
   std::string name = std::format("str_{}", counters.literals++);
   asmgen.add_data(name, value);
-  return operand_factory::instance().create<assembly::label_literal>(name);
+  return operand_factory::create<assembly::label_literal>(name);
 }
 
-void compilation_unit::jump(cstring label) { asmgen.write_instruction(_instruction_t::jmp, label); }
+void compilation_unit::jump(cstring label) { asmgen.write_instruction(instruction_t::jmp, label); }
 void compilation_unit::jump(const instruction_t& ins, cstring a) {
   asmgen.write_instruction(ins, a);
 }
 
-void compilation_unit::move_rsp(size_t n) {
-  asmgen.write_instruction(instruction_t::sub, "rsp", n * DATASIZE);
-  table.active_frame().local_stack.pop(n);
-}
-
 void compilation_unit::cmp(cstring a, cstring b) {
-  asmgen.write_instruction(_instruction_t::cmp, a, b);
+  asmgen.write_instruction(instruction_t::cmp, a, b);
 }
-void compilation_unit::ret() { asmgen.write_instruction(_instruction_t::ret); }
-using namespace builtin::function;
 
-void compilation_unit::exit(operand* op) { call_builtin(builtin_signature_t::EXIT, {op}); }
+void compilation_unit::ret() { asmgen.write_instruction(instruction_t::ret); }
+void compilation_unit::exit(operand* op) {
+  move(regs.parameter_at(0), op);
+  jump("exit");
+}
 
 void compilation_unit::exit_successfully() {
-  auto* reg = regs.parameters.next();
-  auto* arg = move_immediate(reg, "0");
-  exit(reg);
+  auto* arg = move_immediate(regs.parameter_at(0), "0");
+  exit(arg);
 }
 
-void compilation_unit::syscall() { asmgen.write_instruction(_instruction_t::syscall); }
+void compilation_unit::syscall() { asmgen.write_instruction(instruction_t::syscall); }
 void compilation_unit::syscall(cstring num_syscall) {
   move_immediate(regs.get(registers::ACCUMULATOR), num_syscall);
   syscall();
@@ -293,15 +113,152 @@ void compilation_unit::start() {
   current_phase = Phase::GLOBAL;
   asmgen.start();
 }
+void compilation_unit::push(operand* r) {
+  asmgen.write_instruction(instruction_t::push, r->value());
+  ast->active_frame()->local_stack.push();
+}
+void compilation_unit::pop(operand* r) {
+  asmgen.write_instruction(instruction_t::pop, r->value());
+  ast->active_frame()->local_stack.pop();
+}
 std::string compilation_unit::end() {
-  if (!table.is_entry_point_defined()) {
-    throw_error<_error_t::MISSING_ENTRY_POINT>();
-  }
+  // if (!table.is_entry_point_defined()) {
+  //   throw_error<_error_t::MISSING_ENTRY_POINT>();
+  // }
 
   REGISTER_TRACE("Code generation finished");
   return asmgen.end();
 }
 
+std::optional<assembly::operand*> compilation_unit::call_function(decl::signature sig,
+                                                                  const ast::expr::arguments& args,
+                                                                  bool inlined_) {
+  auto* fn = ast->get_function(sig);
+  if (nullptr == fn) {
+    throw_error<_error_t::UNDECLARED_SYMBOL>(sig.name);
+  }
+  if (fn->body == nullptr) {
+    throw_error<_error_t::UNDEFINED_FUNCTION>(sig.name);
+  }
+  ast->create_frame(fn->body);
+  auto* sc    = ast->active_scope();
+  auto params = regs.parameters();
+  auto ps     = std::views::zip(fn->params, args) |
+            std::views::transform([this, &params, &fn](const auto& pair) {
+              const auto& [param, arg] = pair;
+              auto* reg = runner.generate_expr(*arg, param->specs.type, params.next());
+              return fn->body->declare_parameter(param, reg);
+            }) |
+            std::ranges::to<std::vector>();
+
+  if (!inlined_) {
+    ast->active_frame()->local_stack.push();
+    call(sig.name.string());
+    asmgen.create_delay();
+  }
+
+  runner.generate_statements(*fn->body);
+
+  if (!inlined_) {
+    auto function_code = asmgen.dump_delayed();
+    asmgen.register_labeled_code_block(fn->ident.string(), std::move(function_code));
+  }
+
+  size_t ditched_vars = ast->pop_frame();
+
+  if (!ast->is_global_scope()) {
+    ast->active_frame()->local_stack.pop(ditched_vars + 1);
+  }
+
+  if (&fn->specs.type.value() != VOID_T) {
+    return regs.get(registers::ACCUMULATOR);
+  }
+  return {};
+}
+namespace {
+  constexpr operand* set_operand(compilation_unit& v, arg_t side, operand* l, operand* r) {
+    switch (side) {
+      case arg_t::NONE:
+        return nullptr;
+      case arg_t::LEFT:
+        return l;
+      case arg_t::RIGHT:
+        return r;
+      case arg_t::ACC:
+        return v.regs.get(registers::ACCUMULATOR);
+      case arg_t::AUX1:
+        return v.regs.parameter_at(0);
+      case arg_t::AUX2:
+        return v.regs.parameter_at(1);
+      default:
+        NOT_IMPLEMENTED
+    }
+  }
+} // namespace
+//
+operand* compilation_unit::builtin_operator(expr::binary_operator& bin, operand* l, operand* r) {
+  REGISTER_INFO("Calling builtin operator {}", bin.operator_);
+  operand* res = nullptr;
+
+  for (const auto& ins : get_builtin_operator(bin.operator_.value())) {
+    instruction_data data(ins.first);
+
+    if (data.n_params == 0) {
+      instruction(ins.first);
+    } else if (data.n_params == 1) {
+      l = set_operand(*this, ins.second.first, l, r);
+      instruction(ins.first, l);
+    } else if (data.n_params == 2) {
+      l = set_operand(*this, ins.second.first, l, r);
+      r = set_operand(*this, ins.second.second, l, r);
+      instruction(ins.first, l, r);
+    } else {
+      NOT_IMPLEMENTED
+    }
+
+    switch (data.where) {
+      case instruction_result_reg::LEFT:
+        res = l;
+        break;
+      case instruction_result_reg::RIGHT:
+        res = r;
+        break;
+      case instruction_result_reg::ACCUMULATOR:
+        res = regs.get(registers::ACCUMULATOR);
+        break;
+      case instruction_result_reg::NONE:
+        break;
+    }
+  }
+  return res;
+}
+operand* compilation_unit::builtin_operator(expr::unary_operator& unary, operand* e) {
+  REGISTER_INFO("Calling builtin operator {}", unary.operator_);
+  operand* res = nullptr;
+  for (const auto& ins : get_builtin_operator(unary.operator_.value())) {
+
+    instruction_data data(ins.first);
+    if (data.n_params == 0) {
+      instruction(ins.first);
+    } else if (data.n_params == 1) {
+      instruction(ins.first, e);
+    } else {
+      NOT_IMPLEMENTED
+    }
+    switch (data.where) {
+      case instruction_result_reg::LEFT:
+        res = e;
+        break;
+      case instruction_result_reg::ACCUMULATOR:
+        res = regs.get(registers::ACCUMULATOR);
+        break;
+      case instruction_result_reg::RIGHT:
+      case instruction_result_reg::NONE:
+        break;
+    }
+  }
+  return res;
+}
 static_assert(std::formattable<operand*, char>);
 
 } // namespace cmm::ir

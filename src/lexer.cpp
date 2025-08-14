@@ -6,7 +6,6 @@
 #include <string>
 #include <string_view>
 
-using cmm::token_t;
 namespace cmm {
 
 lexer::lexer(cmm::cstring src)
@@ -54,33 +53,38 @@ tokens lexer::tokenize() {
 }
 
 auto constexpr lexer::single_patterns() {
-  return token_t::properties_array() | std::views::filter([](const auto& pair) {
-           const auto& [type, prop] = pair;
-           return prop.pattern_type == token_t::properties::pattern_t::SINGLE_CHAR;
+  return std::views::filter(token_data::properties_array(),
+                            [](const auto& props) {
+                              return std::get<1>(props) == token_data::pattern_t::SINGLE_CHAR &&
+                                     !std::get<2>(props).empty();
+                            }) |
+         std::views::transform([](const auto& props) {
+           return std::make_pair(std::get<0>(props), std::get<2>(props));
          });
+  ;
 }
 
 auto constexpr lexer::multi_patterns() {
-  return cmm::token_t::properties_array() | std::views::filter([](const auto& pair) {
-           const auto& [type, prop] = pair;
-           return prop.pattern_type == token_t::properties::pattern_t::MULTI_CHAR;
+  return std::views::filter(token_data::properties_array(),
+                            [](const auto& props) {
+                              return std::get<1>(props) == token_data::pattern_t::MULTI_CHAR;
+                            }) |
+         std::views::transform([](const auto& props) {
+           return std::make_pair(std::get<0>(props), std::get<2>(props));
          });
 }
 
 auto constexpr lexer::regex_patterns() {
-  using pair_           = std::pair<token_t, std::string>;
-  auto compare_patterns = [](const pair_& a, const pair_& b) { return a.second > b.second; };
 
-  auto sorted = cmm::token_t::properties_array() | std::views::filter([](const auto& pair) {
-                  const auto& [type, prop] = pair;
-                  return prop.pattern_type == token_t::properties::pattern_t::REGEX;
-                }) |
-                std::views::transform([](const auto& pair) {
-                  const auto& [type, prop] = pair;
-                  return std::make_pair<token_t, std::string>(type, std::string(prop.pattern));
+  auto sorted = std::views::filter(token_data::properties_array(),
+                                   [](const auto& props) {
+                                     return std::get<1>(props) == token_data::pattern_t::REGEX;
+                                   }) |
+                std::views::transform([](const auto& props) {
+                  return std::make_pair(std::get<0>(props), std::get<2>(props));
                 }) |
                 std::ranges::to<std::vector>();
-  std::ranges::sort(sorted, compare_patterns);
+  std::ranges::sort(sorted, [](const auto& a, const auto& b) { return a.second > b.second; });
   return sorted;
 }
 
@@ -89,9 +93,9 @@ void lexer::parse_token() {
     // REGISTER_DEBUG("{}", m_tokens.join(" "));
   }
 
+  auto multi = multi_patterns() | std::ranges::to<std::vector>();
   // Try first reserved words
-  for (auto const& [tokenType, reserved] : multi_patterns()) {
-    auto pattern       = reserved.pattern;
+  for (auto const& [tokenType, pattern] : multi) {
     size_t word_length = pattern.length();
     if (peek(word_length) == pattern) {
       advance(word_length);
@@ -100,15 +104,15 @@ void lexer::parse_token() {
     }
   }
 
+  auto regex = regex_patterns() | std::ranges::to<std::vector>();
   // Try patterns otherwise, as func or var identifiers
-  for (auto& [tokenType, pattern] : regex_patterns()) {
+  for (auto& [tokenType, pattern] : regex) {
     std::cmatch match;
-    std::regex re("^" + pattern);
+    std::regex re(std::format("^{}", pattern));
     auto next_token = peek(-1);
-    /* REGISTER_TRACE("Trying {}", tokenType); */
     if (std::regex_search(next_token.cbegin(), next_token.cend(), match, re)) {
       m_tokens.emplace_back(
-          std::move(tokenType), location(m_row, 1, m_column, match[0].length()), match[1].str());
+          tokenType, location(m_row, 1, m_column, match[0].length()), match[1].str());
       // Consume ditched matched chars
       // as colon in label
       advance(match[0].length());
@@ -116,9 +120,10 @@ void lexer::parse_token() {
     }
   }
 
+  auto single = single_patterns() | std::ranges::to<std::vector>();
   // Then try monotokens
-  for (auto const& [tokenType, reserved] : single_patterns()) {
-    if (reserved.pattern.find(peek()) != std::string::npos) {
+  for (auto const& [tokenType, reserved] : single) {
+    if (reserved.find(peek()) != std::string::npos) {
       m_tokens.emplace_back(tokenType, location(m_row, 1, m_column, 1));
       advance();
       return;

@@ -4,9 +4,8 @@
 #include <cstddef>
 
 namespace cmm {
-using pattern_t = token_t::properties::pattern_t;
 
-using RCtoken   = const token&;
+using RCtoken = const token&;
 
 std::string token::format() const {
   if (!value.empty()) {
@@ -38,7 +37,7 @@ bool tokens::empty() const noexcept { return size() == 0; }
 bool tokens::has_next() const noexcept { return pointer() < size(); }
 
 [[nodiscard]] bool tokens::next_is(const token_t& other) const noexcept {
-  return has_next() && m_tokens.at(m_pointer).type.is(other);
+  return has_next() && m_tokens.at(m_pointer).type == other;
 }
 
 token tokens::next() {
@@ -49,7 +48,7 @@ token tokens::next() {
 
 void tokens::advance(size_t n) { m_pointer += n; }
 
-RCtoken tokens::peek(short offset) { return m_tokens.at(m_pointer + offset); }
+RCtoken tokens::peek(short offset) const { return m_tokens.at(m_pointer + offset); }
 
 size_t tokens::pointer() const noexcept { return m_pointer; }
 

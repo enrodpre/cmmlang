@@ -4,12 +4,11 @@
 #include <cstdint>
 #include <initializer_list>
 #include <ranges>
-#include <unordered_map>
 #include <utility>
 
 namespace cmm {
 
-enum class _token_t : uint8_t {
+enum class token_t : uint8_t {
   // specifiers
   types_begin,
   void_t,
@@ -129,25 +128,22 @@ enum class _token_t : uint8_t {
   [[nodiscard]] bool FUNCNAME() const { \
     return CONCAT(NAME, _begin) < m_value && m_value < CONCAT(NAME, _end); \
   }
-struct token_t : public cmm::enumeration<_token_t> {
-  struct properties {
-    enum class pattern_t : uint8_t { SINGLE_CHAR, MULTI_CHAR, REGEX };
-    const pattern_t pattern_type;
-    const cstring pattern;
-
-    constexpr properties(pattern_t, cstring) noexcept;
-  };
-
-  using value_type = _token_t;
+struct token_data : public cmm::enumeration<token_t> {
+  enum class pattern_t : uint8_t { SINGLE_CHAR, MULTI_CHAR, REGEX };
+  const pattern_t pattern_type{};
+  const cstring pattern;
+  using value_type = token_t;
   using enumeration<value_type>::enumeration;
   using enum value_type;
-  using properties_map = std::unordered_map<value_type, properties>;
+  using member_types   = std::tuple<value_type, pattern_t, cstring>;
+  using properties_map = magic_enum::containers::array<value_type, member_types>;
+  constexpr token_data(token_t t)
+      : enumeration(t),
+        pattern_type(std::get<1>(token_data::properties_array().at(t))),
+        pattern(std::get<2>(token_data::properties_array().at(t))) {}
   [[nodiscard]] static constexpr const properties_map& properties_array();
-  [[nodiscard]] constexpr const properties& get_properties() const {
-    return properties_array().at(m_value);
-  };
 
-  [[nodiscard]] bool is(const token_t& t) const { return m_value == t.m_value; }
+  [[nodiscard]] bool is(const token_t& t) const { return m_value == t; }
 
   IS_GROUP(is_type, types)
   IS_GROUP(is_operator, operator)
@@ -166,12 +162,12 @@ struct token : public formattable, public self_allocated {
   token_t type;
   std::string value;
 
-  token(token_t&& t, cmm::location&& loc)
+  token(const token_t& t, cmm::location&& loc)
       : self_allocated(std::move(loc)),
-        type(std::move(t)) {}
-  token(token_t&& t, cmm::location&& loc, std::string value)
+        type(t) {}
+  token(const token_t& t, cmm::location&& loc, std::string value)
       : self_allocated(std::move(loc)),
-        type(std::move(t)),
+        type(t),
         value(std::move(value)) {}
   bool operator==(const token& other) const { return value == other.value && type == other.type; }
   [[nodiscard]] std::string format() const override;
@@ -195,7 +191,7 @@ public:
   [[nodiscard]] bool next_is(const token_t&) const noexcept;
   token next();
   void advance(size_t = 1);
-  const token& peek(short = 0);
+  [[nodiscard]] const token& peek(short = 0) const;
   void pointer(size_t) noexcept;
   [[nodiscard]] size_t pointer() const noexcept;
   void reserve(size_t);

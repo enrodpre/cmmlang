@@ -1,10 +1,12 @@
 #pragma once
 
 #include "common.hpp"
+#include "macros.hpp"
 #include "token.hpp"
 #include <algorithm>
 #include <cpptrace/utils.hpp>
 #include <stdexcept>
+#include <type_traits>
 
 namespace cmm::ast {
 
@@ -54,6 +56,12 @@ namespace detail {
 
 template <class B = void, class... T>
 struct visitable : std::conditional_t<std::is_class_v<B>, B, visitable<>> {
+  visitable()                                = default;
+  ~visitable() override                      = default;
+  visitable(const visitable&)                = default;
+  visitable& operator=(const visitable&)     = default;
+  visitable(visitable&&) noexcept            = default;
+  visitable& operator=(visitable&&) noexcept = default;
   using parent = std::conditional_t<std::is_class_v<B>, B, visitable<>>;
   using parent::parent;
 
@@ -64,7 +72,6 @@ struct visitable : std::conditional_t<std::is_class_v<B>, B, visitable<>> {
         std::is_constructible_v<std::conditional_t<std::is_class_v<B>, B, visitable<>>, Args...>)
       : std::conditional_t<std::is_class_v<B>, B, visitable<>>(std::forward<Args>(args)...) {}
 
-  ~visitable() override = default;
   void accept(visitor<>& v) override { detail::accept<visitable, T...>(v, *this); };
   void accept(visitor<>& v) const override {
     detail::accept<const visitable, const T...>(v, *this);
@@ -73,6 +80,12 @@ struct visitable : std::conditional_t<std::is_class_v<B>, B, visitable<>> {
 
 template <class B>
 struct visitable<B> : std::conditional_t<std::is_class_v<B>, B, detail::dummy> {
+  visitable()                                = default;
+  virtual ~visitable()                       = default;
+  visitable(const visitable&)                = default;
+  visitable& operator=(const visitable&)     = default;
+  visitable(visitable&&) noexcept            = default;
+  visitable& operator=(visitable&&) noexcept = default;
   using parent = std::conditional_t<std::is_class_v<B>, B, detail::dummy>;
   using parent::parent;
 
@@ -83,7 +96,6 @@ struct visitable<B> : std::conditional_t<std::is_class_v<B>, B, detail::dummy> {
         std::is_constructible_v<std::conditional_t<std::is_class_v<B>, B, detail::dummy>, Args...>)
       : std::conditional_t<std::is_class_v<B>, B, detail::dummy>(std::forward<Args>(args)...) {}
 
-  virtual ~visitable()                  = default;
   virtual void accept(visitor<>&)       = 0;
   virtual void accept(visitor<>&) const = 0;
 };
@@ -164,12 +176,23 @@ struct fn_visitor<Ret(), VisitableTypes...> : visitor<VisitableTypes...> {
   }
 };
 
-struct node : virtual visitable<> {
+struct node : virtual visitable<>, public virtual displayable {
   ~node() override = default;
   node()           = default;
-  virtual const node* get_parent() const { return m_parent; }
+  NOT_MOVABLE_CLS(node);
+  COPYABLE_CLS(node);
+  template <typename T = node>
+  T* get_parent() {
+    return dynamic_cast<T*>(m_parent);
+  }
+  template <typename T = node>
+  const T* get_parent() const {
+    return dynamic_cast<const T*>(m_parent);
+  }
+  virtual void set_parent(node* parent_) { m_parent = parent_; }
   virtual void set_parent(node* parent_) const { m_parent = parent_; }
   virtual cmm::location location() const = 0;
+  // virtual std::vector<node*> children() const = 0;
   operator node*() { return static_cast<node*>(this); }
 
 private:
@@ -179,42 +202,58 @@ private:
 template <typename T>
 concept is_node = std::is_base_of_v<ast::node, T>;
 
+template <typename T>
+concept is_pointer_node = std::is_assignable_v<T, ast::node*>;
+
 struct leaf : public virtual node {
   leaf() = default;
   leaf(cmm::location);
   leaf(const token&);
 
-  cmm::location location() const override { return m_location; }
+  cmm::location location() const final { return m_location; }
 
 private:
   cmm::location m_location;
 };
 
-struct composite : public node, public virtual vector<node*> {
-  virtual void add(node* n) { push_back(n); }
+struct composite : public virtual node {
 
   composite() = default;
-  composite(std::initializer_list<node*> init)
-      : vector(init) {}
-  template <typename... Args>
-  composite(Args&&... args)
-      : vector{std::forward<Args>(args)...} {}
+  composite(std::vector<node*>&& v)
+      : m_data(std::move(v)) {}
+  template <is_node... Args>
+  composite(Args&&...);
+  // MOVABLE_CLS(composite) NOT_COPYABLE_CLS(composite)
 
   void set_parent(node* n) const override {
-    set_parent(n);
-    for (const node* a : *this) {
+    for (const node* a : m_data) {
       a->set_parent(n);
     }
   }
   [[nodiscard]] cmm::location location() const override {
-    return std::ranges::fold_left(
-        *this | std::views::transform([](const node* n) { return n->location(); }),
-        location(),
-        std::plus<cmm::location>{});
+    return std::ranges::fold_left_first(
+               m_data | std::views::transform([](const node* n) { return n->location(); }),
+               std::plus<cmm::location>{})
+        .value();
   }
-};
+  vector<node*> m_data;
 
-struct statement : public composite {
-  using composite::composite;
+protected:
+  template <typename... Nodes>
+  void add_all(Nodes... ns) {
+    (add(ns), ...);
+  }
+  template <is_node T>
+  void add(const std::vector<T*>& t) {
+    for (auto&& elem : t) {
+      add(elem);
+    }
+  }
+  void add(node* n) {
+    if (n != nullptr) {
+      n->set_parent(this);
+      m_data.push_back(n);
+    }
+  }
 };
 } // namespace cmm::ast

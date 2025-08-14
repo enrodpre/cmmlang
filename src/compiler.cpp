@@ -6,7 +6,6 @@
 #include "os.hpp"
 #include "parser.hpp"
 #include <cpptrace/basic.hpp>
-#include <iostream>
 #include <string>
 
 namespace cmm {

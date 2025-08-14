@@ -112,9 +112,6 @@ namespace log {
   #define SAVE_ASSEMBLY 0
 #endif
 
-#define FORMAT_IMPL(TYPE, stdstr, ...) \
-  std::string TYPE::format() const { return std::format(stdstr, __VA_ARGS__); }
-
 constexpr static uint8_t DATASIZE      = 8;
 constexpr static uint8_t MAX_ARGUMENTS = 6;
 constexpr static uint8_t WORD_LEN      = DATASIZE; // bytes
@@ -137,6 +134,13 @@ struct TypeErasedHash {
 
 // Custom equality function for type-erased objects
 
+struct displayable {
+  constexpr virtual ~displayable() = default;
+  constexpr operator std::string() const;
+  [[nodiscard]] virtual std::string repr() const { return string(); }
+  [[nodiscard]] virtual std::string string() const = 0;
+};
+
 struct formattable {
   constexpr virtual ~formattable() = default;
   constexpr operator std::string() const;
@@ -144,59 +148,45 @@ struct formattable {
   [[nodiscard]] virtual std::string repr(size_t = 0) const { return format(); }
 };
 
-#define CTOR_PARAMS_2(t1, n1)                         t1 _##n1
-#define CTOR_PARAMS_4(t1, n1, t2, n2)                 t1 _##n1, t2 _##n2
-#define CTOR_PARAMS_6(t1, n1, t2, n2, t3, n3)         t1 _##n1, t2 _##n2, t3 _##n3
-#define CTOR_PARAMS_8(t1, n1, t2, n2, t3, n3, t4, n4) t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4
-#define CTOR_PARAMS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
-  t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5
-#define CTOR_PARAMS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
-  t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5, t6 _##n6
+// #define CTOR_PARAMS_2(t1, n1)                         t1 _##n1
+// #define CTOR_PARAMS_4(t1, n1, t2, n2)                 t1 _##n1, t2 _##n2
+// #define CTOR_PARAMS_6(t1, n1, t2, n2, t3, n3)         t1 _##n1, t2 _##n2, t3 _##n3
+// #define CTOR_PARAMS_8(t1, n1, t2, n2, t3, n3, t4, n4) t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4
+// #define CTOR_PARAMS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
+//   t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5
+// #define CTOR_PARAMS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
+//   t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5, t6 _##n6
+//
+// #define ADD_FMT_0(lvl, a1)
+// #define ADD_FMT_1(lvl, a1) \
+//   \n {}
+// #define ADD_FMT_2(lvl, a1, a2) \
+//   \n {} \
+//   \n {}
+// #define ADD_FMT_3(lvl, a1, a2, a3) \
+//   \n {} \
+//   \n {} \
+//   \n {}
+//
+// #define FORMAT_ARGS_0(lvl, a1)
+// #define FORMAT_ARGS_1(lvl, a1)         a1.repr(lvl + 1)
+// #define FORMAT_ARGS_2(lvl, a1, a2)     a1.repr(lvl + 1), a2.repr(lvl + 1)
+// #define FORMAT_ARGS_3(lvl, a1, a2, a3) a1.repr(lvl + 1), a2.repr(lvl + 1), a3.repr(lvl + 1)
+//
+// #define CTOR_ADD_FMT(...) CONCAT(ADD_FMT_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
+// #define CTOR_FORMAT_ARGS(lvl, ...) \
+//   CONCAT(FORMAT_ARGS_, GET_ARG_COUNT(__VA_ARGS__))(lvl, __VA_ARGS__)
 
-#define ADD_FMT_0(lvl, a1)
-#define ADD_FMT_1(lvl, a1) \
-  \n {}
-#define ADD_FMT_2(lvl, a1, a2) \
-  \n {} \
-  \n {}
-#define ADD_FMT_3(lvl, a1, a2, a3) \
-  \n {} \
-  \n {} \
-  \n {}
-
-#define FORMAT_ARGS_0(lvl, a1)
-#define FORMAT_ARGS_1(lvl, a1)         a1.repr(lvl + 1)
-#define FORMAT_ARGS_2(lvl, a1, a2)     a1.repr(lvl + 1), a2.repr(lvl + 1)
-#define FORMAT_ARGS_3(lvl, a1, a2, a3) a1.repr(lvl + 1), a2.repr(lvl + 1), a3.repr(lvl + 1)
-
-#define CTOR_ADD_FMT(...) CONCAT(ADD_FMT_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
-#define CTOR_FORMAT_ARGS(lvl, ...) \
-  CONCAT(FORMAT_ARGS_, GET_ARG_COUNT(__VA_ARGS__))(lvl, __VA_ARGS__)
-
-#define INDENT_IMPL(TYPE, stdstr, ...) \
-  std::string TYPE::repr(size_t n) const { \
-    return std::format("{}{}", std::string(n * 2, ' '), std::format(stdstr, __VA_ARGS__)); \
-  } \
+#define STRING_IMPL(TYPE, stdstr, ...) \
   std::string TYPE::format() const { return std::format(stdstr, __VA_ARGS__); }
-#define FORMAT_INDENT_IMPL(TYPE, stdstr, ...) \
-  std::string TYPE::repr(size_t n) const { \
-    return std::format( \
-        "{}{}", std::string(n * 2, ' '), std::format(stdstr, CTOR_FORMAT_ARGS(n, __VA_ARGS__))); \
-  } \
-  std::string TYPE::format() const { return std::format(stdstr, __VA_ARGS__); }
-
-#define JOIN_INDENT_IMPL(TYPE, NAME, DELIM) \
-  std::string TYPE::repr(size_t n) const { \
-    return std::format( \
-        "{}{}", \
-        std::string(2, ' '), \
-        std::format("{}({}):\n{}", NAME, vector_t::size(), vector_t::join(DELIM, n))); \
-  } \
-  std::string TYPE::format() const { return cpptrace::demangle(typeid(this).name()); }
 
 template <typename T>
 concept Formattable =
     std::is_base_of_v<cmm::formattable, std::remove_cv_t<std::remove_reference_t<T>>>;
+
+template <typename T>
+concept Displayable =
+    std::is_base_of_v<cmm::displayable, std::remove_cv_t<std::remove_reference_t<T>>>;
 
 template <typename T>
 concept FormattablePtr =
@@ -226,6 +216,23 @@ private:
 };
 
 } // namespace cmm
+
+// Specialization for cmm::formattable itself
+template <cmm::Displayable T>
+struct std::formatter<T, char> : std::formatter<string_view> {
+  template <typename Ctx>
+  auto format(const T& obj, Ctx& ctx) const {
+    return std::formatter<string_view>::format(obj.string(), ctx);
+  }
+};
+
+template <cmm::Displayable T>
+struct std::formatter<T*, char> : std::formatter<string_view> {
+  template <typename Ctx>
+  auto format(const T* obj, Ctx& ctx) const {
+    return std::formatter<string_view>::format(obj->string(), ctx);
+  }
+};
 
 // Specialization for cmm::formattable itself
 template <cmm::Formattable T>
@@ -388,127 +395,128 @@ struct enumeration : public formattable {
 protected:
   E m_value;
 };
-
-#define ENUM_PROPERTY(TYPE, NAME, N) TYPE NAME
-
-// Helper macro to extract types (every odd-positioned argument: 1st, 3rd, 5th,
-// etc.)
-#define GET_TYPES_1(t1, ...)                                             t1
-#define GET_TYPES_2(t1, n1, t2, ...)                                     t1, t2
-#define GET_TYPES_3(t1, n1, t2, n2, t3, ...)                             t1, t2, t3
-#define GET_TYPES_4(t1, n1, t2, n2, t3, n3, t4, ...)                     t1, t2, t3, t4
-#define GET_TYPES_5(t1, n1, t2, n2, t3, n3, t4, n4, t5, ...)             t1, t2, t3, t4, t5
-#define GET_TYPES_6(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, ...)     t1, t2, t3, t4, t5, t6
-#define GET_TYPES_7(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, ...) t1, t2, t3, t4, t5, t6, t7
-#define GET_TYPES_8(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8...) \
-  t1, t2, t3, t4, t5, t6, t7, t8
-#define GET_TYPES_9(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9...) \
-  t1, t2, t3, t4, t5, t6, t7, t8, t9
-#define GET_TYPES_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9, t10...) \
-  t1, t2, t3, t4, t5, t6, t7, t8, t9, t10
-#define GET_TYPES_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9, t10, t11, t12...) \
-  t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12
-
-// Helper macro to declare variables
-#define DECLARE_VARS_2(t1, n1) ENUM_PROPERTY(t1, n1, 0);
-
-#define DECLARE_VARS_4(t1, n1, t2, n2) \
-  ENUM_PROPERTY(t1, n1, 0); \
-  ENUM_PROPERTY(t2, n2, 1);
-#define DECLARE_VARS_6(t1, n1, t2, n2, t3, n3) \
-  ENUM_PROPERTY(t1, n1, 0); \
-  ENUM_PROPERTY(t2, n2, 1); \
-  ENUM_PROPERTY(t3, n3, 2);
-#define DECLARE_VARS_8(t1, n1, t2, n2, t3, n3, t4, n4) \
-  ENUM_PROPERTY(t1, n1, 0); \
-  ENUM_PROPERTY(t2, n2, 1); \
-  ENUM_PROPERTY(t3, n3, 2); \
-  ENUM_PROPERTY(t4, n4, 3);
-#define DECLARE_VARS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
-  ENUM_PROPERTY(t1, n1, 0); \
-  ENUM_PROPERTY(t2, n2, 1); \
-  ENUM_PROPERTY(t3, n3, 2); \
-  ENUM_PROPERTY(t4, n4, 3); \
-  ENUM_PROPERTY(t5, n5, 4);
-#define DECLARE_VARS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
-  ENUM_PROPERTY(t1, n1, 0); \
-  ENUM_PROPERTY(t2, n2, 1); \
-  ENUM_PROPERTY(t3, n3, 2); \
-  ENUM_PROPERTY(t4, n4, 3); \
-  ENUM_PROPERTY(t5, n5, 4); \
-  ENUM_PROPERTY(t6, n6, 5);
-
-#define CTOR_PARAMS_2(t1, n1)                         t1 _##n1
-#define CTOR_PARAMS_4(t1, n1, t2, n2)                 t1 _##n1, t2 _##n2
-#define CTOR_PARAMS_6(t1, n1, t2, n2, t3, n3)         t1 _##n1, t2 _##n2, t3 _##n3
-#define CTOR_PARAMS_8(t1, n1, t2, n2, t3, n3, t4, n4) t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4
-#define CTOR_PARAMS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
-  t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5
-#define CTOR_PARAMS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
-  t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5, t6 _##n6
-
-#define GET_VALUE(N)                          std::get<N>(element_type::properties_array().at(m_value))
-#define CTOR_ASSIGN_2(t1, n1)                 n1(GET_VALUE(0))
-#define CTOR_ASSIGN_4(t1, n1, t2, n2)         n1(GET_VALUE(0)), n2(GET_VALUE(1))
-#define CTOR_ASSIGN_6(t1, n1, t2, n2, t3, n3) n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2))
-#define CTOR_ASSIGN_8(t1, n1, t2, n2, t3, n3, t4, n4) \
-  n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3))
-#define CTOR_ASSIGN_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
-  n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3)), n5(GET_VALUE(4))
-#define CTOR_ASSIGN_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
-  n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3)), n5(GET_VALUE(4)), \
-      n6(GET_VALUE(5))
-
-// Count arguments
-#define GET_ARG_COUNT(...) \
-  GET_ARG_COUNT_IMPL( \
-      __VA_ARGS__, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
-#define GET_ARG_COUNT_IMPL(_1, \
-                           _2, \
-                           _3, \
-                           _4, \
-                           _5, \
-                           _6, \
-                           _7, \
-                           _8, \
-                           _9, \
-                           _10, \
-                           _11, \
-                           _12, \
-                           _13, \
-                           _14, \
-                           _15, \
-                           _16, \
-                           _17, \
-                           _18, \
-                           _19, \
-                           _20, \
-                           N, \
-                           ...) \
-  N
-
-#define CONSTRUCT_VARS_2(t1, n1) , n1()
-
-// Dispatch macros
-#define DECLARE_VARS(...) CONCAT(DECLARE_VARS_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
-#define GET_TYPES(...)    CONCAT(GET_TYPES_, GET_PAIR_COUNT(__VA_ARGS__))(__VA_ARGS__)
-#define CTOR_PARAMS(...)  CONCAT(CTOR_PARAMS_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
-#define CTOR_ASSIGN(...)  CONCAT(CTOR_ASSIGN_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
-
-// Calculate number of pairs (divide arg count by 2)
-#define GET_PAIR_COUNT(...)    GET_PAIR_COUNT_IMPL(GET_ARG_COUNT(__VA_ARGS__))
-#define GET_PAIR_COUNT_IMPL(n) CONCAT(PAIR_COUNT_, n)
-#define PAIR_COUNT_2           1
-#define PAIR_COUNT_4           2
-#define PAIR_COUNT_6           3
-#define PAIR_COUNT_8           4
-#define PAIR_COUNT_10          5
-#define PAIR_COUNT_12          6
-#define PAIR_COUNT_14          7
-#define PAIR_COUNT_16          8
-#define PAIR_COUNT_18          9
-#define PAIR_COUNT_20          10
-#define PAIR_COUNT_22          11
+// #define ENUM_PROPERTY(TYPE, NAME, N) TYPE NAME
+//
+// // Helper macro to extract types (every odd-positioned argument: 1st, 3rd, 5th,
+// // etc.)
+// #define GET_TYPES_1(t1, ...)                                             t1
+// #define GET_TYPES_2(t1, n1, t2, ...)                                     t1, t2
+// #define GET_TYPES_3(t1, n1, t2, n2, t3, ...)                             t1, t2, t3
+// #define GET_TYPES_4(t1, n1, t2, n2, t3, n3, t4, ...)                     t1, t2, t3, t4
+// #define GET_TYPES_5(t1, n1, t2, n2, t3, n3, t4, n4, t5, ...)             t1, t2, t3, t4, t5
+// #define GET_TYPES_6(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, ...)     t1, t2, t3, t4, t5, t6
+// #define GET_TYPES_7(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, ...) t1, t2, t3, t4, t5, t6,
+// t7
+// #define GET_TYPES_8(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8...) \
+// t1, t2, t3, t4, t5, t6, t7, t8
+// #define GET_TYPES_9(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9...) \
+// t1, t2, t3, t4, t5, t6, t7, t8, t9
+// #define GET_TYPES_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9, t10...) \
+// t1, t2, t3, t4, t5, t6, t7, t8, t9, t10
+// #define GET_TYPES_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9, t10, t11, t12...) \
+// t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12
+//
+// // Helper macro to declare variables
+// #define DECLARE_VARS_2(t1, n1) ENUM_PROPERTY(t1, n1, 0);
+//
+// #define DECLARE_VARS_4(t1, n1, t2, n2) \
+// ENUM_PROPERTY(t1, n1, 0); \
+// ENUM_PROPERTY(t2, n2, 1);
+// #define DECLARE_VARS_6(t1, n1, t2, n2, t3, n3) \
+// ENUM_PROPERTY(t1, n1, 0); \
+// ENUM_PROPERTY(t2, n2, 1); \
+// ENUM_PROPERTY(t3, n3, 2);
+// #define DECLARE_VARS_8(t1, n1, t2, n2, t3, n3, t4, n4) \
+// ENUM_PROPERTY(t1, n1, 0); \
+// ENUM_PROPERTY(t2, n2, 1); \
+// ENUM_PROPERTY(t3, n3, 2); \
+// ENUM_PROPERTY(t4, n4, 3);
+// #define DECLARE_VARS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
+// ENUM_PROPERTY(t1, n1, 0); \
+// ENUM_PROPERTY(t2, n2, 1); \
+// ENUM_PROPERTY(t3, n3, 2); \
+// ENUM_PROPERTY(t4, n4, 3); \
+// ENUM_PROPERTY(t5, n5, 4);
+// #define DECLARE_VARS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
+// ENUM_PROPERTY(t1, n1, 0); \
+// ENUM_PROPERTY(t2, n2, 1); \
+// ENUM_PROPERTY(t3, n3, 2); \
+// ENUM_PROPERTY(t4, n4, 3); \
+// ENUM_PROPERTY(t5, n5, 4); \
+// ENUM_PROPERTY(t6, n6, 5);
+//
+// #define CTOR_PARAMS_2(t1, n1)                         t1 _##n1
+// #define CTOR_PARAMS_4(t1, n1, t2, n2)                 t1 _##n1, t2 _##n2
+// #define CTOR_PARAMS_6(t1, n1, t2, n2, t3, n3)         t1 _##n1, t2 _##n2, t3 _##n3
+// #define CTOR_PARAMS_8(t1, n1, t2, n2, t3, n3, t4, n4) t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4
+// #define CTOR_PARAMS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
+// t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5
+// #define CTOR_PARAMS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
+// t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5, t6 _##n6
+//
+// #define GET_VALUE(N) std::get<N>(element_type::properties_array().at(m_value)) #define
+// CTOR_ASSIGN_2(t1, n1)                 n1(GET_VALUE(0)) #define CTOR_ASSIGN_4(t1, n1, t2, n2)
+// n1(GET_VALUE(0)), n2(GET_VALUE(1)) #define CTOR_ASSIGN_6(t1, n1, t2, n2, t3, n3)
+// n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2))
+// #define CTOR_ASSIGN_8(t1, n1, t2, n2, t3, n3, t4, n4) \
+// n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3))
+// #define CTOR_ASSIGN_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
+// n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3)), n5(GET_VALUE(4))
+// #define CTOR_ASSIGN_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
+// n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3)), n5(GET_VALUE(4)), \
+// n6(GET_VALUE(5))
+//
+// // Count arguments
+// #define GET_ARG_COUNT(...) \
+// GET_ARG_COUNT_IMPL( \
+//                    __VA_ARGS__, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3,
+//                    2, 1)
+// #define GET_ARG_COUNT_IMPL(_1, \
+// _2, \
+// _3, \
+// _4, \
+// _5, \
+// _6, \
+// _7, \
+// _8, \
+// _9, \
+// _10, \
+// _11, \
+// _12, \
+// _13, \
+// _14, \
+// _15, \
+// _16, \
+// _17, \
+// _18, \
+// _19, \
+// _20, \
+// N, \
+// ...) \
+// N
+//
+// #define CONSTRUCT_VARS_2(t1, n1) , n1()
+//
+// // Dispatch macros
+// #define DECLARE_VARS(...) CONCAT(DECLARE_VARS_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
+// #define GET_TYPES(...)    CONCAT(GET_TYPES_, GET_PAIR_COUNT(__VA_ARGS__))(__VA_ARGS__)
+// #define CTOR_PARAMS(...)  CONCAT(CTOR_PARAMS_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
+// #define CTOR_ASSIGN(...)  CONCAT(CTOR_ASSIGN_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
+//
+// // Calculate number of pairs (divide arg count by 2)
+// #define GET_PAIR_COUNT(...)    GET_PAIR_COUNT_IMPL(GET_ARG_COUNT(__VA_ARGS__))
+// #define GET_PAIR_COUNT_IMPL(n) CONCAT(PAIR_COUNT_, n)
+// #define PAIR_COUNT_2           1
+// #define PAIR_COUNT_4           2
+// #define PAIR_COUNT_6           3
+// #define PAIR_COUNT_8           4
+// #define PAIR_COUNT_10          5
+// #define PAIR_COUNT_12          6
+// #define PAIR_COUNT_14          7
+// #define PAIR_COUNT_16          8
+// #define PAIR_COUNT_18          9
+// #define PAIR_COUNT_20          10
+// #define PAIR_COUNT_22          11
 
 #define CREATE_ENUMERATION(TYPE, ...) \
   using value_type   = CONCAT(TYPE, _t); \
@@ -591,7 +599,7 @@ public:
   template <typename Func> size_t count(Func func) const;
   template <typename... Args> void emplace_back(Args&&... args)
     requires std::is_constructible_v<T, Args...>;
-  void push(const T& t) noexcept;
+  void push(const T& t);
   void push(T&& t) noexcept;
   void pop();
   T&& pop_move();
@@ -1008,14 +1016,68 @@ constexpr string_buffer& string_buffer::newline() noexcept {
   }
 }
 
-template <typename T> struct vector {
-  using value_type             = T;
-  using element_type           = T;
-  using pointer_type           = std::add_pointer_t<value_type>;
-  using const_pointer_type     = const pointer_type;
-  using reference_type         = std::add_lvalue_reference_t<value_type>;
-  using const_reference_type   = const reference_type;
-  using rvalue_type            = std::add_rvalue_reference_t<value_type>;
+// // Store by value
+// template <class T>
+// struct ByValue {
+//   using stored_type = T;
+//   static T& get(stored_type& v) { return v; }
+//   static const T& get(const stored_type& v) { return v; }
+// };
+//
+// // Store by unique_ptr
+// template <class T>
+// struct ByUniquePtr {
+//   using stored_type = std::unique_ptr<T>;
+//   static T& get(stored_type& p) { return *p; }
+//   static const T& get(const stored_type& p) { return *p; }
+// };
+//
+// // Store by raw pointer
+// template <class T>
+// struct ByRawPtr {
+//   using stored_type = T*;
+//   static T& get(stored_type p) { return *p; }
+//   static const T& get(const stored_type p) { return *p; }
+// };
+//
+// // Store by reference_wrapper
+// template <class T>
+// struct ByRefWrap {
+//   using stored_type = std::reference_wrapper<T>;
+//   static T& get(stored_type w) { return w.get(); }
+//   static const T& get(const stored_type w) { return w.get(); }
+// };
+// template <typename T>
+// struct select_storage_policy {
+//   using type = ByValue<T>;
+// };
+//
+// template <typename T>
+// struct select_storage_policy<std::unique_ptr<T>> {
+//   using type = ByUniquePtr<T>;
+// };
+//
+// template <typename T>
+// struct select_storage_policy<T*> {
+//   using type = ByRawPtr<T>;
+// };
+//
+// template <typename T>
+// struct select_storage_policy<std::reference_wrapper<T>> {
+//   using type = ByRefWrap<T>;
+// };
+template <class T>
+class vector {
+public:
+  using value_type           = T;
+  using element_type         = T;
+  using pointer_type         = std::add_pointer_t<value_type>;
+  using const_pointer_type   = const pointer_type;
+  using reference_type       = std::add_lvalue_reference_t<value_type>;
+  using const_reference_type = const reference_type;
+  using rvalue_type          = std::add_rvalue_reference_t<value_type>;
+  // using policy                 = typename select_storage_policy<T>::type;
+  // using stored_type            = typename policy::stored_type;
   using container_type         = std::vector<element_type, std::allocator<element_type>>;
   using iterator               = typename container_type::iterator;
   using const_iterator         = typename container_type::const_iterator;
@@ -1073,27 +1135,28 @@ class hashmap {
 public:
   using key_type       = K;
   using value_type     = V;
-  using container_type = std::unordered_map<key_type, value_type>;
+  using container_type = std::unordered_map<std::string, value_type>;
   hashmap();
+  const container_type& data() const { return m_store; }
   [[nodiscard]] bool contains(const key_type&) const;
   [[nodiscard]] size_t size() const noexcept;
   container_type::const_iterator begin() const { return m_store.begin(); }
   container_type::const_iterator end() const { return m_store.end(); }
   container_type::const_iterator cbegin() const { return m_store.begin(); }
   container_type::const_iterator cend() const { return m_store.cend(); }
-  value_type* at(const key_type&);
-  const value_type* at(const key_type&) const;
-  value_type* operator[](const key_type&);
-  const value_type* operator[](const key_type&) const;
-  void put(value_type&&);
+  value_type& at(const key_type&);
+  const value_type& at(const key_type&) const;
+  void insert(const key_type&, value_type&&);
+  void insert(const key_type&, const value_type&);
+  value_type& operator[](const key_type&);
+  const value_type& operator[](const key_type&) const;
   template <typename... Args>
     requires std::is_constructible_v<V, Args...>
   value_type& emplace(key_type, Args&&...);
   void clear();
-  std::vector<const V*> get_by_name(cstring) const;
 
 private:
-  std::unordered_map<key_type, value_type> m_store;
+  container_type m_store;
 };
 static_assert(std::is_copy_constructible_v<vector<int>>);
 
@@ -1157,6 +1220,64 @@ struct overload : Ts... {
 };
 template <class... Ts> overload(Ts...) -> overload<Ts...>;
 
+template <typename Key, typename Value, std::size_t Size>
+struct constexpr_map {
+  using container_type  = std::array<std::pair<Key, Value>, Size>;
+  using key_type        = Key;
+  using mapped_type     = Value;
+  using value_type      = typename container_type::value_type;
+  using size_type       = typename container_type::size_type;
+  using difference_type = typename container_type::difference_type;
+  using const_reference = typename container_type::const_reference;
+  using reference       = const_reference;
+  using const_pointer   = typename container_type::const_pointer;
+  using pointer         = const_pointer;
+  using const_iterator  = const_pointer;
+  using iterator        = const_iterator;
+
+  constexpr constexpr_map()
+      : m_data() {}
+  constexpr constexpr_map(container_type items)
+      : m_data(items) {}
+  // Constructor from initializer list (C++14 and later)
+  constexpr constexpr_map(std::initializer_list<value_type> items)
+      : m_data{} {
+    std::size_t i = 0;
+    for (const auto& item : items) {
+      if (i >= Size) {
+        break; // Safety check
+      }
+      m_data[i++] = item;
+    }
+  }
+  // Constructor from array
+  template <std::size_t N>
+  constexpr constexpr_map(const std::pair<Key, Value> (&items)[N])
+      : m_data() {
+    static_assert(N <= Size, "Too many items for constexpr_map");
+    for (std::size_t i = 0; i < N; ++i) {
+      m_data[i] = items[i];
+    }
+  }
+
+  [[nodiscard]] constexpr const Value& at(const Key& key) const {
+    const auto itr = std::find_if(
+        m_data.begin(), m_data.end(), [&key](const auto& v) { return v.first == key; });
+    if (itr != m_data.end()) {
+      return itr->second;
+    }
+
+    throw std::range_error(std::format("Not found {}", key));
+  }
+
+private:
+  std::array<std::pair<Key, Value>, Size> m_data;
+};
+
+template <typename T, typename V, std::size_t N>
+constexpr auto make_constexpr_map(std::pair<T, V> const (&items)[N]) {
+  return constexpr_map<T, V, N>{items};
+}
 } // namespace cmm
 
 #include "common.inl"

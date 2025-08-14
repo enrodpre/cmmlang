@@ -1,5 +1,6 @@
 
 #include "ast.hpp"
+#include "expr.h"
 #include "parser.hpp"
 #include "token.hpp"
 #include <gtest/gtest.h>
@@ -59,10 +60,10 @@ TEST_F(AstTest, operator_precedence) {
 
   expression* actual = p.parse_expr();
   auto* binop        = trycast<binary_operator>(actual);
-  EXPECT_EQ(operator_t::assign, binop->operator_.type);
-  EXPECT_EQ("x", trycast<identifier>(&binop->left)->term.value());
+  EXPECT_EQ(operator_t::assign, binop->operator_.value());
+  EXPECT_EQ("x", trycast<identifier>(&binop->left)->value());
   auto* adding = trycast<binary_operator>(&binop->right);
-  EXPECT_EQ("1", trycast<literal>(&adding->right)->term.value());
-  EXPECT_EQ("x", trycast<identifier>(&adding->left)->term.value());
-  EXPECT_EQ(_operator_t::plus, adding->operator_.type.inner());
+  EXPECT_EQ("8", trycast<literal>(&adding->right)->value());
+  EXPECT_EQ("x", trycast<identifier>(&adding->left)->value());
+  EXPECT_EQ(_operator_t::plus, adding->operator_.value());
 }

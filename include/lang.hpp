@@ -7,20 +7,23 @@
 #include <fmt/base.h>
 #include <frozen/unordered_map.h>
 #include <magic_enum/magic_enum.hpp>
+#include <magic_enum/magic_enum_containers.hpp>
 #include <magic_enum/magic_enum_format.hpp>
 
 namespace cmm {
 
 namespace ast::decl {
   class function;
-}
-using function_signature = std::pair<std::string, std::vector<ptr_type>>;
+  class signature;
+} // namespace ast::decl
 class mangled_name {
 
 public:
   using value_type = std::string;
-  explicit mangled_name(const value_type&);
-  mangled_name(value_type&&);
+  mangled_name(const value_type& v)
+      : m_string(v) {}
+  mangled_name(value_type&& v)
+      : m_string(std::move(v)) {}
 
   static mangled_name variable(cstring, cr_type);
   static mangled_name label(cstring);
@@ -35,7 +38,8 @@ private:
   value_type m_string;
 };
 
-enum class _instruction_t : uint8_t {
+enum class instruction_result_reg : uint8_t { NONE, LEFT, RIGHT, ACCUMULATOR };
+enum class instruction_t : uint8_t {
   nop = 0,
 
   // Jumps
@@ -88,7 +92,7 @@ enum class _instruction_t : uint8_t {
   deref,
 };
 
-enum class _operator_t : uint8_t {
+enum class operator_t : uint8_t {
   plus = 0,
   minus,
   star,
@@ -118,42 +122,129 @@ enum class _operator_t : uint8_t {
 
   ampersand,
   assign,
+  o_paren,
+  c_paren,
+  o_bracket,
+  c_bracket,
+  o_curly,
+  c_curly
 };
 
-enum class _builtin_signature_t : uint8_t { MAIN, SYSCALL, EXIT, PRINT };
-using header_arguments_t = std::vector<ptr_type>;
-struct builtin_signature_t : public cmm::enumeration<_builtin_signature_t> {
-  BUILD_ENUMERATION(builtin_signature_t, std::string_view, function_name, header_arguments_t, args);
+#define BUILD_ENUMERATION_DATA(TYPE, ...) \
+  using value_type   = CONCAT(TYPE, _t); \
+  using element_type = CONCAT(TYPE, _data); \
+  using enum value_type; \
+  const value_type self; \
+  DECLARE_VARS(__VA_ARGS__) \
+  using member_types   = std::tuple<value_type, GET_TYPES(__VA_ARGS__)>; \
+  using properties_map = magic_enum::containers::array<value_type, member_types>; \
+  std::string string() const override { return std::format("{}", self); } \
+  static_assert(std::is_constant_evaluated()); \
+  [[nodiscard]] static constexpr const properties_map& properties_array(); \
+  constexpr CONCAT(TYPE, _data)(value_type e) \
+      : self(e), \
+        CTOR_ASSIGN_DATA(__VA_ARGS__) {}
 
-  [[nodiscard]] function_signature signature() const { return {std::string(function_name), args}; }
-  [[nodiscard]] std::string mangle() const { return mangled_name::function(function_name, args); }
+#define BUILD_ENUMERATION_DATA_CLASS(TYPE, ...) \
+  struct CONCAT(TYPE, _data) \
+      : public displayable { \
+    BUILD_ENUMERATION_DATA(TYPE, __VA_ARGS__) \
+  };
+
+enum class associativity_t : uint8_t { Either, L2R, R2L };
+struct operator_data : public displayable {
+  using value_type   = operator_t;
+  using element_type = operator_data;
+  using enum value_type;
+  const value_type self;
+  std ::string repr;
+  uint8_t precedence;
+  associativity_t assoc;
+  using member_types   = std ::tuple<value_type, std ::string, uint8_t, associativity_t>;
+  using properties_map = magic_enum ::containers ::array<value_type, member_types>;
+  std ::string string() const override { return std ::format("{}", self); }
+  static_assert(std ::is_constant_evaluated());
+  [[nodiscard]] static constexpr const properties_map& properties_array();
+  constexpr operator_data(value_type e)
+      : self(e),
+        repr(std ::get<0 + 1>(element_type ::properties_array().at(e))),
+        precedence(std ::get<1 + 1>(element_type ::properties_array().at(e))),
+        assoc(std ::get<2 + 1>(element_type ::properties_array().at(e))) {}
+};
+
+BUILD_ENUMERATION_DATA_CLASS(instruction,
+                             short,
+                             n_params,
+                             bool,
+                             can_address_memory,
+                             instruction_result_reg,
+                             where);
+
+enum class builtin_signature_t : uint8_t { MAIN, SYSCALL, EXIT, PRINT };
+using header_arguments_t = std::vector<ptr_type>;
+struct builtin_signature_data : public cmm::enumeration<builtin_signature_t>, public displayable {
+  BUILD_ENUMERATION_DATA(builtin_signature,
+                         std::string_view,
+                         function_name,
+                         header_arguments_t,
+                         args);
+  [[nodiscard]] ast::decl::signature signature() const;
 };
 enum class keyword_t : uint8_t { IF, WHILE, FOR, GOTO, BREAK, CONTINUE, RETURN };
 
-enum class associativity_t : uint8_t { Either, L2R, R2L };
+enum class arg_t : uint8_t { NONE, LEFT, RIGHT, ACC, AUX1, AUX2 };
 
-BUILD_ENUMERATION_CLASS(instruction_t,
-                        short,
-                        n_params,
-                        bool,
-                        can_address_memory,
-                        std::optional<_instruction_t>,
-                        inverse_jump);
+using execution = std::pair<instruction_t, std::array<arg_t, 2>>;
 
-struct operator_t : public cmm::enumeration<_operator_t> {
-  BUILD_ENUMERATION(operator_t,
-                    std::string,
-                    repr,
-                    uint8_t,
-                    precedence,
-                    associativity_t,
-                    assoc,
-                    std::optional<instruction_t>,
-                    ins)
+#define CREATE_SIMPLE_INS(INS) \
+  {std::make_pair(instruction_t ::INS, std::make_pair(arg_t::LEFT, arg_t::RIGHT))}
 
-  [[nodiscard]] std::string caller_function() const;
-  [[nodiscard]] std::string format() const override;
-};
+#define CREATE_COND(INS) \
+  { \
+    std::make_pair(instruction_t ::cmp, std::make_pair(arg_t::LEFT, arg_t::RIGHT)), { \
+      instruction_t ::INS, {} \
+    } \
+  }
+
+#define CREATE_CONDITION(OP, INS) \
+  { \
+      {{instruction_t ::cmp, {arg_t::LEFT, arg_t::RIGHT}}, {instruction_t ::INS, {}}} \
+},
+
+constexpr magic_enum::containers::
+    array<operator_t, std::array<std::pair<instruction_t, std::pair<arg_t, arg_t>>, 3>>
+        builtin_operators{
+            {{CREATE_SIMPLE_INS(add),
+              CREATE_SIMPLE_INS(sub),
+              {std::make_pair(instruction_t::mov, std::make_pair(arg_t::ACC, arg_t::LEFT)),
+               std::make_pair(instruction_t ::mul, std::make_pair(arg_t ::RIGHT, arg_t::NONE)),
+               std::make_pair(instruction_t ::mov, std::make_pair(arg_t ::LEFT, arg_t::ACC))},
+              {std::make_pair(instruction_t::mov, std::make_pair(arg_t::ACC, arg_t::LEFT)),
+               std::make_pair(instruction_t ::div, std::make_pair(arg_t ::RIGHT, arg_t::NONE)),
+               std::make_pair(instruction_t ::mov, std::make_pair(arg_t ::LEFT, arg_t::ACC))},
+              CREATE_SIMPLE_INS(dec),
+              CREATE_SIMPLE_INS(inc),
+              {},
+              {},
+              CREATE_COND(jne),
+              CREATE_COND(je),
+              CREATE_COND(jge),
+              CREATE_COND(jg),
+              CREATE_COND(jle),
+              CREATE_COND(jl),
+              {},
+              {},
+              {},
+              {},
+              {},
+              CREATE_SIMPLE_INS(mov)}}};
+
+constexpr auto get_builtin_operator(operator_t op) {
+  return builtin_operators.at(op) |
+         std::views::filter([](const auto& ins) { return ins.first != instruction_t::nop; });
+}
+// constexpr auto get_builtin_operator(operator_t)
+static_assert(magic_enum::enum_count<operator_t>() == builtin_operators.size());
 
 enum class attribute : uint8_t {
   no_return          = 1 << 1,

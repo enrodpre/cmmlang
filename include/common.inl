@@ -270,8 +270,8 @@ template <typename... Args> void stack<T>::emplace_back(Args&&... args)
   m_data.emplace_back(std::forward<Args>(args)...);
 }
 template <typename T>
-void stack<T>::push(const T& t) noexcept {
-  return m_data.push_back(std::move(t));
+void stack<T>::push(const T& t) {
+  return m_data.push_back(t);
 }
 template <typename T>
 void stack<T>::push(T&& t) noexcept {
@@ -486,41 +486,36 @@ bool hashmap<K, V>::contains(const K& id) const {
 }
 
 template <typename K, typename V>
-hashmap<K, V>::value_type* hashmap<K, V>::at(const K& id) {
-  return &m_store.at(id);
+void hashmap<K, V>::insert(const K& k, V&& v) {
+  m_store[k] = std::move(v);
 }
 template <typename K, typename V>
-[[nodiscard]] const hashmap<K, V>::value_type* hashmap<K, V>::at(const K& id) const {
-  return &m_store.at(id);
+void hashmap<K, V>::insert(const K& k, const V& v) {
+  m_store[k] = v;
 }
 template <typename K, typename V>
-hashmap<K, V>::value_type* hashmap<K, V>::operator[](const key_type& k) {
+hashmap<K, V>::value_type& hashmap<K, V>::at(const K& id) {
+  return m_store.at(id);
+}
+template <typename K, typename V>
+[[nodiscard]] const hashmap<K, V>::value_type& hashmap<K, V>::at(const K& id) const {
+  return m_store.at(id);
+}
+template <typename K, typename V>
+hashmap<K, V>::value_type& hashmap<K, V>::operator[](const key_type& k) {
   return m_store[k];
 }
 template <typename K, typename V>
-const hashmap<K, V>::value_type* hashmap<K, V>::operator[](const key_type& k) const {
+const hashmap<K, V>::value_type& hashmap<K, V>::operator[](const key_type& k) const {
   return m_store[k];
 }
 template <typename K, typename V>
 size_t hashmap<K, V>::size() const noexcept {
   return m_store.size();
 }
-template <typename K, typename V>
-void hashmap<K, V>::put(value_type&& v) {
-  m_store.insert(std::make_pair(v.identifier(), std::move(v)));
-}
 
 template <typename K, typename V>
 void hashmap<K, V>::clear() {
   m_store.clear();
-}
-template <typename K, typename V>
-std::vector<const V*> hashmap<K, V>::get_by_name(cstring name) const {
-  return m_store | std::views::filter([name](const auto& pair) -> bool {
-           const auto& [k, v] = pair;
-           return k == name;
-         }) |
-         std::views::transform([name](const auto& pair) -> const V* { return pair.second.get(); }) |
-         std::ranges::to<std::vector>();
 }
 }; // namespace cmm

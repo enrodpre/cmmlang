@@ -9,13 +9,16 @@ FILENAME="res"
 if [[ "$1" == "test" ]]; then
   shift
   if [[ "$1" == "e2e" ]]; then
-    shift
+    # shift
     env -C build/test pytest e2e.py
+    # make -C build/test test_e2e
+  elif [[ "$1" == "unit" ]]; then
+    make -C build/test test_unit
   elif [[ -n "$1" ]]; then
     setcurrfile build/test/unit_"$1"
     ./build/test/unit_$1
   else
-    ctest --output-on-failure --debug -VV --test-dir build/test
+    make -C build/test test
   fi
 else
   echo '---- COMPILING'

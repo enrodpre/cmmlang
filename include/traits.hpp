@@ -441,3 +441,39 @@ concept should_use_arrow = std::is_pointer_v<std::remove_cvref_t<T>>;
   } else { \
     OBJ.FUNC \
   }
+
+// // Primary template
+// template <typename T>
+// struct function_traits;
+//
+// // For function pointer
+// template <typename R, typename... Args>
+// struct function_traits<R (*)(Args...)> {
+//   using return_type             = R;
+//   using args_tuple              = std::tuple<Args...>;
+//   static constexpr size_t arity = sizeof...(Args);
+// };
+//
+// // For std::function
+// template <typename R, typename... Args>
+// struct function_traits<std::function<R(Args...)>> : function_traits<R (*)(Args...)> {};
+//
+// // For member function pointer
+// template <typename C, typename R, typename... Args>
+// struct function_traits<R (C::*)(Args...)> : function_traits<R (*)(Args...)> {};
+//
+// // For const member function pointer
+// template <typename C, typename R, typename... Args>
+// struct function_traits<R (C::*)(Args...) const> : function_traits<R (*)(Args...)> {};
+//
+// // For functors / lambdas (operator())
+// template <typename F>
+// struct function_traits {
+// private:
+//   using call_type = function_traits<decltype(&F::operator())>;
+//
+// public:
+//   using return_type             = typename call_type::return_type;
+//   using args_tuple              = typename call_type::args_tuple;
+//   static constexpr size_t arity = call_type::arity;
+// };

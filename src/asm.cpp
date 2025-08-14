@@ -1,6 +1,7 @@
 #include "asm.hpp"
 #include "ast.hpp"
 #include "ir.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <libassert/assert.hpp>
 #include <magic_enum/magic_enum.hpp>
@@ -12,13 +13,16 @@ namespace cmm::assembly {
 
 std::string operand::format() const { return value(); }
 [[nodiscard]] std::optional<operand::symbol_container> operand::content() const { return m_symbol; }
-[[nodiscard]] cr_type operand::content_type() const { return *content().value().content->type; };
+[[nodiscard]] cr_type operand::content_type() const {
+  return content().value().content->specs.type;
+};
 
 [[nodiscard]] operand::content_t operand::variable() const { return m_symbol.value().content; }
 
 operand::symbol_container::symbol_container(content_t cont, symbol_attr attr)
     : content(cont),
-      attribute(attr) {}
+      attribute(attr),
+      m_disposable(false) {}
 
 bool operand::symbol_container::is_address() const { return attribute == symbol_attr::ADDRESS; }
 operand* operand::hold_value(content_t obj) {
@@ -30,9 +34,12 @@ operand* operand::hold_address(content_t obj) {
   return this;
 }
 
-[[nodiscard]] bool operand::empty() const { return !m_symbol.has_value(); }
-
 void operand::release() { m_symbol.reset(); }
+bool operand::is_writtable() const {
+  return !m_symbol.has_value() || m_symbol.value().is_disposable();
+}
+
+[[nodiscard]] bool operand::empty() const { return !m_symbol.has_value(); }
 
 reg::reg(std::string name)
     : m_name(std::move(name)) {}
@@ -94,15 +101,14 @@ stack_memory::stack_memory(int64_t offset)
     : reg_memory("rsp", offset) {}
 
 std::string stack_memory::value() const {
-  // const auto& v          = ast::scopes::translation_unit::instance();
-  ir::compilation_unit v;
-  int64_t current_casted = 0;
-  if (v.table.is_global_scope()) {
-    current_casted = static_cast<int64_t>(v.table.active_scope().variables.size());
+  auto& v                 = ir::compilation_unit::instance();
+  uint64_t current_casted = 0;
+  if (v.ast->is_global_scope()) {
+    current_casted = static_cast<int64_t>(v.ast->active_frame()->active_scope()->variables.size());
   } else {
-    current_casted = static_cast<int64_t>(v.table.active_frame().local_stack.size());
+    current_casted = static_cast<int64_t>(v.ast->active_frame()->local_stack.size());
   }
-  auto offset = calculate_offset(m_offset, current_casted);
+  auto offset = calculate_offset(m_offset, static_cast<int64_t>(current_casted));
   return format_addr(m_name, offset);
 }
 
@@ -126,23 +132,26 @@ label::label(std::string name)
 [[nodiscard]] std::string label_literal::label_length() const {
   return std::format("{}_len", value());
 }
+stack_memory* operand_factory::create_stack_memory(uint64_t i) { return create<stack_memory>(i); }
+label* operand_factory::create_label(const std::string& s) { return create<label>(s); }
+label_memory* operand_factory::create_label_memory(std::string&& s) {
+  return create<label_memory>(std::move(s));
+}
+label_literal* operand_factory::create_label_literal(std::string&& s) {
+  return create<label_literal>(std::move(s));
+}
 
 registers::registers()
-    : m_registers(initialize_registers()),
-      parameters(*this) {}
+    : m_registers(initialize_registers()) {}
 
-registers::parameters_t::parameters_t(registers& regs)
-    : regs(regs),
-      i(0) {}
-
-[[nodiscard]] reg* registers::get(registers_t name) const {
+[[nodiscard]] reg* registers::get(register_t name) const {
   return m_registers.at(magic_enum::enum_index(name).value());
 }
 
-const ir::variable* registers::find_var(const ast::terms::identifier& id) {
+const ast::decl::variable* registers::find_var(const ast::identifier& id) {
   for (const auto* r : m_registers) {
     if (const auto* var = r->variable()) {
-      if (var->identifier() == id) {
+      if (var->ident == id) {
         return var;
       }
     }
@@ -150,21 +159,40 @@ const ir::variable* registers::find_var(const ast::terms::identifier& id) {
   return nullptr;
 }
 
+registers::parameters_transaction registers::parameters() { return {this}; }
+
+reg* registers::parameters_transaction::next() {
+  const auto* it = std::ranges::find_if(
+      m_parameters, [this](register_t r) { return params->get(r)->is_writtable(); });
+  if (it != m_parameters.end()) {
+    auto* available = params->get(*it);
+    m_regs.push_back(available);
+    return available;
+  }
+  throw cmm::error("No more registers available");
+}
+
+void registers::parameters_transaction::reset() {
+  for (auto* r : m_regs) {
+    r->release();
+  }
+}
+
 assembly_instruction0::assembly_instruction0(instruction_t ins)
-    : instruction(std::move(ins)) {}
+    : instruction(ins) {}
 
 [[nodiscard]] std::string assembly_instruction0::format() const {
   return std::format("{}", instruction);
 }
 assembly_instruction1::assembly_instruction1(instruction_t ins, operand* l)
-    : instruction(std::move(ins)),
+    : instruction(ins),
       left(l) {}
 [[nodiscard]] std::string assembly_instruction1::format() const {
   return std::format("{} {}", instruction, *left);
 }
 
 assembly_instruction2::assembly_instruction2(instruction_t ins, operand* l, operand* r)
-    : instruction(std::move(ins)),
+    : instruction(ins),
       left(l),
       right(r) {}
 [[nodiscard]] std::string assembly_instruction2::format() const {
@@ -186,6 +214,11 @@ assembly_code_line::assembly_code_line(decltype(instruction)&& ins, decltype(com
 
 static_assert(std::formattable<instruction_t, char>);
 
+asmgen::asmgen() {
+  std::string exit_code = "mov rax, 60\n  syscall";
+  register_labeled_code_block("exit", std::move(exit_code));
+}
+
 void asmgen::start() {
   m_text.write("{}\n", "section .text").write<2>("{}\n", "global _start");
 
@@ -193,16 +226,12 @@ void asmgen::start() {
 }
 
 std::string asmgen::end() {
-  auto text = m_text.flush();
-  for (const auto& fn : m_sections.procedures) {
-    text = std::format("{}\n\n{}:\n  {}", text, fn.first, fn.second);
-  }
 
   string_buffer res;
   if (!m_sections.bss.empty()) {
     res << "section .bss\n";
     for (const auto& line : m_sections.bss) {
-      res << line << "\n";
+      res << "  " << line << "\n";
     }
     res << "\n";
   }
@@ -216,7 +245,10 @@ std::string asmgen::end() {
     res << "\n";
   }
 
-  res << text;
+  res << m_text.flush();
+  for (const auto& fn : m_sections.procedures) {
+    res << std::format("\n{}:\n  {}", fn.first, fn.second);
+  }
 
   return res.dump();
 }

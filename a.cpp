@@ -1,3 +1,1 @@
-static int x = 1;
-x            = x + x++;
-int main() {}
+int main() { char a[] = {"3"}; }
