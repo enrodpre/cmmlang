@@ -243,3 +243,24 @@
 #define PAIR_COUNT_18          9
 #define PAIR_COUNT_20          10
 #define PAIR_COUNT_22          11
+
+#define BUILD_ENUMERATION_DATA(TYPE, ...) \
+  using value_type   = CONCAT(TYPE, _t); \
+  using element_type = CONCAT(TYPE, _data); \
+  using enum value_type; \
+  const value_type self; \
+  DECLARE_VARS(__VA_ARGS__) \
+  using member_types   = std::tuple<value_type, GET_TYPES(__VA_ARGS__)>; \
+  using properties_map = magic_enum::containers::array<value_type, member_types>; \
+  std::string string() const override { return std::format("{}", self); } \
+  static_assert(std::is_constant_evaluated()); \
+  [[nodiscard]] static constexpr const properties_map& properties_array(); \
+  constexpr CONCAT(TYPE, _data)(value_type e) \
+      : self(e), \
+        CTOR_ASSIGN_DATA(__VA_ARGS__) {}
+
+#define BUILD_ENUMERATION_DATA_CLASS(TYPE, ...) \
+  struct CONCAT(TYPE, _data) \
+      : public displayable { \
+    BUILD_ENUMERATION_DATA(TYPE, __VA_ARGS__) \
+  };

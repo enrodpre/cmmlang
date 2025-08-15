@@ -17,8 +17,6 @@ private:
   std::vector<token> m_tokens;
   cmm::cstring m_src;
   size_t m_pointer;
-  size_t m_row;
-  size_t m_column;
 
   [[nodiscard]] bool has_next() const;
   [[nodiscard]] cstring peek(int) const;

@@ -1,1 +1,1 @@
-set args examples/post_dec.cmm
+set args examples/continue.cmm

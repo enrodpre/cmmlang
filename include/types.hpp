@@ -3,12 +3,14 @@
 #include "common.hpp"
 #include "macros.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
 #include <libassert/assert.hpp>
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_containers.hpp>
+#include <ranges>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -320,47 +322,18 @@ public:
       : preds(std::move(p)) {}
 
   // Compare two
-  template <typename T1, typename T2>
-  constexpr bool compare(T1&& t1, T2&& t2) const {
-    return process_groups<0>(std::forward<T1>(t1), std::forward<T2>(t2));
-  }
-
   template <typename Obj>
-  constexpr bool match(Obj&& obj) const {
-    static_assert(sizeof...(Preds) % 3 == 0,
-                  "Predicates must be in groups of 3 (extractor, condition, value)");
-    return process_groups<0>(std::forward<Obj>(obj));
+    requires(!std::is_same_v<Action, void>)
+  [[nodiscard]] constexpr std::optional<Obj> convert(Obj&& obj) const {
+    if (process_groups<0>(std::forward<Obj>(obj))) {
+      return std::invoke(action, std::forward<Obj>(obj));
+    }
+    return {};
   }
 
 private:
-  template <size_t I, typename Obj, typename Obj2>
-  constexpr bool process_groups(Obj&&, Obj2&&) const {
-    if constexpr (I + 2 < sizeof...(Preds)) {
-      // Extract a group of 3 elements starting at index I
-      const auto& extractor  = std::get<I>(preds).value;
-      const auto& condition  = std::get<I + 1>(preds).value;
-      const auto& extractor2 = std::get<I + 2>(preds).value;
-
-      // Apply extractor to get property from object
-      // auto extracted_prop  = std::invoke(extractor, std::forward<Obj>(obj));
-      // auto extracted_prop2 = std::invoke(extractor2, std::forward<Obj2>(obj2));
-
-      // Check condition with the extracted property and expected value
-      // bool result = std::invoke(condition, extracted_prop, expected_value);
-      //
-      // Continue with next group (AND logic)
-      //   if constexpr (I + 5 < sizeof...(Preds)) {
-      //     return result && process_groups<I + 3>(std::forward<Obj>(obj));
-      //   } else {
-      //     return result;
-      //   }
-      // } else {
-      //   return true; // No more groups to process
-      return {};
-    }
-  }
   template <size_t I, typename Obj>
-  constexpr bool process_groups(Obj&& obj) const {
+  [[nodiscard]] constexpr bool process_groups(Obj&& obj) const {
     if constexpr (I + 2 < sizeof...(Preds)) {
       // Extract a group of 3 elements starting at index I
       const auto& extractor      = std::get<I>(preds).value;
@@ -425,6 +398,11 @@ public:
     return filtered;
   }
 
+  template <typename T>
+  [[nodiscard]] std::function<std::optional<T>(T&&)> wrap() const {
+    return [this](T&& t) { return convert(std::forward<T>(t)); };
+  }
+
   // Chain with new action
   template <typename NextAction>
     requires(!std::is_same_v<Action, void>)
@@ -468,37 +446,43 @@ namespace conditions {
 }; // namespace conditions
 namespace processors {
   template <type_category_t N>
-  constexpr static auto GENERATE_TYPE      = [](cr_type) -> type { return type::create(N); };
-  constexpr static auto EXTRACT_UNDERLYING = [](cr_type t) -> type { return *t.underlying; };
-  constexpr static auto COPY               = [](cr_type t) -> type { return t; };
-  constexpr static auto WRAP_REF           = [](cr_type t) -> type {
-    return type::create_lvalue(&t, t.c, t.v);
-  };
+  constexpr static auto GENERATE_TYPE      = [](cr_type) { return type::create(N); };
+  constexpr static auto EXTRACT_UNDERLYING = [](cr_type t) { return *t.underlying; };
+  template <typename T>
+  constexpr static auto COPY     = [](T t) { return t; };
+  constexpr static auto WRAP_REF = [](cr_type t) { return type::create_lvalue(&t, t.c, t.v); };
 }; // namespace processors
 namespace conversions {
   enum class generator_t : uint8_t { EVERY };
   using namespace conditions;
   using namespace extractors;
   using namespace processors;
-  constexpr static auto TO_BOOL =
-      make_matcher().where(GET_CATEGORY, BELONGS_TO, type_category_t::fundamental_t).then([]() {
-        return type::create(type_category_t::bool_t);
-      });
-  constexpr static auto LVALUE_TO_RVALUE =
-      type_matcher_builder()
+  using converter_t = const std::function<std::optional<cmm::type>(cmm::type)>;
+  static converter_t TO_BOOL =
+      make_matcher()
+          .where(GET_CATEGORY, BELONGS_TO, type_category_t::fundamental_t)
+          .then([](cr_type) { return type::create(type_category_t::bool_t); })
+          .wrap<cmm::type>();
+  static converter_t LVALUE_TO_RVALUE =
+      make_matcher()
           .where(GET_CATEGORY, EQUALS, type_category_t::lvalue_ref_t)
           .where(GET_CONST, NOT_EQUALS, true)
-          .then(COPY);
-  constexpr static auto CONST_LVALUE =
-      type_matcher_builder()
-          .where(GET_CATEGORY, EQUALS, type_category_t::lvalue_ref_t)
-          .where(GET_CONST, EQUALS, true)
-          .then(COPY);
+          .then(COPY<cmm::type>)
+          .wrap<cmm::type>();
+  static converter_t CONST_LVALUE = make_matcher()
+                                        .where(GET_CATEGORY, EQUALS, type_category_t::lvalue_ref_t)
+                                        .where(GET_CONST, EQUALS, true)
+                                        .then(COPY<cmm::type>)
+                                        .wrap<cmm::type>();
 
-  constexpr auto static conversions = std::make_tuple(TO_BOOL, LVALUE_TO_RVALUE, CONST_LVALUE);
-  constexpr bool is_convertible(ptr_type from, ptr_type to) {
-    return std::apply([&from, &to](auto&&... args) { return (args.compare(from, to) && ...); },
-                      conversions::conversions);
+  std::array const conversions = {TO_BOOL, LVALUE_TO_RVALUE, CONST_LVALUE};
+
+  constexpr bool is_convertible(cr_type from, cr_type to) {
+    auto converted =
+        conversions |
+        std::views::transform([&from](const converter_t& converter) { return converter(from); }) |
+        std::views::filter([to](const auto& opt) { return opt.has_value() && opt.value() == to; });
+    return !std::ranges::empty(converted);
   }
   constexpr std::vector<ptr_type> get_convertibles(ptr_type) {
     NOT_IMPLEMENTED;

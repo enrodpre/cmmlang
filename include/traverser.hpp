@@ -19,6 +19,22 @@ struct expression_visitor;
 struct statement_visitor;
 struct global_visitor;
 
+struct ast_completer {
+  static translation_unit& complete(translation_unit&);
+  struct conversions_visitor : public ast_visitor {
+    conversions_visitor()
+        : allocator(cmm::memory::Allocator::instance()) {}
+    cmm::memory::Allocator& allocator;
+    void visit(ast::expr::binary_operator&) override;
+    void visit(ast::expr::unary_operator&) override;
+    void visit(ast::iteration::for_&) override;
+    void visit(ast::iteration::while_&) override;
+    void visit(ast::selection::if_&) override;
+
+  private:
+    expr::expression* bool_wrap_if(expr::expression*);
+  };
+};
 class ast_traverser {
 public:
   ast_traverser() = delete;
@@ -68,7 +84,7 @@ struct global_visitor : public visitor<GLOBAL_TYPES> {
   void visit(ast::decl::function&) override;
 };
 
-struct expression_visitor : public visitor<EXPRESSION_TYPES, LITERAL_TYPES> {
+struct expression_visitor : public visitor<EXPRESSION_TYPES> {
   ast_traverser* gen;
   assembly::operand* in;
   assembly::operand* out;
@@ -78,23 +94,13 @@ struct expression_visitor : public visitor<EXPRESSION_TYPES, LITERAL_TYPES> {
   void visit(ast::expr::call&) override;
   void visit(ast::expr::binary_operator&) override;
   void visit(ast::expr::unary_operator&) override;
-  void visit(ast::expr::float_literal& c) override;
-  void visit(ast::expr::uint_literal& c) override;
-  void visit(ast::expr::sint_literal& c) override;
-  void visit(ast::expr::string_literal& c) override;
-  void visit(ast::expr::char_literal& c) override;
-  void visit(ast::expr::false_literal& c) override;
-  void visit(ast::expr::true_literal& c) override;
   void visit(ast::expr::identifier&) override;
+  void visit(ast::expr::literal&) override;
+  void visit(ast::expr::implicit_type_conversion&) override;
 };
 
 struct statement_visitor : public expression_visitor,
-                           virtual public visitor<STATEMENT_TYPES,
-                                                  ast::decl::block,
-                                                  ast ::decl::function::definition,
-                                                  // ast ::scope ::namespace_,
-                                                  // ast ::scope ::file,
-                                                  GLOBAL_TYPES> {
+                           virtual public visitor<STATEMENT_TYPES, GLOBAL_TYPES> {
   ast_traverser* gen;
   statement_visitor(ast_traverser*);
 
@@ -103,8 +109,8 @@ struct statement_visitor : public expression_visitor,
   void visit(ast::decl::variable&) override;
   void visit(ast::decl::label&) override;
   void visit(ast::decl::function&) override;
-  void visit(ast::decl::function::definition&) override;
   void visit(ast::iteration::for_&) override;
+  void visit(ast::decl::function::definition&) override;
   void visit(ast::iteration::while_&) override;
   void visit(ast::selection::if_&) override;
   void visit(ast::jump::break_&) override;

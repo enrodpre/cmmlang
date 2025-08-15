@@ -15,7 +15,7 @@ struct AstTest : public ::testing::Test {
   tokens* every_token;
   // ~AstTest() override { delete every_token; }
   static token create_token(cmm::token_t type, std::string value = "") {
-    return {std::move(type), {}, std::move(value)};
+    return {type, {}, std::move(value)};
   }
   token class_     = create_token(token_t::class_t);
   token constexpr_ = create_token(token_t::constexpr_);
@@ -65,5 +65,5 @@ TEST_F(AstTest, operator_precedence) {
   auto* adding = trycast<binary_operator>(&binop->right);
   EXPECT_EQ("8", trycast<literal>(&adding->right)->value());
   EXPECT_EQ("x", trycast<identifier>(&adding->left)->value());
-  EXPECT_EQ(_operator_t::plus, adding->operator_.value());
+  EXPECT_EQ(operator_t::plus, adding->operator_.value());
 }

@@ -1,7 +1,6 @@
 
 #include "expr.h"
 #include "ast.hpp"
-#include "visitor.hpp"
 
 namespace cmm::ast {
 
@@ -13,25 +12,11 @@ expr::identifier::identifier(ast::identifier&& id)
   m_term.set_parent(this);
 }
 
-expr::literal::literal(cmm::location l, std::string s)
-    : m_term(std::move(l), std::move(s)) {}
-expr::literal::literal(const token& t)
-    : literal(t.location(), t.value) {}
-
-expr::string_literal::string_literal(const token& t)
-    : visitable(t) {}
-expr::false_literal::false_literal(const token& t)
-    : visitable(t.location(), "0") {}
-expr::true_literal::true_literal(const token& t)
-    : visitable(t.location(), "1") {}
-expr::sint_literal::sint_literal(const token& t)
-    : visitable(t) {}
-expr::uint_literal::uint_literal(const token& t)
-    : visitable(t) {}
-expr::float_literal::float_literal(const token& t)
-    : visitable(t) {}
-expr::char_literal::char_literal(const token& t)
-    : visitable(t) {}
+expr::literal::literal(cmm::location l, std::string s, literal_t t)
+    : m_term(std::move(l), std::move(s)),
+      category(t) {}
+expr::literal::literal(const token& t, literal_t l)
+    : literal(t.location(), t.value, l) {}
 
 expr::call::call(decltype(ident)&& id, decltype(args)&& a = {})
     : ident(std::move(id)),

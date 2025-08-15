@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ast.hpp"
+#include "visitor.hpp"
 #include <type_traits>
 
 #define SET_PARENT_AND_VISIT(node, member) \
@@ -29,47 +30,48 @@ struct semantics {
   }
   static void load_program_semantics(ast::translation_unit*);
   static void load_expression_semantics(ast::expr::expression*);
-  // struct visitor : public ast::const_ast_visitor {
-  //   visitor();
-  //   ir::compilation_unit& v;
-  //   void visit(const ast::expr::identifier&) override;
-  //   template <typename T>
-  //   void visit(const T&);
-  //   void visit(const ast::expr::unary_operator&) override;
-  //   void visit(const ast::expr::binary_operator&) override;
-  //   void visit(const ast::expr::call&) override;
-  //   void visit(const ast ::expr ::float_literal& c) override;
-  //   void visit(const ast ::expr ::sint_literal& c) override;
-  //   void visit(const ast ::expr ::uint_literal& c) override;
-  //   void visit(const ast ::expr ::string_literal& c) override;
-  //   void visit(const ast ::expr ::false_literal& c) override;
-  //   void visit(const ast ::expr ::true_literal& c) override;
-  //   void visit(const ast ::expr ::char_literal& c) override;
-  //   // void visit(const ast::decl::variable&) override;
-  //   // void visit(const ast::decl::function&) override;
-  //   void visit(const ast::expr::arguments&) override;
-  //   // void visit(ast::compound& c) override;
-  //   // void visit(ast::decl::label& c) override;
-  //   // void visit(ast::iteration::while_& c) override;
-  //   // void visit(ast::iteration::for_& c) override;
-  //   // void visit(ast::selection::if_& c) override;
-  //   // void visit(ast::jump::goto_& c) override;
-  //   // void visit(ast::jump::return_& c) override;
-  // };
-};
+  struct visitor : public ast::ast_visitor {
+    visitor();
+    ir::compilation_unit& v;
+    void visit(ast::decl::label&) override;
+    void visit(ast::iteration::for_&) override;
+    void visit(ast::iteration::while_&) override;
+    void visit(ast::selection::if_&) override;
+    void visit(ast::jump::break_&) override;
+    void visit(ast::jump::continue_&) override;
+    void visit(ast::jump::goto_&) override;
+    void visit(ast::jump::return_&) override;
+    void visit(ast::expr::binary_operator&) override;
+    void visit(ast::expr::unary_operator&) override;
+    void visit(ast::expr::call&) override;
+    void visit(ast::expr::identifier&) override;
+    void visit(ast::literal&) override;
+    void visit(ast::identifier&) override;
+    void visit(ast::keyword&) override;
+    void visit(ast::operator_&) override;
+    void visit(ast::storage&) override;
+    void visit(ast::linkage&) override;
+    void visit(ast::type&) override;
+    void visit(ast::decl::function::parameters&) override;
+    void visit(ast::decl::specifiers&) override;
+    void visit(ast::expr::arguments&) override;
+    void visit(ast::decl::function&) override;
+    void visit(ast::decl::variable&) override;
+  };
 
-// struct shortener {
-//   static ast::expr::expression* shorten_expression(ast::expr::expression*);
-//   struct visitor : public cmm::ptr_visitor<EXPRESSION_TYPES> {
-//     visitor();
-//     ir::compilation_unit& v;
-//     memory::Allocator& allocator;
-//     ast::expr::expression* res;
-//     void visit(ast::expr::identifier*) override;
-//     void visit(ast::expr::literal*) override;
-//     void visit(ast::expr::unary_operator*) override;
-//     void visit(ast::expr::binary_operator*) override;
-//     void visit(ast::expr::call*) override;
-//   };
-// };
+  // struct shortener {
+  //   static ast::expr::expression* shorten_expression(ast::expr::expression*);
+  //   struct visitor : public cmm::ptr_visitor<EXPRESSION_TYPES> {
+  //     visitor();
+  //     ir::compilation_unit& v;
+  //     memory::Allocator& allocator;
+  //     ast::expr::expression* res;
+  //     void visit(ast::expr::identifier*) override;
+  //     void visit(ast::expr::literal*) override;
+  //     void visit(ast::expr::unary_operator*) override;
+  //     void visit(ast::expr::binary_operator*) override;
+  //     void visit(ast::expr::call*) override;
+  //   };
+  // };
 }; // namespace cmm
+} // namespace cmm

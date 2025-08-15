@@ -58,7 +58,6 @@ struct operand : public formattable {
   // [[nodiscard]] virtual size size() const         = 0;
   [[nodiscard]] virtual std::string value() const = 0;
   [[nodiscard]] std::string format() const override;
-  // virtual std::unique_ptr<Operand> clone() const = 0;
 
   [[nodiscard]] std::optional<symbol_container> content() const;
   [[nodiscard]] cr_type content_type() const;
@@ -301,6 +300,8 @@ public:
   void add_data(cstring, cstring);
   void add_bss(cstring, cstring, cstring);
   void register_labeled_code_block(cstring, std::string&&);
+  [[nodiscard]] static bool exists_snippet(cstring);
+  void register_snippet(cstring);
 
   // Helpers
   template <typename... Args>
@@ -325,7 +326,13 @@ private:
     std::vector<std::pair<std::string, std::string>> data;
   } m_sections;
 
-  constexpr static cstring PLACEHOLDER_TEMPLATE = "||{}||";
+  constexpr static std::array procedures_snippets = {
+      std::make_pair("print_argc",
+                     "  pop  ecx\n  add  ecx, '0'\n  push  ecx\n  mov  ecx, esp\n  mov eax, 4\n  "
+                     "mov  ebx, 1\n  mov edx, 1\n syscall"),
+      std::make_pair(
+          "print",
+          "  mov rax, 1\n  mov rdi, 1\n  lea rsi, [newline]\n  mov rdx, 1\n  syscall\n  ret")};
 };
 
 class comment_block {
@@ -349,12 +356,8 @@ comment_block asmgen::begin_comment_block(std::format_string<Args...> std, Args&
 }
 
 enum class Snippet : uint8_t { int_to_str, exit, print_str, print_nl, print_int };
-constexpr static const cstring PRINT_NL =
-    "  mov rax, 1\n  mov rdi, 1\n  lea rsi, [newline]\n  mov rdx, 1\n  "
-    "syscall\n  ret";
-constexpr static const cstring PRINT_STR =
-    "  mov rax, 1\n  mov rdi, 1\n  mov rsi, msg1\n  mov rdx msglen1\n  "
-    "syscall\n  ret";
+constexpr static const cstring PRINT_NL = ""
+                                          "syscall\n  ret";
 constexpr static const cstring INT_TO_FORMAT =
     R"(  mov rcx, 10                ; Base 10
   xor rbx, rbx               ; Clear rbx (used for digit count)

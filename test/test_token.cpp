@@ -2,24 +2,24 @@
 #include "token.hpp"
 #include <gtest/gtest.h>
 
+#include <sys/types.h>
 #include <utility>
 
 using namespace cmm;
 
 struct test_token : public ::testing::Test {
-  size_t counter = 0;
+  u_int32_t counter = 0;
   location create_loc() {
-    location l = {counter, counter, counter, counter};
+    location l{counter, counter};
     counter++;
     return l;
   }
 
   template <typename... Args>
   tokens create_tokens(Args&&... args) {
-    auto vec =
-        std::array{std::forward<Args>(args)...} |
-        std::views::transform([this](token_t t) { return token(std::move(t), create_loc()); }) |
-        std::ranges::to<std::vector>();
+    auto vec = std::array{std::forward<Args>(args)...} |
+               std::views::transform([this](token_t t) { return token(t, create_loc()); }) |
+               std::ranges::to<std::vector>();
     return tokens(vec);
   }
 };

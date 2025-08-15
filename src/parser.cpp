@@ -29,6 +29,8 @@ ast::translation_unit parser::parser::parse_program() {
   }
   // static_assert(std::is_move_constructible_v<ast::translation_unit>,
   // "Element type must be move constructible");
+  // check_visitor visitor;
+  // res.accept(visitor);
   return {res};
 }
 
@@ -53,7 +55,7 @@ T* parser::parse_block() {
   }
 
   auto tok = m_tokens.peek();
-  throw_error<_error_t::UNEXPECTED_TOKEN>(tok);
+  throw_error<compilation_error_t::UNEXPECTED_TOKEN>(tok);
 }
 
 statement* parser::parse_statement() {
@@ -173,17 +175,17 @@ ast::expr::expression* parser::parse_lhs_expr() {
     auto lit = m_tokens.next();
     switch (lit.type) {
       case token_t::false_lit:
-        return create_node<expr::false_literal>(token);
+        return create_node<expr::literal>(token, expr::literal_t::FALSE);
       case token_t::true_lit:
-        return create_node<expr::true_literal>(token);
+        return create_node<expr::literal>(token, expr::literal_t::TRUE);
       case token_t::int_lit:
-        return create_node<expr::sint_literal>(token);
+        return create_node<expr::literal>(token, expr::literal_t::SINT);
       case token_t::float_lit:
-        return create_node<expr::float_literal>(token);
+        return create_node<expr::literal>(token, expr::literal_t::FLOAT);
       case token_t::string_lit:
-        return create_node<expr::string_literal>(token);
+        return create_node<expr::literal>(token, expr::literal_t::STRING);
       case token_t::char_lit:
-        return create_node<expr::char_literal>(token);
+        return create_node<expr::literal>(token, expr::literal_t::CHAR);
       default:
         NOT_IMPLEMENTED;
         break;
@@ -212,13 +214,13 @@ ast::expr::expression* parser::parse_lhs_expr() {
   }
 
   if (peek_data().is_operator()) {
-    m_tokens.advance();
+    auto token = m_tokens.next();
     operator_t op{};
-    if (peek_data().is(token_t::dec)) {
+    if (token.type == token_t::dec) {
       op = operator_t::pre_dec;
-    } else if (peek_data().is(token_t::inc)) {
+    } else if (token.type == token_t::inc) {
       op = operator_t::pre_inc;
-    } else if (peek_data().is_castable<operator_t>()) {
+    } else if (token_data(token.type).is_castable<operator_t>()) {
       op = peek_data().cast<operator_t>();
     } else {
       NOT_IMPLEMENTED;
@@ -228,7 +230,7 @@ ast::expr::expression* parser::parse_lhs_expr() {
     return create_node<expr::unary_operator>(operand, std::move(t));
   }
 
-  throw_error<error_t::UNEXPECTED_TOKEN>(token);
+  throw_error<compilation_error_t::UNEXPECTED_TOKEN>(token);
 }
 
 expr::expression* parser::parse_expr(uint8_t min_prec) {
@@ -292,7 +294,7 @@ identifier parser::parse_identifier() {
     return {next};
   }
 
-  throw_error<error_t::UNEXPECTED_TOKEN>(m_tokens.peek());
+  throw_error<compilation_error_t::UNEXPECTED_TOKEN>(m_tokens.peek());
 }
 
 decl::variable* parser::parse_variable(ast::decl::specifiers&& mods, ast::identifier&& id) {
@@ -328,7 +330,7 @@ namespace {
       return {storages[0], storage_t::static_};
     }
 
-    throw_error<error_t::INCOMPATIBLE_TOKEN>(storages[1], storages[1], storages[0]);
+    throw_error<compilation_error_t::INCOMPATIBLE_TOKEN>(storages[1]);
   }
   constexpr type_category_t parse_enum_type(const token_data& token_type, bool unsigned_) {
     if (token_type == token_t::int_t) {
@@ -388,7 +390,7 @@ ast::decl::rank* parser::parse_rank() {
       r = parse_expr();
     }
     if (r == nullptr && !m_tokens.next_is(token_t::c_bracket)) {
-      throw_error<error_t::UNEXPECTED_TOKEN>(m_tokens.peek());
+      throw_error<compilation_error_t::UNEXPECTED_TOKEN>(m_tokens.peek());
     }
     const token& right = want(token_t::c_bracket);
     res                = create_node<decl::rank>(left, r, right);
@@ -550,5 +552,4 @@ void parser::parser::want_semicolon() {
     m_tokens.advance();
   }
 };
-
 } // namespace cmm::parser

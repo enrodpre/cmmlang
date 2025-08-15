@@ -21,10 +21,10 @@ label::label(const token& label_)
   add(ident);
 }
 
-specifiers::specifiers(const ast::type& t, const ast::linkage& l, const ast::storage& s)
-    : type(t),
-      linkage(l),
-      storage(s) {
+specifiers::specifiers(ast::type&& t, ast::linkage&& l, ast::storage&& s)
+    : type(std::move(t)),
+      linkage(std::move(l)),
+      storage(std::move(s)) {
   add_all(&type, &linkage, &storage);
 }
 
@@ -37,8 +37,8 @@ decl::rank::rank(const token& l, decltype(number) e, const token& r)
 decl::rank::rank(const token& l, const token& r)
     : rank(r, nullptr, l) {}
 
-variable::variable(const specifiers& spec, decltype(rank) r, identifier&& id, decltype(init) i)
-    : specs(spec),
+variable::variable(specifiers&& spec, decltype(rank) r, identifier&& id, decltype(init) i)
+    : specs(std::move(spec)),
       rank(r),
       visitable(std::move(id)),
       init(i) {
@@ -48,18 +48,14 @@ variable::variable(cr_type t, decltype(ident)&& id, decltype(init) init)
     : variable(specifiers(t), nullptr, std::move(id), init) {}
 variable::variable(cr_type t, std::string s)
     : variable(t, identifier(std::move(s)), nullptr) {}
-cmm::location decl::label::location() const { return ident.location(); }
-cmm::location decl::variable::location() const {
-  return specs.location() + ident.location() + GET_LOC(init);
-}
 
-function::function(const decltype(specs)& s,
+function::function(decltype(specs)&& s,
                    decltype(ident)&& ident_,
-                   const decltype(params)& args,
+                   decltype(params)&& args,
                    decltype(body) body_)
-    : specs(s),
+    : specs(std::move(s)),
       visitable(std::move(ident_)),
-      params(args),
+      params(std::move(args)),
       body(body_) {
   add_all(&specs, &ident, &params, body);
   // a specs.set_parent(this);
@@ -88,15 +84,10 @@ void function::parameters::load_arguments(const siblings<expr::expression*>& arg
       n_expr = args.at(i);
     }
     if (n_expr != nullptr) {
-      throw_error<error_t::BAD_FUNCTION_CALL>(*param);
+      throw_error<compilation_error_t::BAD_FUNCTION_CALL>(*param);
     }
     param->init = n_expr;
   }
-}
-
-cmm::location decl::function::location() const {
-  return specs.location() + ident.location() + params.location() +
-         (body == nullptr ? location() : body->scope::location());
 }
 
 selection::if_::if_(const token& t,
@@ -110,10 +101,6 @@ selection::if_::if_(const token& t,
   add_all(&keyword, &condition, block, else_);
 }
 
-cmm::location selection::if_::location() const {
-  return keyword.location() + condition.location() + GET_LOC(else_) + GET_LOC(block);
-}
-
 namespace {
   std::string condition_label() { return std::format("cond_{}", "it"); }
   std::string exit_label() { return std::format("exit_{}", "it"); }
@@ -123,10 +110,6 @@ iteration::while_::while_(const token& t, expr::expression& condition_, block* b
       condition(condition_),
       body(block) {
   add_all(&keyword, &condition, body);
-}
-
-cmm::location iteration::while_::location() const {
-  return keyword.location() + condition.location() + GET_LOC(body);
 }
 
 iteration::for_::for_(const token& t,
@@ -142,32 +125,24 @@ iteration::for_::for_(const token& t,
   add_all(&keyword, start, condition, step, body);
 }
 
-cmm::location iteration::for_::location() const {
-  return keyword.location() + GET_LOC(condition) + GET_LOC(body) + GET_LOC(start) + GET_LOC(step);
-}
-
 jump::goto_::goto_(const token& token)
     : term(token) {
   add(&term);
 }
-cmm::location jump::goto_::location() const { return term.location(); }
 
 jump::break_::break_(const token& token)
     : keyword(token) {
   add(&keyword);
 }
-cmm::location jump::break_::location() const { return keyword.location(); }
 jump::continue_::continue_(const token& token)
     : keyword(token) {
   add(&keyword);
 }
-cmm::location jump::continue_::location() const { return keyword.location(); }
-jump::return_::return_(const ast::keyword& k, expr::expression* expr_)
-    : keyword(k),
+jump::return_::return_(ast::keyword&& k, expr::expression* expr_)
+    : keyword(std::move(k)),
       expr(expr_) {
   add(&keyword);
 }
-cmm::location jump::return_::location() const { return keyword.location() + GET_LOC(expr); }
 
 // std::vector<ptr_type> conversion_store::get_convertible_types(cr_type from) const {
 //   return get_conversions(from) | std::views::transform([&from](const auto& conversion) ->
@@ -238,7 +213,7 @@ void variable_store::put(decl::variable* var) { insert(var->string(), var); }
 
 [[nodiscard]] variable* decl::function::definition::get_variable(const ast::identifier& ident) {
   if (!is_declared(ident)) {
-    throw_error<_error_t::UNDECLARED_SYMBOL>(ident);
+    throw_error<compilation_error_t::UNDECLARED_SYMBOL>(ident);
   }
 
   if (variables.contains(ident)) {
@@ -256,7 +231,7 @@ void variable_store::put(decl::variable* var) { insert(var->string(), var); }
 [[nodiscard]] const variable* decl::function::definition::get_variable(
     const ast::identifier& ident) const {
   if (!is_declared(ident)) {
-    throw_error<_error_t::UNDECLARED_SYMBOL>(ident);
+    throw_error<compilation_error_t::UNDECLARED_SYMBOL>(ident);
   }
 
   if (variables.contains(ident)) {
@@ -401,7 +376,7 @@ function* translation_unit::get_function(const signature& sig) {
     return opt.value();
   }
 
-  throw_error<_error_t::UNDECLARED_SYMBOL>(name);
+  throw_error<compilation_error_t::UNDECLARED_SYMBOL>(name);
 }
 
 const function* translation_unit::get_function(const signature& sig) const {
@@ -416,12 +391,12 @@ const function* translation_unit::get_function(const signature& sig) const {
     return opt.value();
   }
 
-  throw_error<_error_t::UNDECLARED_SYMBOL>(name);
+  throw_error<compilation_error_t::UNDECLARED_SYMBOL>(name);
 }
 
 void translation_unit::declare_function(decl::function* func, bool) {
   if (is_declared<decl::function>(func->ident)) {
-    throw_error<error_t::ALREADY_DECLARED_SYMBOL>(func->ident);
+    throw_error<compilation_error_t::ALREADY_DECLARED_SYMBOL>(func->ident);
   }
   REGISTER_TRACE("Creating func {}", func->ident.value());
   m_functions.insert(func);
@@ -437,7 +412,7 @@ void translation_unit::link_entry_point(ast::decl::function* fn) {
     builtin_signature_data main_header = builtin_signature_t::MAIN;
     m_functions.insert(fn);
   } else {
-    throw_error<_error_t::ALREADY_DECLARED_SYMBOL>(*fn);
+    throw_error<compilation_error_t::ALREADY_DECLARED_SYMBOL>(*fn);
   }
 }
 
@@ -506,12 +481,11 @@ void ast_visitor::visit(ast::decl::function::parameters& p) {
 };
 void ast_visitor::visit(ast::decl::specifiers& c) {
   TRACE_VISITOR(c);
-  c.accept(*this);
+  c.storage.accept(*this);
+  c.linkage.accept(*this);
+  c.type.accept(*this);
 };
-void ast_visitor::visit(ast ::expr ::identifier& c) {
-  TRACE_VISITOR(c);
-  c.accept(*this);
-};
+void ast_visitor::visit(ast ::expr ::identifier& c) { TRACE_VISITOR(c); };
 void ast_visitor::visit(ast ::expr ::unary_operator& c) {
   TRACE_VISITOR(c);
   c.operator_.accept(*this);
@@ -590,11 +564,32 @@ void ast_visitor::visit(ast ::jump ::return_& c) {
   }
 }
 void ast_visitor::visit(ast::jump::continue_& c) { TRACE_VISITOR(c); }
+void ast_visitor::visit(ast::expr::literal& c) { TRACE_VISITOR(c); }
 void ast_visitor::visit(ast::jump::break_& c) { TRACE_VISITOR(c); }
+void ast_visitor::visit(ast::operator_& c) { TRACE_VISITOR(c); }
+void ast_visitor::visit(ast::storage& c) { TRACE_VISITOR(c); }
+void ast_visitor::visit(ast::type& c) { TRACE_VISITOR(c); }
+void ast_visitor::visit(ast::linkage& c) { TRACE_VISITOR(c); }
+void ast_visitor::visit(siblings<expr::expression*>& c) { TRACE_VISITOR(c); }
+void ast_visitor::visit(ast ::expr ::implicit_type_conversion& c) { TRACE_VISITOR(c); }
+void ast_visitor::visit(ast::decl::function::definition& c) {
+  TRACE_VISITOR(c);
+  for (const auto& stmt : c.stmts) {
+    stmt->accept(*this);
+  }
+}
+void ast_visitor::visit(ast::decl::block& c) {
+  TRACE_VISITOR(c);
+  for (const auto& stmt : c.stmts) {
+    stmt->accept(*this);
+  }
+}
 void const_ast_visitor::visit(const ast::operator_& c) { TRACE_VISITOR(c); }
 void const_ast_visitor::visit(const ast::literal& c) { TRACE_VISITOR(c); }
 void const_ast_visitor::visit(const ast::keyword& c) { TRACE_VISITOR(c); }
 void const_ast_visitor::visit(const ast::identifier& c) { TRACE_VISITOR(c); }
+void const_ast_visitor::visit(const siblings<expr::expression*>& c) { TRACE_VISITOR(c); }
+void const_ast_visitor::visit(const ast ::expr ::implicit_type_conversion& c) { TRACE_VISITOR(c); }
 void const_ast_visitor::visit(const ast::decl::function::parameters& p) {
   TRACE_VISITOR(p);
   for (auto&& par : p) {
@@ -685,4 +680,20 @@ void const_ast_visitor::visit(const ast ::jump ::return_& c) {
 }
 void const_ast_visitor::visit(const ast::jump::continue_& c) { TRACE_VISITOR(c); }
 void const_ast_visitor::visit(const ast::jump::break_& c) { TRACE_VISITOR(c); }
+void const_ast_visitor::visit(const ast::storage& c) { TRACE_VISITOR(c); }
+void const_ast_visitor::visit(const ast::linkage& c) { TRACE_VISITOR(c); }
+void const_ast_visitor::visit(const ast::type& c) { TRACE_VISITOR(c); }
+void const_ast_visitor::visit(const ast::expr::literal& c) { TRACE_VISITOR(c); }
+void const_ast_visitor::visit(const ast::decl::function::definition& c) {
+  TRACE_VISITOR(c);
+  for (const auto& stmt : c.stmts) {
+    stmt->accept(*this);
+  }
+}
+void const_ast_visitor::visit(const ast::decl::block& c) {
+  TRACE_VISITOR(c);
+  for (const auto& stmt : c.stmts) {
+    stmt->accept(*this);
+  }
+}
 } // namespace cmm::ast

@@ -16,7 +16,6 @@
 #include <magic_enum/magic_enum_format.hpp>
 #include <memory>
 #include <mutex>
-#include <print>
 #include <ranges>
 #include <string>
 #include <sys/types.h>
@@ -147,35 +146,6 @@ struct formattable {
   [[nodiscard]] virtual std::string format() const = 0;
   [[nodiscard]] virtual std::string repr(size_t = 0) const { return format(); }
 };
-
-// #define CTOR_PARAMS_2(t1, n1)                         t1 _##n1
-// #define CTOR_PARAMS_4(t1, n1, t2, n2)                 t1 _##n1, t2 _##n2
-// #define CTOR_PARAMS_6(t1, n1, t2, n2, t3, n3)         t1 _##n1, t2 _##n2, t3 _##n3
-// #define CTOR_PARAMS_8(t1, n1, t2, n2, t3, n3, t4, n4) t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4
-// #define CTOR_PARAMS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
-//   t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5
-// #define CTOR_PARAMS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
-//   t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5, t6 _##n6
-//
-// #define ADD_FMT_0(lvl, a1)
-// #define ADD_FMT_1(lvl, a1) \
-//   \n {}
-// #define ADD_FMT_2(lvl, a1, a2) \
-//   \n {} \
-//   \n {}
-// #define ADD_FMT_3(lvl, a1, a2, a3) \
-//   \n {} \
-//   \n {} \
-//   \n {}
-//
-// #define FORMAT_ARGS_0(lvl, a1)
-// #define FORMAT_ARGS_1(lvl, a1)         a1.repr(lvl + 1)
-// #define FORMAT_ARGS_2(lvl, a1, a2)     a1.repr(lvl + 1), a2.repr(lvl + 1)
-// #define FORMAT_ARGS_3(lvl, a1, a2, a3) a1.repr(lvl + 1), a2.repr(lvl + 1), a3.repr(lvl + 1)
-//
-// #define CTOR_ADD_FMT(...) CONCAT(ADD_FMT_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
-// #define CTOR_FORMAT_ARGS(lvl, ...) \
-//   CONCAT(FORMAT_ARGS_, GET_ARG_COUNT(__VA_ARGS__))(lvl, __VA_ARGS__)
 
 #define STRING_IMPL(TYPE, stdstr, ...) \
   std::string TYPE::format() const { return std::format(stdstr, __VA_ARGS__); }
@@ -395,128 +365,6 @@ struct enumeration : public formattable {
 protected:
   E m_value;
 };
-// #define ENUM_PROPERTY(TYPE, NAME, N) TYPE NAME
-//
-// // Helper macro to extract types (every odd-positioned argument: 1st, 3rd, 5th,
-// // etc.)
-// #define GET_TYPES_1(t1, ...)                                             t1
-// #define GET_TYPES_2(t1, n1, t2, ...)                                     t1, t2
-// #define GET_TYPES_3(t1, n1, t2, n2, t3, ...)                             t1, t2, t3
-// #define GET_TYPES_4(t1, n1, t2, n2, t3, n3, t4, ...)                     t1, t2, t3, t4
-// #define GET_TYPES_5(t1, n1, t2, n2, t3, n3, t4, n4, t5, ...)             t1, t2, t3, t4, t5
-// #define GET_TYPES_6(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, ...)     t1, t2, t3, t4, t5, t6
-// #define GET_TYPES_7(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, ...) t1, t2, t3, t4, t5, t6,
-// t7
-// #define GET_TYPES_8(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8...) \
-// t1, t2, t3, t4, t5, t6, t7, t8
-// #define GET_TYPES_9(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9...) \
-// t1, t2, t3, t4, t5, t6, t7, t8, t9
-// #define GET_TYPES_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9, t10...) \
-// t1, t2, t3, t4, t5, t6, t7, t8, t9, t10
-// #define GET_TYPES_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, t7, t8, t9, t10, t11, t12...) \
-// t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12
-//
-// // Helper macro to declare variables
-// #define DECLARE_VARS_2(t1, n1) ENUM_PROPERTY(t1, n1, 0);
-//
-// #define DECLARE_VARS_4(t1, n1, t2, n2) \
-// ENUM_PROPERTY(t1, n1, 0); \
-// ENUM_PROPERTY(t2, n2, 1);
-// #define DECLARE_VARS_6(t1, n1, t2, n2, t3, n3) \
-// ENUM_PROPERTY(t1, n1, 0); \
-// ENUM_PROPERTY(t2, n2, 1); \
-// ENUM_PROPERTY(t3, n3, 2);
-// #define DECLARE_VARS_8(t1, n1, t2, n2, t3, n3, t4, n4) \
-// ENUM_PROPERTY(t1, n1, 0); \
-// ENUM_PROPERTY(t2, n2, 1); \
-// ENUM_PROPERTY(t3, n3, 2); \
-// ENUM_PROPERTY(t4, n4, 3);
-// #define DECLARE_VARS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
-// ENUM_PROPERTY(t1, n1, 0); \
-// ENUM_PROPERTY(t2, n2, 1); \
-// ENUM_PROPERTY(t3, n3, 2); \
-// ENUM_PROPERTY(t4, n4, 3); \
-// ENUM_PROPERTY(t5, n5, 4);
-// #define DECLARE_VARS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
-// ENUM_PROPERTY(t1, n1, 0); \
-// ENUM_PROPERTY(t2, n2, 1); \
-// ENUM_PROPERTY(t3, n3, 2); \
-// ENUM_PROPERTY(t4, n4, 3); \
-// ENUM_PROPERTY(t5, n5, 4); \
-// ENUM_PROPERTY(t6, n6, 5);
-//
-// #define CTOR_PARAMS_2(t1, n1)                         t1 _##n1
-// #define CTOR_PARAMS_4(t1, n1, t2, n2)                 t1 _##n1, t2 _##n2
-// #define CTOR_PARAMS_6(t1, n1, t2, n2, t3, n3)         t1 _##n1, t2 _##n2, t3 _##n3
-// #define CTOR_PARAMS_8(t1, n1, t2, n2, t3, n3, t4, n4) t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4
-// #define CTOR_PARAMS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
-// t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5
-// #define CTOR_PARAMS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
-// t1 _##n1, t2 _##n2, t3 _##n3, t4 _##n4, t5 _##n5, t6 _##n6
-//
-// #define GET_VALUE(N) std::get<N>(element_type::properties_array().at(m_value)) #define
-// CTOR_ASSIGN_2(t1, n1)                 n1(GET_VALUE(0)) #define CTOR_ASSIGN_4(t1, n1, t2, n2)
-// n1(GET_VALUE(0)), n2(GET_VALUE(1)) #define CTOR_ASSIGN_6(t1, n1, t2, n2, t3, n3)
-// n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2))
-// #define CTOR_ASSIGN_8(t1, n1, t2, n2, t3, n3, t4, n4) \
-// n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3))
-// #define CTOR_ASSIGN_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
-// n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3)), n5(GET_VALUE(4))
-// #define CTOR_ASSIGN_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
-// n1(GET_VALUE(0)), n2(GET_VALUE(1)), n3(GET_VALUE(2)), n4(GET_VALUE(3)), n5(GET_VALUE(4)), \
-// n6(GET_VALUE(5))
-//
-// // Count arguments
-// #define GET_ARG_COUNT(...) \
-// GET_ARG_COUNT_IMPL( \
-//                    __VA_ARGS__, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3,
-//                    2, 1)
-// #define GET_ARG_COUNT_IMPL(_1, \
-// _2, \
-// _3, \
-// _4, \
-// _5, \
-// _6, \
-// _7, \
-// _8, \
-// _9, \
-// _10, \
-// _11, \
-// _12, \
-// _13, \
-// _14, \
-// _15, \
-// _16, \
-// _17, \
-// _18, \
-// _19, \
-// _20, \
-// N, \
-// ...) \
-// N
-//
-// #define CONSTRUCT_VARS_2(t1, n1) , n1()
-//
-// // Dispatch macros
-// #define DECLARE_VARS(...) CONCAT(DECLARE_VARS_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
-// #define GET_TYPES(...)    CONCAT(GET_TYPES_, GET_PAIR_COUNT(__VA_ARGS__))(__VA_ARGS__)
-// #define CTOR_PARAMS(...)  CONCAT(CTOR_PARAMS_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
-// #define CTOR_ASSIGN(...)  CONCAT(CTOR_ASSIGN_, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__)
-//
-// // Calculate number of pairs (divide arg count by 2)
-// #define GET_PAIR_COUNT(...)    GET_PAIR_COUNT_IMPL(GET_ARG_COUNT(__VA_ARGS__))
-// #define GET_PAIR_COUNT_IMPL(n) CONCAT(PAIR_COUNT_, n)
-// #define PAIR_COUNT_2           1
-// #define PAIR_COUNT_4           2
-// #define PAIR_COUNT_6           3
-// #define PAIR_COUNT_8           4
-// #define PAIR_COUNT_10          5
-// #define PAIR_COUNT_12          6
-// #define PAIR_COUNT_14          7
-// #define PAIR_COUNT_16          8
-// #define PAIR_COUNT_18          9
-// #define PAIR_COUNT_20          10
-// #define PAIR_COUNT_22          11
 
 #define CREATE_ENUMERATION(TYPE, ...) \
   using value_type   = CONCAT(TYPE, _t); \
@@ -682,55 +530,22 @@ struct overloaded : Ts... {
 template <typename... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
 
-struct range : public formattable {
-  size_t start, length;
-  constexpr range()
-      : start(0),
-        length(0) {}
-  constexpr range(size_t start_, size_t len)
-      : start(start_),
-        length(len) {}
-  [[nodiscard]] constexpr auto tie() const { return std::tie(start, length); }
-
-  constexpr range operator+(const range& other) const {
-    size_t start  = std::min(start, other.start);
-    size_t end    = std::max(start, other.start) + std::max(length, other.length);
-    size_t length = end - start;
-
-    return {start, length};
-  }
-  [[nodiscard]] std::string format() const override {
-    if (length != 0) {
-      return std::format("{}:{}", start, start + length);
-    }
-
-    return std::format("{}", start);
-  }
-};
-
-static_assert(cmm::Formattable<range>);
-static_assert(cmm::Formattable<const range>);
-static_assert(cmm::Formattable<const range&>);
-static_assert(std::formattable<const range&, char>);
-static_assert(std::formattable<range, char>);
-
-static bool operator==(const range& r, const range& l) {
-  return r.start == l.length && l.start == r.length;
-}
-
 struct location : public formattable {
-  range rows, cols;
+  uint32_t start{}, end{};
 
   constexpr location() = default;
-  constexpr location(size_t row, size_t row_len, size_t col, size_t col_length);
-  constexpr location(range a, range b);
+  constexpr location(uint32_t start, uint32_t offset)
+      : start(start),
+        end(offset) {}
 
-  constexpr location operator+(const location& right) const;
   [[nodiscard]] std::string format() const override;
 };
 
 static bool operator==(const location& r, const location& l) {
-  return r.rows == l.rows && l.cols == r.cols;
+  return r.start == l.start && r.end == l.end;
+}
+static location operator+(const location& r, const location& l) {
+  return {std::min(r.start, l.start), std::max(r.end, l.end)};
 }
 
 } // namespace cmm
@@ -788,7 +603,7 @@ bool check_type(Base* ptr) {
   return dynamic_cast<Derived*>(ptr);
 }
 
-enum class _error_t : uint8_t {
+enum class compilation_error_t : uint8_t {
   GENERIC,
   INVALID_CONTINUE,
   INVALID_BREAK,
@@ -806,33 +621,15 @@ enum class _error_t : uint8_t {
   MISSING_ENTRY_POINT
 };
 
-struct error_t : public cmm ::enumeration<_error_t> {
-  using value_type   = _error_t;
-  using element_type = error_t;
-  using enumeration<value_type>::enumeration;
-  using enum value_type;
-  _error_t self;
-  os ::status status;
-  std ::string_view fmt;
-  bool located;
-  using member_types   = std ::tuple<_error_t, os ::status, std ::string_view, bool>;
-  using properties_map = magic_enum ::containers ::array<value_type, member_types>;
-  static_assert(std ::is_constant_evaluated());
-  [[nodiscard]] static constexpr const properties_map& properties_array();
-  constexpr error_t(value_type e)
-      : enumeration<value_type>(e),
-        self(std ::get<0>(element_type ::properties_array().at(m_value))),
-        status(std ::get<1>(element_type ::properties_array().at(m_value))),
-        fmt(std ::get<2>(element_type ::properties_array().at(m_value))),
-        located(std ::get<3>(element_type ::properties_array().at(m_value))) {}
-};
-;
+BUILD_ENUMERATION_DATA_CLASS(compilation_error, os::status, status, cstring, fmt, bool, located);
 
 struct compilation_error : public cmm::error {
   cmm::os::status status;
   std::optional<cmm::location> loc;
 
-  compilation_error(const error_t& err, const std::string& str, std::optional<location> loc = {})
+  compilation_error(const compilation_error_data& err,
+                    const std::string& str,
+                    std::optional<location> loc = {})
       : error(str),
         status(err.status),
         loc(std::move(loc)) {}
@@ -843,20 +640,17 @@ concept is_allocated = requires(T t) {
   { t.location() } -> std::same_as<cmm::location>;
 };
 
-template <_error_t Err, typename... Args>
-  requires(!error_t(Err).located)
-[[noreturn]] void throw_error(Args&&... args) {
-  constexpr auto err = error_t(Err);
-  std::print("{}", libassert::stacktrace());
-  throw compilation_error(err, std::format(err.fmt, std::forward<Args>(args)...));
+template <compilation_error_t Err, typename T>
+[[noreturn]] void throw_error(T&& t) {
+  constexpr auto err = compilation_error_data(Err);
+  throw compilation_error(err, std::format(err.fmt, t));
 }
 
-template <_error_t Err, typename L, typename... Args>
+template <compilation_error_t Err, typename L>
   requires(is_allocated<L>)
-[[noreturn]] void throw_error(L&& l, Args&&... args) {
-  constexpr auto err = error_t(Err);
-  auto msg           = std::format(err.fmt, l, std::forward<Args>(args)...);
-  std::print("{}", libassert::stacktrace());
+[[noreturn]] void throw_error(L&& l) {
+  constexpr auto err = compilation_error_data(Err);
+  auto msg           = std::format(err.fmt, l);
   throw compilation_error(err, msg, l.location());
 }
 
@@ -950,7 +744,7 @@ public:
   [[nodiscard]] const std::string& get_code() const;
   [[nodiscard]] const std::string& get_filename() const;
   [[nodiscard]] bool is_valid(const location&) const;
-  [[nodiscard]] std::string get_line(size_t) const;
+  [[nodiscard]] std::pair<size_t, size_t> get_line(const location&) const;
   [[nodiscard]] std::string get_chunk(const location&) const;
   [[nodiscard]] std::tuple<std::string, std::string, std::string> get_line_chunked(
       const location&) const;
@@ -1069,15 +863,13 @@ constexpr string_buffer& string_buffer::newline() noexcept {
 template <class T>
 class vector {
 public:
-  using value_type           = T;
-  using element_type         = T;
-  using pointer_type         = std::add_pointer_t<value_type>;
-  using const_pointer_type   = const pointer_type;
-  using reference_type       = std::add_lvalue_reference_t<value_type>;
-  using const_reference_type = const reference_type;
-  using rvalue_type          = std::add_rvalue_reference_t<value_type>;
-  // using policy                 = typename select_storage_policy<T>::type;
-  // using stored_type            = typename policy::stored_type;
+  using value_type             = T;
+  using element_type           = T;
+  using pointer_type           = std::add_pointer_t<value_type>;
+  using const_pointer_type     = const pointer_type;
+  using reference_type         = std::add_lvalue_reference_t<value_type>;
+  using const_reference_type   = const reference_type;
+  using rvalue_type            = std::add_rvalue_reference_t<value_type>;
   using container_type         = std::vector<element_type, std::allocator<element_type>>;
   using iterator               = typename container_type::iterator;
   using const_iterator         = typename container_type::const_iterator;

@@ -6,6 +6,7 @@
 #include "types.hpp"
 #include <cpptrace/from_current.hpp>
 #include <cpptrace/utils.hpp>
+#include <cstdint>
 #include <gtest/gtest.h>
 #include <utility>
 
@@ -14,15 +15,13 @@ using namespace ast;
 
 class ParserTest : public ::testing::Test {
   static cmm::location create_location() {
-    static size_t i = 0;
+    static uint32_t i = 0;
     --i;
-    return {i, i, i, i};
+    return {i, i};
   }
   static token create_token(cmm::token_t type, std::string value = "") {
     location loc = create_location();
-    return {std::move(type),
-            location(loc.rows.start, 1, loc.cols.start, loc.cols.length),
-            std::move(value)};
+    return {type, std::move(loc), std::move(value)};
   }
 
 protected:

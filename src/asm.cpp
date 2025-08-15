@@ -276,6 +276,17 @@ void asmgen::write_label(cstring label) { m_text.newline().write("{}:\n", label)
 
 void asmgen::write_comment(cstring comment) noexcept { m_text.write(";; {}\n", comment); }
 
+[[nodiscard]] bool asmgen::exists_snippet(cstring name) {
+  return std::ranges::any_of(procedures_snippets,
+                             [name](const auto& pair) { return pair.first == name; });
+}
+void asmgen::register_snippet(cstring name) {
+  for (const auto& pair : procedures_snippets) {
+    if (pair.first == name) {
+      m_sections.procedures.emplace_back(pair);
+    }
+  }
+}
 comment_block::comment_block(asmgen& gen, std::string name)
     : m_asmgen(gen),
       m_name(std::move(name)) {}

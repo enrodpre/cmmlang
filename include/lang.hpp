@@ -130,27 +130,6 @@ enum class operator_t : uint8_t {
   c_curly
 };
 
-#define BUILD_ENUMERATION_DATA(TYPE, ...) \
-  using value_type   = CONCAT(TYPE, _t); \
-  using element_type = CONCAT(TYPE, _data); \
-  using enum value_type; \
-  const value_type self; \
-  DECLARE_VARS(__VA_ARGS__) \
-  using member_types   = std::tuple<value_type, GET_TYPES(__VA_ARGS__)>; \
-  using properties_map = magic_enum::containers::array<value_type, member_types>; \
-  std::string string() const override { return std::format("{}", self); } \
-  static_assert(std::is_constant_evaluated()); \
-  [[nodiscard]] static constexpr const properties_map& properties_array(); \
-  constexpr CONCAT(TYPE, _data)(value_type e) \
-      : self(e), \
-        CTOR_ASSIGN_DATA(__VA_ARGS__) {}
-
-#define BUILD_ENUMERATION_DATA_CLASS(TYPE, ...) \
-  struct CONCAT(TYPE, _data) \
-      : public displayable { \
-    BUILD_ENUMERATION_DATA(TYPE, __VA_ARGS__) \
-  };
-
 enum class associativity_t : uint8_t { Either, L2R, R2L };
 BUILD_ENUMERATION_DATA_CLASS(operator,
                              std::string,
@@ -210,20 +189,20 @@ constexpr magic_enum::containers::
               {std::make_pair(instruction_t::mov, std::make_pair(arg_t::ACC, arg_t::LEFT)),
                std::make_pair(instruction_t ::div, std::make_pair(arg_t ::RIGHT, arg_t::NONE)),
                std::make_pair(instruction_t ::mov, std::make_pair(arg_t ::LEFT, arg_t::ACC))},
+              CREATE_SIMPLE_INS(inc),
               CREATE_SIMPLE_INS(dec),
               CREATE_SIMPLE_INS(inc),
-              {},
-              {},
+              CREATE_SIMPLE_INS(dec),
               CREATE_COND(jne),
               CREATE_COND(je),
               CREATE_COND(jge),
               CREATE_COND(jg),
               CREATE_COND(jle),
               CREATE_COND(jl),
-              {},
-              {},
-              {},
-              {},
+              CREATE_SIMPLE_INS(xor_),
+              CREATE_SIMPLE_INS(or_),
+              CREATE_SIMPLE_INS(and_),
+              CREATE_SIMPLE_INS(not_),
               {},
               CREATE_SIMPLE_INS(mov)}}};
 

@@ -133,12 +133,18 @@ std::string compilation_unit::end() {
 std::optional<assembly::operand*> compilation_unit::call_function(decl::signature sig,
                                                                   const ast::expr::arguments& args,
                                                                   bool inlined_) {
+  if (asmgen.exists_snippet(sig.name.value())) {
+    asmgen.register_snippet(sig.name.value());
+    call(sig.name.value());
+    return {};
+  }
+
   auto* fn = ast->get_function(sig);
   if (nullptr == fn) {
-    throw_error<_error_t::UNDECLARED_SYMBOL>(sig.name);
+    throw_error<compilation_error_t::UNDECLARED_SYMBOL>(sig.name);
   }
   if (fn->body == nullptr) {
-    throw_error<_error_t::UNDEFINED_FUNCTION>(sig.name);
+    throw_error<compilation_error_t::UNDEFINED_FUNCTION>(sig.name);
   }
   ast->create_frame(fn->body);
   auto* sc    = ast->active_scope();
@@ -200,7 +206,12 @@ operand* compilation_unit::builtin_operator(expr::binary_operator& bin, operand*
   REGISTER_INFO("Calling builtin operator {}", bin.operator_);
   operand* res = nullptr;
 
-  for (const auto& ins : get_builtin_operator(bin.operator_.value())) {
+  auto ops     = get_builtin_operator(bin.operator_.value()) | std::ranges::to<std::vector>();
+  if (ops.size() < 1) {
+    throw_error<compilation_error_t::UNDECLARED_SYMBOL>(bin.operator_);
+  }
+
+  for (const auto& ins : ops) {
     instruction_data data(ins.first);
 
     if (data.n_params == 0) {
@@ -235,7 +246,11 @@ operand* compilation_unit::builtin_operator(expr::binary_operator& bin, operand*
 operand* compilation_unit::builtin_operator(expr::unary_operator& unary, operand* e) {
   REGISTER_INFO("Calling builtin operator {}", unary.operator_);
   operand* res = nullptr;
-  for (const auto& ins : get_builtin_operator(unary.operator_.value())) {
+  auto ops     = get_builtin_operator(unary.operator_.value()) | std::ranges::to<std::vector>();
+  if (ops.size() < 1) {
+    throw_error<compilation_error_t::UNDECLARED_SYMBOL>(unary.operator_);
+  }
+  for (const auto& ins : ops) {
 
     instruction_data data(ins.first);
     if (data.n_params == 0) {

@@ -34,6 +34,7 @@ struct keyword : visitable<base_term<keyword_t>, keyword> {
 private:
   keyword_t m_value;
 };
+
 struct literal : visitable<base_term<std::string>, literal> {
   using visitable::visitable;
   literal(cmm::location l, std::string s)
@@ -52,7 +53,9 @@ struct operator_ : visitable<base_term<operator_t>, operator_> {
   operator_(const token& t, operator_t op)
       : visitable(t),
         m_value(op) {}
-  std::string string() const override { return std::format("operator{}", m_value); }
+  std::string string() const override {
+    return std::format("operator{}", operator_data(m_value).repr);
+  }
   [[nodiscard]] const operator_t& value() const override { return m_value; }
   operator_data data() const { return {value()}; }
   // AST_LEAF

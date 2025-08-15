@@ -2,12 +2,14 @@
 
 #include "common.hpp"
 #include <concepts>
+#include <print>
 #include <type_traits>
 
 namespace cmm {
 
-[[nodiscard]] constexpr const error_t::properties_map& error_t::properties_array() {
-  using enum _error_t;
+[[nodiscard]] constexpr const compilation_error_data::properties_map&
+compilation_error_data::properties_array() {
+  using enum compilation_error_t;
   using namespace os;
   static_assert(std::is_constant_evaluated());
   static constexpr properties_map MAP{
@@ -28,13 +30,10 @@ namespace cmm {
         {BAD_FUNCTION_CALL, os::status::BAD_FUNCTION_CALL, "Label {} in global scope", true},
         {WRONG_FUNCTION_ARGUMENT,
          os::status::WRONG_FUNCTION_ARGUMENT,
-         "Wrong argument. Declared {} but provided {}",
+         "Wrong argument. Declared {}.",
          true},
         {UNEXPECTED_TOKEN, os::status::UNEXPECTED_TOKEN, "Unexpected token {}", true},
-        {INCOMPATIBLE_TOKEN,
-         os::status::INCOMPATIBLE_TOKEN,
-         "Incompatible token {}. Already declared {}",
-         true},
+        {INCOMPATIBLE_TOKEN, os::status::INCOMPATIBLE_TOKEN, "Incompatible token {}", true},
         {REQUIRED_TYPE, os::status::REQUIRED_TYPE, "Required type in specifiers", true},
         {TOO_MANY_TYPES, os::status::UNEXPECTED_TOKEN, "More than one type in specifiers", true},
         {MISSING_ENTRY_POINT, os::status::MISSING_ENTRY_POINT, "Main function not found", false}}}};
@@ -119,17 +118,6 @@ namespace {
   }
 } // namespace
 
-constexpr location::location(size_t row, size_t row_len, size_t col, size_t col_length)
-    : rows({row, static_cast<size_t>(row_len - 1)}),
-      cols({col, static_cast<size_t>(col_length - 1)}) {}
-constexpr location::location(range a, range b)
-    : rows(std::move(a)),
-      cols(std::move(b)) {}
-constexpr location location::operator+(const location& right) const {
-  range new_rows = rows + right.rows;
-  range new_cols = cols + right.cols;
-  return {new_rows, new_cols};
-}
 template <ScopedEnum E>
 constexpr enumeration<E>::enumeration()
     : m_value(magic_enum::enum_values<E>()[0]) {}

@@ -179,7 +179,7 @@ struct fn_visitor<Ret(), VisitableTypes...> : visitor<VisitableTypes...> {
 struct node : virtual visitable<>, public virtual displayable {
   ~node() override = default;
   node()           = default;
-  NOT_MOVABLE_CLS(node);
+  MOVABLE_CLS(node);
   COPYABLE_CLS(node);
   template <typename T = node>
   T* get_parent() {
@@ -237,6 +237,17 @@ struct composite : public virtual node {
         .value();
   }
   vector<node*> m_data;
+
+  void accept(visitor<>& vis) override {
+    for (node* child : m_data) {
+      child->accept(vis);
+    }
+  }
+  void accept(visitor<>& vis) const override {
+    for (const node* child : m_data) {
+      child->accept(vis);
+    }
+  }
 
 protected:
   template <typename... Nodes>

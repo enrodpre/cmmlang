@@ -5,6 +5,7 @@
 #include "token.hpp"
 #include "types.hpp"
 #include "visitor.hpp"
+#include <cstdint>
 #include <type_traits>
 
 namespace cmm::ast {
@@ -25,7 +26,7 @@ namespace expr {
     value_category_t value_category;
     ptr_type original_type;
     bool is_constant_evaluable;
-    ptr_type casted_type;
+    ptr_type contextually_castable;
     // const ir::function* fn;
   };
 
@@ -59,64 +60,37 @@ namespace expr {
   DERIVE_OK(statement, expression);
   DERIVE_OK(expression, identifier);
 
-  struct literal : public expression {
-    literal(const token&);
-    literal(cmm::location, std::string);
+  enum class literal_t : uint8_t { CHAR, STRING, SINT, UINT, FALSE, TRUE, FLOAT };
+  struct literal : visitable<expression, literal> {
+    literal_t category;
+    literal(const token&, literal_t);
+    literal(cmm::location, std::string, literal_t);
     const std::string& value() const { return m_term.value(); }
     operator ast::literal() const { return m_term; }
+    cr_type type() const override {
+      switch (category) {
+        case literal_t::CHAR:
+          return cmm::type::create_fundamental(type_category_t::char_t);
+        case literal_t::STRING:
+          return cmm::type::create_string(m_term.value().size());
+        case literal_t::SINT:
+          return cmm::type::create_fundamental(type_category_t::sint_t);
+        case literal_t::UINT:
+          return cmm::type::create_fundamental(type_category_t::uint_t);
+        case literal_t::FALSE:
+        case literal_t::TRUE:
+          return cmm::type::create_fundamental(type_category_t::bool_t);
+        case literal_t::FLOAT:
+          return cmm::type::create_fundamental(type_category_t::float_t);
+          break;
+      }
+      __builtin_unreachable();
+    }
 
     AST_LEAF
 
   protected:
     ast::literal m_term;
-  };
-
-  struct string_literal : visitable<literal, string_literal> {
-    string_literal(const token&);
-    cr_type type() const override { return cmm::type::create_string(m_term.value().size()); };
-    AST_LEAF
-  };
-  struct char_literal : visitable<literal, char_literal> {
-    char_literal(const token&);
-    cr_type type() const override {
-      return cmm::type::create_fundamental(type_category_t::char_t);
-    };
-    AST_LEAF
-  };
-  struct sint_literal : visitable<literal, sint_literal> {
-    cr_type type() const override {
-      return cmm::type::create_fundamental(type_category_t::sint_t);
-    };
-    sint_literal(const token&);
-    AST_LEAF
-  };
-  struct uint_literal : visitable<literal, uint_literal> {
-    cr_type type() const override {
-      return cmm::type::create_fundamental(type_category_t::uint_t);
-    };
-    uint_literal(const token&);
-    AST_LEAF
-  };
-  struct false_literal : visitable<literal, false_literal> {
-    false_literal(const token&);
-    cr_type type() const override {
-      return cmm::type::create_fundamental(type_category_t::bool_t);
-    };
-    AST_LEAF
-  };
-  struct true_literal : visitable<literal, true_literal> {
-    true_literal(const token&);
-    cr_type type() const override {
-      return cmm::type::create_fundamental(type_category_t::bool_t);
-    };
-    AST_LEAF
-  };
-  struct float_literal : visitable<literal, float_literal> {
-    cr_type type() const override {
-      return cmm::type::create_fundamental(type_category_t::float_t);
-    };
-    float_literal(const token&);
-    AST_LEAF
   };
 
   using arguments = siblings<expr::expression*>;
@@ -156,14 +130,18 @@ namespace expr {
     // FORMAT_DECL_IMPL();
   };
 
-  struct type_conversion : public expression {
+  using conversion_function = std::function<expression&(expression&)>;
+
+  struct type_conversion : visitable<expression, type_conversion> {
     expression& expr;
-    decl::conversion_function& func;
-    type_conversion(expression& exp, decl::conversion_function& fn)
+    const conversions::converter_t func;
+    type_conversion(expression& exp, const decltype(func)& fn)
         : expr(exp),
           func(fn) {}
   };
-  struct implicit_type_conversion : visitable<expression, implicit_type_conversion> {};
+  struct implicit_type_conversion : visitable<type_conversion, implicit_type_conversion> {
+    using visitable::visitable;
+  };
 
 }; // namespace expr
 } // namespace cmm::ast

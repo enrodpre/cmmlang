@@ -104,8 +104,7 @@ void compiler::throw_linking_error(const std::string& err) {
 }
 
 void compiler::throw_compilation_error(std::string_view err, const location& loc) {
-  auto text_header =
-      std::format("{}:{}:{}:", m_source_code.get_filename(), loc.rows.start, loc.cols.start);
+  auto text_header = std::format("{}:{}:{}:", m_source_code.get_filename(), loc.start, loc.end);
   auto styled_text_header = log::apply(text_header, log::style_t::HEADER);
   auto first_line =
       std::format("{} {} {}", styled_text_header, log::apply("error: ", log::style_t::ERROR), err);
@@ -113,7 +112,7 @@ void compiler::throw_compilation_error(std::string_view err, const location& loc
   auto [left, error, right] = m_source_code.get_line_chunked(loc);
   auto formatted_error      = log::apply(error, log::style_t::ERROR);
   auto formatter_error_line = std::format("{}{}{}\n", left, formatted_error, right);
-  auto second_line          = std::format("   {} |    {}", loc.rows.start, formatter_error_line);
+  auto second_line          = std::format("   {} |    {}", loc.start, formatter_error_line);
   auto formatted_msg        = std::format("{}\n{}", first_line, second_line);
 
   REGISTER_ERROR("{}", formatted_msg);

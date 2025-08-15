@@ -15,6 +15,44 @@ using namespace ast;
 using namespace assembly;
 using intents::intent_t;
 
+translation_unit& ast_completer::complete(translation_unit& t) {
+  conversions_visitor visitor;
+  for (auto& decl : t.stmts) {
+    decl->accept(visitor);
+  }
+  return t;
+}
+
+void ast_completer::conversions_visitor::visit(ast::expr::binary_operator& bin) {
+  REGISTER_INFO("visited{}", bin);
+  if (bin.semantics.original_type->category == type_category_t::bool_t) {
+    bin.left = *bool_wrap_if(&bin.left);
+  }
+  if (bin.semantics.original_type->category == type_category_t::bool_t) {
+    bin.right = *bool_wrap_if(&bin.right);
+  }
+}
+void ast_completer::conversions_visitor::visit(ast::expr::unary_operator& un) {
+  if (un.semantics.original_type->category == type_category_t::bool_t) {
+    un.expr = *bool_wrap_if(&un.expr);
+  }
+}
+void ast_completer::conversions_visitor::visit(ast::iteration::for_& f) {
+  f.condition = bool_wrap_if(f.condition);
+}
+void ast_completer::conversions_visitor::visit(ast::iteration::while_& w) {
+  w.condition = *bool_wrap_if(&w.condition);
+}
+void ast_completer::conversions_visitor::visit(ast::selection::if_& i) {
+  i.condition = *bool_wrap_if(&i.condition);
+}
+expr::expression* ast_completer::conversions_visitor::bool_wrap_if(expr::expression* e) {
+  if (e != nullptr && e->type().category != type_category_t::bool_t) {
+    return allocator.emplace<expr::implicit_type_conversion>(*e, conversions::TO_BOOL);
+  }
+  return e;
+}
+
 ast_traverser::ast_traverser(compilation_unit& cunit)
     : m_context(cunit),
       ast() {}
@@ -23,6 +61,7 @@ global_visitor::global_visitor(ast_traverser* gen_)
     : gen(gen_) {}
 
 void ast_traverser::generate_program(translation_unit& p) {
+  ast_completer::complete(p);
   ast = &p;
   global_visitor visitor{this};
   // REGISTER_INFO("Program:\n{}", p.repr(0));
@@ -146,13 +185,13 @@ void ast_traverser::generate_continue_break(const Jump& node) {
   if constexpr (std::is_same_v<jump::continue_, Jump>) {
 
     if (!res.has_value()) {
-      throw_error<error_t::INVALID_CONTINUE>(node);
+      throw_error<compilation_error_t::INVALID_CONTINUE>(node);
     }
     const auto& [cond, exit] = res.value();
     label                    = cond;
   } else {
     if (!res.has_value()) {
-      throw_error<error_t::INVALID_BREAK>(node);
+      throw_error<compilation_error_t::INVALID_BREAK>(node);
     }
     const auto& [cond, exit] = res.value();
     label                    = exit;
@@ -168,7 +207,7 @@ template void ast_traverser::generate_continue_break<jump::break_>(const jump::b
 template <bool IsGlobal>
 void ast_traverser::generate_variable_decl(decl::variable* vardecl) {
   if (!ast->is_declarable<ast::decl::variable>(vardecl->ident)) {
-    throw_error<error_t::ALREADY_DECLARED_SYMBOL>(vardecl->ident);
+    throw_error<compilation_error_t::ALREADY_DECLARED_SYMBOL>(vardecl->ident);
   }
   auto b = m_context.asmgen.begin_comment_block("init variable {}", vardecl->ident.value());
   const auto& ident = vardecl->ident;
@@ -195,7 +234,7 @@ void global_visitor::visit(decl::function& func) {
   if (func.ident.value() == "main") {
     // Call main
     if (gen->ast->is_entry_point_defined()) {
-      throw_error<_error_t::ALREADY_DECLARED_SYMBOL>(func.ident);
+      throw_error<compilation_error_t::ALREADY_DECLARED_SYMBOL>(func.ident);
     }
     gen->ast->link_entry_point(&func);
     gen->m_context.current_phase = Phase::EXECUTING;
@@ -221,6 +260,7 @@ void expression_visitor::visit(expr::call& expr_call) {
   out = gen->m_context.call_function(sig, expr_call.args).gen_op(in);
 }
 
+void expression_visitor::visit(ast::expr::implicit_type_conversion&) { NOT_IMPLEMENTED }
 void expression_visitor::visit(expr::binary_operator& binop) {
   auto op        = binop.operator_.value();
   auto params    = gen->m_context.regs.parameters();
@@ -240,28 +280,27 @@ void expression_visitor::visit(expr::unary_operator& unary) {
   gen->m_context.last.operator_.emplace(op);
   // Implicit call to ~params()
 }
-void expression_visitor::visit(ast ::expr ::float_literal& c) {
-  out = gen->m_context.move_immediate(in, c.value());
-};
-void expression_visitor::visit(ast ::expr ::sint_literal& c) {
-  out = gen->m_context.move_immediate(in, c.value());
-}
-void expression_visitor::visit(ast ::expr ::uint_literal& c) {
-  out = gen->m_context.move_immediate(in, c.value());
-}
-void expression_visitor::visit(ast ::expr ::char_literal& c) {
-  const auto& pair = gen->m_context.reserve_constant(c.value());
-  out              = gen->m_context.move(in, pair);
-};
-void expression_visitor::visit(ast ::expr ::string_literal& c) {
-  const auto& pair = gen->m_context.reserve_constant(c.value());
-  out              = gen->m_context.move(in, pair);
-};
-void expression_visitor::visit(ast ::expr ::false_literal&) {
-  out = gen->m_context.move_immediate(in, "0");
-}
-void expression_visitor::visit(ast ::expr ::true_literal&) {
-  out = gen->m_context.move_immediate(in, "1");
+void expression_visitor::visit(ast ::expr ::literal& c) {
+  switch (c.category) {
+    case ast::expr::literal_t::STRING:
+    case ast::expr::literal_t::CHAR:
+      {
+        const auto& pair = gen->m_context.reserve_constant(c.value());
+        out              = gen->m_context.move(in, pair);
+      }
+      break;
+    case ast::expr::literal_t::FALSE:
+      out = gen->m_context.move_immediate(in, "0");
+      break;
+    case ast::expr::literal_t::TRUE:
+      out = gen->m_context.move_immediate(in, "1");
+      break;
+    case ast::expr::literal_t::SINT:
+    case ast::expr::literal_t::UINT:
+    case ast::expr::literal_t::FLOAT:
+      out = gen->m_context.move_immediate(in, c.value());
+      break;
+  }
 }
 
 void expression_visitor::visit(expr::identifier& ident) {
@@ -290,7 +329,7 @@ void expression_visitor::visit(expr::identifier& ident) {
       }
     case intent_t::MOVE_CONTENT:
     default:
-      throw_error<error_t::GENERIC>(cmm::os::status::GENERIC_ERROR, "intent not allowed");
+      throw_error<compilation_error_t::GENERIC>("intent not allowed");
   }
 }
 
@@ -317,7 +356,7 @@ void statement_visitor::visit(decl::variable& vardecl) {
 
 void statement_visitor::visit(decl::label& label_) {
   if (gen->ast->is_declarable<decl::label>(label_.ident)) {
-    throw_error<error_t::ALREADY_DECLARED_SYMBOL>(label_);
+    throw_error<compilation_error_t::ALREADY_DECLARED_SYMBOL>(label_);
   }
 
   gen->ast->active_frame()->declare_label(&label_);
@@ -424,7 +463,7 @@ void statement_visitor::visit(jump::return_& ret) {
   }
 
   if (gen->ast->is_global_scope()) {
-    throw_error<error_t::RETURN_IN_GLOBAL>(ret);
+    throw_error<compilation_error_t::RETURN_IN_GLOBAL>(ret);
   }
 
   operand* op = nullptr;

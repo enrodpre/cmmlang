@@ -10,9 +10,7 @@ namespace cmm {
 
 lexer::lexer(cmm::cstring src)
     : m_src(src),
-      m_pointer(0),
-      m_row(1),
-      m_column(1) {};
+      m_pointer(0) {};
 
 bool lexer::has_next() const { return m_pointer < m_src.size(); }
 
@@ -27,10 +25,7 @@ cmm::cstring lexer::peek(int size) const {
   return peek(static_cast<size_t>(size));
 }
 
-void lexer::advance(const size_t size = 1) {
-  m_pointer += size;
-  m_column += size;
-}
+void lexer::advance(const size_t size = 1) { m_pointer += size; }
 
 tokens lexer::tokenize() {
   // Trying to aproximate number of tokens
@@ -39,10 +34,7 @@ tokens lexer::tokenize() {
 
   while (has_next()) {
     if (isspace(peek()) != 0) {
-      if (peek() == '\n') {
-        m_column = 0;
-        m_row += 1;
-      }
+      if (peek() == '\n') {}
       advance();
     } else {
       parse_token();
@@ -98,8 +90,8 @@ void lexer::parse_token() {
   for (auto const& [tokenType, pattern] : multi) {
     size_t word_length = pattern.length();
     if (peek(word_length) == pattern) {
+      m_tokens.emplace_back(tokenType, location(m_pointer, m_pointer + word_length));
       advance(word_length);
-      m_tokens.emplace_back(tokenType, location(m_row, 1, m_column, word_length));
       return;
     }
   }
@@ -112,7 +104,7 @@ void lexer::parse_token() {
     auto next_token = peek(-1);
     if (std::regex_search(next_token.cbegin(), next_token.cend(), match, re)) {
       m_tokens.emplace_back(
-          tokenType, location(m_row, 1, m_column, match[0].length()), match[1].str());
+          tokenType, location(m_pointer, m_pointer + match[1].str().size()), match[1].str());
       // Consume ditched matched chars
       // as colon in label
       advance(match[0].length());
@@ -124,7 +116,7 @@ void lexer::parse_token() {
   // Then try monotokens
   for (auto const& [tokenType, reserved] : single) {
     if (reserved.find(peek()) != std::string::npos) {
-      m_tokens.emplace_back(tokenType, location(m_row, 1, m_column, 1));
+      m_tokens.emplace_back(tokenType, location(m_pointer, m_pointer + 1));
       advance();
       return;
     }

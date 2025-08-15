@@ -8,7 +8,7 @@ self_allocated::self_allocated(cmm::location&& loc)
 self_allocated::self_allocated(const cmm::location& loc)
     : m_location(loc) {}
 
-[[nodiscard]] std::string location::format() const { return std::format("({}, {})", rows, cols); }
+[[nodiscard]] std::string location::format() const { return std::format("({}, {})", start, end); }
 
 source_code::source_code(const fs::ifile& input)
     : m_filename(input.filename()),
@@ -19,38 +19,46 @@ source_code::source_code(const fs::ifile& input)
 [[nodiscard]] const std::string& source_code::get_filename() const { return m_filename; }
 
 bool source_code::is_valid(const location& loc) const {
-  auto line                = get_line(loc.rows.start);
-  const auto& [start, len] = loc.cols;
-  return (start <= line.size()) && (start + len <= line.size());
+  auto line                = get_line(loc);
+  const auto& [start, end] = loc;
+  return (start <= line.first) && (end <= line.second);
 }
 
-std::string source_code::get_line(size_t nth) const {
-  std::stringstream ss{std::string(m_code)};
-  std::string line;
+std::pair<size_t, size_t> source_code::get_line(const location& loc) const {
+  const auto& [start, end] = loc;
 
-  for (size_t i = 0; std::getline(ss, line) && i < nth; ++i) {}
+  // Get last \n before start
+  auto right_before = m_code.substr(0, start).rfind('\n');
+  if (right_before == std::string::npos) {
+    throw cmm::error("aa");
+  }
 
-  return line;
+  auto right_after = m_code.substr(end, std::string::npos).find('\n');
+  if (right_after == std::string::npos) {
+    throw cmm::error("aa");
+  }
+
+  return std::make_pair(right_before, end + right_after);
 }
 
 std::string source_code::get_chunk(const location& loc) const {
   if (!is_valid(loc)) {
-    REGISTER_ERROR("location {}, size {}", loc, get_line(loc.rows.start).size());
+    auto line = get_line(loc);
+    REGISTER_ERROR("location {}, size {}", loc, line.second - line.first);
     throw std::exception();
   }
 
-  auto [start, len] = loc.cols;
-  auto line         = get_line(loc.rows.start);
-  return line.substr(start, start + len);
+  auto [start, len] = loc;
+  return m_code.substr(start, start + len);
 }
 
 std::tuple<std ::string, std::string, std::string> source_code::get_line_chunked(
     const location& loc) const {
-  auto [start, len] = loc.cols;
-  auto line         = get_line(loc.rows.start);
-  auto left         = line.substr(0, start);
-  auto middle       = line.substr(start, len);
-  auto right        = line.substr(start + len);
+  auto [start, end]                 = loc;
+  const auto& [top_left, top_right] = get_line(loc);
+  auto left                         = m_code.substr(top_left, start - top_left);
+  auto middle                       = m_code.substr(start, (end - start));
+  auto right                        = m_code.substr(end, top_right - end);
 
   return {left, middle, right};
 }
