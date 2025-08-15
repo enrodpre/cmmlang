@@ -16,8 +16,13 @@ namespace cmm::ast {
 
 using namespace decl;
 
+leaf::leaf(cmm::location loc)
+    : m_location(std::move(loc)) {}
+
+leaf::leaf(const token& t)
+    : m_location(t.location()) {}
 label::label(const token& label_)
-    : visitable(label_) {
+    : visitable<label, declaration>(label_) {
   add(ident);
 }
 
@@ -40,7 +45,7 @@ decl::rank::rank(const token& l, const token& r)
 variable::variable(specifiers&& spec, decltype(rank) r, identifier&& id, decltype(init) i)
     : specs(std::move(spec)),
       rank(r),
-      visitable(std::move(id)),
+      visitable<variable, declaration>(std::move(id)),
       init(i) {
   add_all(&specs, &ident, init);
 }
@@ -54,7 +59,7 @@ function::function(decltype(specs)&& s,
                    decltype(params)&& args,
                    decltype(body) body_)
     : specs(std::move(s)),
-      visitable(std::move(ident_)),
+      visitable<function, declaration>(std::move(ident_)),
       params(std::move(args)),
       body(body_) {
   add_all(&specs, &ident, &params, body);

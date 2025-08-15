@@ -4,7 +4,6 @@
 #include "types.hpp"
 #include <cstddef>
 #include <cstdint>
-#include <fmt/base.h>
 #include <frozen/unordered_map.h>
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_containers.hpp>

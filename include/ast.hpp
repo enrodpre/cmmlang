@@ -3,7 +3,7 @@
 #include "common.hpp"
 #include "lang.hpp"
 #include "macros.hpp"
-#include "term.h"
+#include "revisited/visitor.h"
 #include "token.hpp"
 #include "traits.hpp"
 #include "types.hpp"
@@ -16,7 +16,6 @@
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_format.hpp>
 #include <string>
-#include <type_traits>
 #include <utility>
 
 namespace cmm::assembly {
@@ -28,8 +27,140 @@ class compilation_unit;
 }
 namespace cmm::ast {
 
-struct statement : public virtual composite {
-  using composite::composite;
+template <typename B, typename A>
+using visitable = revisited::DerivedVisitable<B, A>;
+
+struct leaf : revisited::DerivedVisitable<leaf, node> {
+  leaf() = default;
+  leaf(cmm::location);
+  leaf(const token&);
+
+  cmm::location location() const final { return m_location; }
+
+private:
+  cmm::location m_location;
+};
+
+struct keyword : visitable<keyword, leaf> {
+  using visitable<keyword, leaf>::visitable;
+  [[nodiscard]] const keyword_t& value() const { return m_value; }
+  operator const keyword_t&() const { return value(); }
+  std::string string() const override { return std::format("{}", m_value); }
+
+  // AST_LEAF
+private:
+  keyword_t m_value;
+};
+static_assert(std::is_base_of_v<leaf, keyword>);
+static_assert(std::is_base_of_v<cmm::ast::node, keyword>);
+
+struct literal : revisited::DerivedVisitable<literal, leaf> {
+  using visitable<literal, leaf>::visitable;
+  literal(cmm::location l, std::string s)
+      : visitable<literal, leaf>(std::move(l)),
+        m_value(std::move(s)) {}
+  std::string string() const override { return std::format("{}", m_value); }
+  [[nodiscard]] const std::string& value() const { return m_value; }
+  operator const std::string&() const { return value(); }
+  // AST_LEAF
+private:
+  std::string m_value;
+};
+struct operator_ : visitable<operator_, leaf> {
+  operator_(const token& t)
+      : visitable<operator_, leaf>(t),
+        m_value(token_data(t.type).cast<operator_t>()) {}
+  operator_(const token& t, operator_t op)
+      : visitable<operator_, leaf>(t),
+        m_value(op) {}
+  std::string string() const override {
+    return std::format("operator{}", operator_data(m_value).repr);
+  }
+  operator const operator_t&() const { return value(); }
+  [[nodiscard]] const operator_t& value() const { return m_value; }
+  operator_data data() const { return {value()}; }
+  // AST_LEAF
+
+private:
+  operator_t m_value;
+};
+template <typename T>
+struct specifier : visitable<specifier<T>, leaf> {
+  using parent_t = visitable<specifier<T>, leaf>;
+  using parent_t::parent_t;
+  specifier() = default;
+  specifier(const token& x)
+      : parent_t(x) {}
+  friend T;
+  // AST_LEAF
+};
+struct storage : visitable<storage, specifier<storage_t>> {
+  storage() = default;
+  storage(const token& t, storage_t l)
+      : visitable<storage, specifier<storage_t>>(t),
+        m_value(l) {}
+
+  [[nodiscard]] const storage_t& value() const { return m_value; }
+  // AST_LEAF
+  operator const storage_t&() const { return value(); }
+  std::string string() const override { return std::format("{}", m_value); }
+
+private:
+  storage_t m_value{};
+};
+struct linkage : visitable<linkage, specifier<linkage_t>> {
+  linkage() = default;
+  linkage(const token& t, linkage_t l)
+      : visitable<linkage, specifier<linkage_t>>(t),
+        m_value(l) {}
+  [[nodiscard]] const linkage_t& value() const { return m_value; }
+  // AST_LEAF
+  std::string string() const override { return std::format("{}", m_value); }
+
+  operator const linkage_t&() const { return value(); }
+
+private:
+  linkage_t m_value{};
+};
+struct type : visitable<type, specifier<cr_type>> {
+  type(cr_type t)
+      : m_value(t) {}
+
+  std::string string() const override { return std::format("{}", m_value); }
+  [[nodiscard]] cr_type value() const { return m_value; }
+  operator cr_type() const { return m_value; }
+  // AST_LEAF
+
+private:
+  cr_type m_value;
+};
+struct identifier : visitable<identifier, leaf> {
+  identifier() = default;
+  identifier(const token& t)
+      : visitable<identifier, leaf>(t),
+        m_value(t.value) {}
+  identifier(std::string name)
+      : m_value(std::move(name)) {}
+  identifier(const operator_& op)
+      : visitable<identifier, leaf>(op.location()),
+        m_value(std::format("operator{}", op.value())) {}
+
+  [[nodiscard]] const std::string& value() const { return m_value; }
+
+  bool operator==(const identifier& other) const { return m_value == other.m_value; }
+
+  operator const std::string&() const { return value(); }
+  std::string string() const override { return std::format("{}", m_value); }
+  // AST_LEAF
+
+private:
+  std::string m_value;
+};
+
+static inline identifier anonymous_identifier() { return {"anonymous"}; }
+
+struct statement : revisited::DerivedVisitable<statement, composite> {
+  using revisited::DerivedVisitable<statement, composite>::DerivedVisitable;
   statement(statement&&) noexcept = default;
   statement& operator=(statement&& other) noexcept {
     composite::operator=(std::move(other));
@@ -39,11 +170,12 @@ struct statement : public virtual composite {
   COPYABLE_CLS(statement);
 };
 
-struct empty_statement_t : visitable<statement, empty_statement_t> {
+struct empty_statement_t : revisited::DerivedVisitable<empty_statement_t, statement> {
   empty_statement_t() = default;
   std::string string() const override { return "empty_statement"; }
 };
 
+static_assert(std::is_base_of_v<statement, empty_statement_t>);
 inline empty_statement_t _empty_statement{};                   // NOLINT
 inline empty_statement_t* empty_statement = &_empty_statement; // NOLINT
 
@@ -67,13 +199,15 @@ constexpr static auto EXTRACT_TYPE = [](const T& t) { return t.type(); };
 
 using mangled_key                  = std::string;
 
-struct anonymous_declaration : public statement {
-  using statement::statement;
+struct anonymous_declaration : revisited::DerivedVisitable<anonymous_declaration, statement> {
+  using revisited::DerivedVisitable<anonymous_declaration, statement>::DerivedVisitable;
 };
 
-struct declaration : public anonymous_declaration {
-  using anonymous_declaration::anonymous_declaration;
+struct declaration : revisited::DerivedVisitable<declaration, anonymous_declaration> {
+  using revisited::DerivedVisitable<declaration, anonymous_declaration>::anonymous_declaration;
   identifier ident;
+  declaration()
+      : ident(anonymous_identifier()) {}
   declaration(decltype(ident) t)
       : ident(std::move(t)) {}
   std::string string() const final { return ident.string(); }
@@ -93,7 +227,7 @@ struct variable_store : public hashmap<mangled_key, decl::variable*> {
 // constexpr auto static CAST_TO_NODE = [](auto&& elem) { return dynamic_cast<node*>(elem); };
 
 template <typename T>
-struct siblings : public vector<T>, public visitable<composite, siblings<T>> {
+struct siblings : public vector<T>, public revisited::DerivedVisitable<siblings<T>, composite> {
   siblings() = default;
   siblings(std::initializer_list<T> init)
       : vector<T>(init) {}
@@ -132,8 +266,8 @@ DERIVE_OK(composite, statement);
 using global_declarations = siblings<declaration*>;
 using statements          = siblings<statement*>;
 
-struct scope : public declaration {
-  using declaration::declaration;
+struct scope : revisited::DerivedVisitable<scope, declaration> {
+  using revisited::DerivedVisitable<scope, declaration>::DerivedVisitable;
   [[nodiscard]] virtual bool is_declared(const ast::identifier&) const;
   virtual decl::variable* get_variable(const ast::identifier&);
   [[nodiscard]] virtual const decl::variable* get_variable(const ast::identifier&) const;
@@ -151,7 +285,7 @@ struct executable_scope : scope, siblings<T> {};
 using label_store = std::unordered_map<std::string, const decl::label*>;
 
 namespace decl {
-  struct block : visitable<scope, block> {
+  struct block : visitable<block, scope> {
     block(const statements& s)
         : stmts(s) {
       add(s.data());
@@ -162,7 +296,7 @@ namespace decl {
     label_store labels;
   };
 
-  struct specifiers : visitable<composite, specifiers> {
+  struct specifiers : visitable<specifiers, composite> {
     ast::type type;
     ast::linkage linkage;
     ast::storage storage;
@@ -175,7 +309,7 @@ namespace decl {
     }
     AST_COMPOSITE(&type, &linkage, &storage)
   };
-  struct rank : visitable<composite, rank> {
+  struct rank : visitable<rank, composite> {
     ast::operator_ open;
     expr::expression* number;
     ast::operator_ close;
@@ -188,12 +322,12 @@ namespace decl {
 
     assembly::operand* address{};
   };
-  struct label : public visitable<declaration, label>, public symbol {
+  struct label : public visitable<label, declaration>, public symbol {
     label(const token&);
     // AST_COMPOSITE(ident)
   };
 
-  struct variable : visitable<declaration, variable>, public symbol {
+  struct variable : visitable<variable, declaration>, public symbol {
     specifiers specs;
     decl::rank* rank;
     expr::expression* init;
@@ -206,15 +340,15 @@ namespace decl {
   };
 
   struct signature;
-  struct function : visitable<declaration, function>, public symbol {
+  struct function : visitable<function, declaration>, public symbol {
     using parameter         = variable*;
     using loaded_parameters = std::vector<parameter>;
 
     struct definition;
-    struct parameters : public visitable<siblings<parameter>, parameters> {
+    struct parameters : public visitable<parameters, siblings<parameter>> {
       using vector_t = vector<parameter>;
       parameters(siblings<parameter>&& p)
-          : visitable(std::move(p)) {}
+          : visitable<parameters, siblings<parameter>>(std::move(p)) {}
       void load_arguments(const siblings<expr::expression*>&);
       [[nodiscard]] std::vector<ptr_type> types() const {
         return vector<parameter>::data() |
@@ -232,7 +366,7 @@ namespace decl {
     function(decltype(specs)&&, decltype(ident)&&, decltype(params)&&, decltype(body));
     function(operator_& name, ptr_type ret, parameters& params, decltype(body) b)
         : specs(*ret),
-          visitable(name),
+          visitable<function, declaration>(name),
           params(params),
           body(b) {
       add_all(&specs, &ident, &params, body);
@@ -242,9 +376,9 @@ namespace decl {
     // AST_COMPOSITE(ident, specs, params, body)
   };
 
-  struct function::definition : visitable<block, definition> {
+  struct function::definition : visitable<definition, block> {
     definition(const siblings<statement*>& s)
-        : visitable(s) {}
+        : visitable<definition, block>(s) {}
     struct {
       [[nodiscard]] size_t size() const { return stack_size; };
       void push() { stack_size++; };
@@ -342,7 +476,7 @@ struct function_store : hashmap<decl::signature, decl::function*> {
 };
 
 namespace selection {
-  struct if_ : visitable<statement, if_> {
+  struct if_ : visitable<if_, statement> {
     ast::keyword keyword;
     expr::expression& condition;
     decl::block* block;
@@ -359,7 +493,7 @@ namespace iteration {
     ~iteration() override = default;
   };
 
-  struct while_ : visitable<statement, while_> {
+  struct while_ : visitable<while_, statement> {
     ast::keyword keyword;
     expr::expression& condition;
     decl::block* body;
@@ -371,7 +505,7 @@ namespace iteration {
   DERIVE_OK(statement, while_);
   static_assert(!std::is_abstract_v<while_>);
 
-  struct for_ : visitable<statement, for_> {
+  struct for_ : visitable<for_, statement> {
     ast::keyword keyword;
     decl::variable* start;
     expr::expression* condition;
@@ -389,24 +523,24 @@ namespace iteration {
 }; // namespace iteration
 
 namespace jump {
-  struct goto_ : visitable<statement, goto_> {
+  struct goto_ : visitable<goto_, statement> {
     identifier term;
     goto_(const token&);
     AST_COMPOSITE(term)
   };
-  struct break_ : visitable<statement, break_> {
+  struct break_ : visitable<break_, statement> {
     ast::keyword keyword;
     explicit break_(const token& token);
     AST_COMPOSITE(keyword)
   };
 
-  struct continue_ : visitable<statement, continue_> {
+  struct continue_ : visitable<continue_, statement> {
     ast::keyword keyword;
     explicit continue_(const token& token);
     AST_COMPOSITE(keyword)
   };
 
-  struct return_ : visitable<statement, return_> {
+  struct return_ : visitable<return_, statement> {
     ast::keyword keyword;
     expr::expression* expr;
     return_(ast::keyword&& k, expr::expression* expr_);
@@ -415,7 +549,7 @@ namespace jump {
 
 } // namespace jump
 
-struct translation_unit : visitable<scope, translation_unit> {
+struct translation_unit : visitable<translation_unit, scope> {
   translation_unit() = default;
   translation_unit(global_declarations decl)
       : stmts(std::move(decl)) {}

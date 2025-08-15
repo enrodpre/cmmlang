@@ -2,14 +2,15 @@
 
 #include "common.hpp"
 #include "traits.hpp"
-#include <cpptrace/exceptions.hpp>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
+#include <initializer_list> // for begin, end
 #include <memory>
 #include <new>
+#include <string> // for basic_string, string
 #include <type_traits>
 #include <utility>
+#include <vector> // for vector
 
 namespace cmm::memory {
 

@@ -1,1 +1,1 @@
-set args examples/continue.cmm
+set args examples/binop.cmm

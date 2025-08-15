@@ -334,10 +334,10 @@ void expression_visitor::visit(expr::identifier& ident) {
 }
 
 statement_visitor::statement_visitor(ast_traverser* gen_)
-    : expression_visitor(gen_,
-                         gen_->m_context.regs.get(registers::ACCUMULATOR),
-                         intent_t::LOAD_VARIABLE_VALUE),
-      gen(gen_) {}
+    // : expression_visitor(gen_,
+    //                      gen_->m_context.regs.get(registers::ACCUMULATOR),
+    //                      intent_t::LOAD_VARIABLE_VALUE),
+    : gen(gen_) {}
 
 void statement_visitor::visit(ast::decl::block& scope) {
   // Create scope
@@ -350,6 +350,7 @@ void statement_visitor::visit(ast::decl::block& scope) {
   gen->end_scope();
 }
 
+void statement_visitor::visit(expr::expression& expr) { gen->generate_expr(expr); }
 void statement_visitor::visit(decl::variable& vardecl) {
   gen->generate_variable_decl<false>(&vardecl);
 }

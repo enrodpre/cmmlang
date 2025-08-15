@@ -1,13 +1,22 @@
 #pragma once
 
-#include "ast.hpp"
-#include "common.hpp"
-#include "lang.hpp"
-#include "macros.hpp"
-#include <cstdint>
-#include <magic_enum/magic_enum.hpp>
-#include <type_traits>
-#include <utility>
+#include "ast.hpp"     // for identifier, variable
+#include "common.hpp"  // for cstring, formattable, DATASIZE, string_buffer
+#include "macros.hpp"  // for BUILD_ENUMERATION_DATA_CLASS, CTOR_ASSIGN_DATA_4
+#include "types.hpp"   // for cr_type
+#include <algorithm>   // for __count_if_fn, count_if
+#include <array>       // for array
+#include <cstdint>     // for uint8_t, int64_t, uint64_t
+#include <format>      // for format_string, format
+#include <memory>      // for unique_ptr
+#include <optional>    // for optional
+#include <ranges>      // for pair
+#include <stddef.h>    // for size_t
+#include <string>      // for basic_string, string, char_traits
+#include <type_traits> // for remove_cvref_t, is_abstract_v, remove_cvref
+#include <utility>     // for pair, make_pair, forward
+#include <variant>     // for variant
+#include <vector>      // for vector
 
 namespace cmm::assembly {
 

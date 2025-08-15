@@ -45,7 +45,7 @@ namespace expr {
 
   static_assert(std::is_base_of_v<statement, expression>);
 
-  struct identifier : visitable<expression, identifier> {
+  struct identifier : visitable<identifier, expression> {
     identifier(ast::identifier&& id);
     // cr_type type() const override;
     const std::string& value() const { return m_term.value(); }
@@ -61,7 +61,7 @@ namespace expr {
   DERIVE_OK(expression, identifier);
 
   enum class literal_t : uint8_t { CHAR, STRING, SINT, UINT, FALSE, TRUE, FLOAT };
-  struct literal : visitable<expression, literal> {
+  struct literal : visitable<literal, expression> {
     literal_t category;
     literal(const token&, literal_t);
     literal(cmm::location, std::string, literal_t);
@@ -94,7 +94,7 @@ namespace expr {
   };
 
   using arguments = siblings<expr::expression*>;
-  struct call : visitable<expression, call> {
+  struct call : visitable<call, expression> {
     ast::identifier ident;
     arguments args;
 
@@ -109,7 +109,7 @@ namespace expr {
     // FORMAT_DECL_IMPL();
   };
 
-  struct unary_operator : visitable<expression, unary_operator> {
+  struct unary_operator : visitable<unary_operator, expression> {
     expression& expr;
     ast::operator_ operator_;
 
@@ -119,7 +119,7 @@ namespace expr {
     // FORMAT_DECL_IMPL();
   };
 
-  struct binary_operator : visitable<expression, binary_operator> {
+  struct binary_operator : visitable<binary_operator, expression> {
     expression& left;
     expression& right;
     ast::operator_ operator_;
@@ -132,15 +132,15 @@ namespace expr {
 
   using conversion_function = std::function<expression&(expression&)>;
 
-  struct type_conversion : visitable<expression, type_conversion> {
+  struct type_conversion : visitable<type_conversion, expression> {
     expression& expr;
     const conversions::converter_t func;
     type_conversion(expression& exp, const decltype(func)& fn)
         : expr(exp),
           func(fn) {}
   };
-  struct implicit_type_conversion : visitable<type_conversion, implicit_type_conversion> {
-    using visitable::visitable;
+  struct implicit_type_conversion : visitable<implicit_type_conversion, type_conversion> {
+    using visitable<implicit_type_conversion, type_conversion>::visitable;
   };
 
 }; // namespace expr

@@ -99,12 +99,13 @@ struct expression_visitor : public visitor<EXPRESSION_TYPES> {
   void visit(ast::expr::implicit_type_conversion&) override;
 };
 
-struct statement_visitor : public expression_visitor,
-                           virtual public visitor<STATEMENT_TYPES, GLOBAL_TYPES> {
+struct statement_visitor : public visitor<expr::expression, STATEMENT_TYPES, GLOBAL_TYPES> {
   ast_traverser* gen;
   statement_visitor(ast_traverser*);
 
   // void visit(const ast::scope::namespace_& scope) override;
+  //
+  void visit(expr::expression&) override;
   void visit(ast::decl::block&) override;
   void visit(ast::decl::variable&) override;
   void visit(ast::decl::label&) override;

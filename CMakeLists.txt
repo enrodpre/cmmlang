@@ -25,16 +25,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_SHELL, "/usr/bin/zsh")
-# set(CMAKE_CXX_FLAGS_DEBUG
-#     "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -fno-eliminate-unused-debug-symbols -fno-inline -fno-omit-frame-pointer"
-# )
+include(cmake/CPM.cmake)
 
 file(GLOB_RECURSE sources CONFIGURE_DEPENDS
      "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
-
+CPMAddPackage(
+  NAME Revisited
+  GIT_REPOSITORY https://github.com/TheLartians/Visitor.git
+  VERSION 2.0
+)
 find_package(magic_enum REQUIRED)
 find_package(cpptrace REQUIRED)
 find_package(libassert REQUIRED)
+find_package(Revisited REQUIRED)
 # find_package(frozen REQUIRED)
 
 add_library(${LIBNAME} ${sources})
@@ -46,7 +49,7 @@ target_compile_options(${LIBNAME} PRIVATE
 target_compile_features(${LIBNAME} PUBLIC cxx_std_26)
 target_link_libraries(
    ${LIBNAME} PRIVATE magic_enum::magic_enum cpptrace::cpptrace
-                          libassert::assert)
+                          libassert::assert Revisited)
 target_include_directories(
   ${LIBNAME}
   PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
@@ -66,6 +69,9 @@ if(BUILD_TESTS)
   enable_testing()
   add_subdirectory(test)
 endif()
+
+set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE
+"include-what-you-use;-w;-Xiwyu;--verbose=7")
 
 # include(CPack)
 # string(TOLOWER ${PROJECT_NAME}/version.h VERSION_HEADER_LOCATION)
