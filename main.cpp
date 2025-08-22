@@ -1,11 +1,14 @@
+#include <cxxopts.hpp>
+#include <cstdlib>
+#include <iostream>
+#include <filesystem>
+#include <memory>
+#include <optional>
+#include <string>
+
 #include "common.hpp"
 #include "compiler.hpp"
-#include "traits.hpp"
-#include <cstdlib>
-#include <cxxopts.hpp>
-#include <execinfo.h>
-#include <iostream>
-#include <unistd.h>
+#include "fs.hpp"
 
 #define ADD_DUMP_OPT(OPTION, DESC) OPTION, DESC, cxxopts::value<bool>()
 #define GET_DUMP_OPT(OPTION)       result[OPTION].as<bool>()

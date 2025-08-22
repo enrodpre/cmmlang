@@ -1,50 +1,66 @@
 #pragma once
 
-#include "fs.hpp"
-#include "macros.hpp"
-#include "os.hpp"
-#include "traits.hpp"
+#include <algorithm>
+#include <array>
 #include <bits/version.h>
 #include <concepts>
 #include <cpptrace/utils.hpp>
 #include <cstdint>
+#include <cstdio>
 #include <exception>
+#include <fmt/base.h>
 #include <format>
 #include <functional>
+#include <initializer_list>
 #include <libassert/assert.hpp>
+#include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_all.hpp>
 #include <magic_enum/magic_enum_format.hpp>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <ranges>
+#include <sstream>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <sys/types.h>
 #include <tuple>
 #include <type_traits>
 #include <typeindex>
+#include <typeinfo>
+#include <unordered_map>
 #include <utility>
+#include <vector>
+
+#include "fs.hpp"
+#include "macros.hpp"
+#include "os.hpp"
+#include "traits.hpp"
 
 namespace cmm {
+enum class compilation_error_t : uint8_t;
+struct location;
 
 namespace log {
-  enum class style_t : uint8_t {
-    HEADER,
-    BOLD,
-    ERROR,
-    NORMAL,
-    RED,
-    MAGENTA,
-    YELLOW,
-    GREEN,
-    DARK_RED,
-    WHITE_SMOKE,
-    WHITE
-  };
+enum class style_t : uint8_t {
+  HEADER,
+  BOLD,
+  ERROR,
+  NORMAL,
+  RED,
+  MAGENTA,
+  YELLOW,
+  GREEN,
+  DARK_RED,
+  WHITE_SMOKE,
+  WHITE
+};
 
-  template <typename T>
-  constexpr std::string apply(T&&, style_t);
+template <typename T>
+constexpr std::string apply(T&&, style_t);
 
-  enum class Level : uint8_t { NONE = 0, ERROR, WARN, INFO, DEBUG, TRACE };
+enum class Level : uint8_t { NONE = 0, ERROR, WARN, INFO, DEBUG, TRACE };
 } // namespace log
 #ifndef LOG_LEVEL
   #define LOG_LEVEL TRACE_LEVEL
@@ -145,6 +161,12 @@ struct formattable {
   constexpr operator std::string() const;
   [[nodiscard]] virtual std::string format() const = 0;
   [[nodiscard]] virtual std::string repr(size_t = 0) const { return format(); }
+};
+
+template <typename T>
+struct cloneable {
+  constexpr virtual ~cloneable()        = default;
+  [[nodiscard]] virtual T clone() const = 0;
 };
 
 #define STRING_IMPL(TYPE, stdstr, ...) \
@@ -495,26 +517,25 @@ T construct_from_tuple(Tuple&& tuple) {
 }
 
 namespace adaptors {
-  template <typename Adaptor, typename T, typename MemFn>
-  auto make_pipe(const T& obj, MemFn mem_fn) {
-    return Adaptor{[&obj, mem_fn](auto&& range) {
-      return (obj.*mem_fn)(std::forward<decltype(range)>(range));
-    }};
-  }
-  template <typename Func>
-  struct process {
-    Func func;
+template <typename Adaptor, typename T, typename MemFn>
+auto make_pipe(const T& obj, MemFn mem_fn) {
+  return Adaptor{
+      [&obj, mem_fn](auto&& range) { return (obj.*mem_fn)(std::forward<decltype(range)>(range)); }};
+}
+template <typename Func>
+struct process {
+  Func func;
 
-    template <typename Range, typename Alloc>
-    constexpr auto operator()(Range&& range, Alloc& alloc) const {
-      return func(std::forward<Range>(range), alloc);
-    }
-  };
-
-  template <typename Range, template <typename> class Adaptor, typename F>
-  auto operator|(Range&& range, const Adaptor<F>& adaptor) {
-    return adaptor(std::forward<Range>(range));
+  template <typename Range, typename Alloc>
+  constexpr auto operator()(Range&& range, Alloc& alloc) const {
+    return func(std::forward<Range>(range), alloc);
   }
+};
+
+template <typename Range, template <typename> class Adaptor, typename F>
+auto operator|(Range&& range, const Adaptor<F>& adaptor) {
+  return adaptor(std::forward<Range>(range));
+}
 
 }; // namespace adaptors
 
@@ -960,18 +981,18 @@ struct node {
 
 namespace traits {
 
-  template <typename T, T V>
-  struct integral_constant {
-    static constexpr T value = V;
-    using value_type         = T;
-    using type               = integral_constant<T, V>;
-    constexpr operator value_type() const noexcept { return value; }
-    constexpr value_type operator()() const noexcept { return value; }
-  };
-  template <bool B>
-  using bool_constant = integral_constant<bool, B>;
-  using true_type     = bool_constant<true>;
-  using false_type    = bool_constant<false>;
+template <typename T, T V>
+struct integral_constant {
+  static constexpr T value = V;
+  using value_type         = T;
+  using type               = integral_constant<T, V>;
+  constexpr operator value_type() const noexcept { return value; }
+  constexpr value_type operator()() const noexcept { return value; }
+};
+template <bool B>
+using bool_constant = integral_constant<bool, B>;
+using true_type     = bool_constant<true>;
+using false_type    = bool_constant<false>;
 
 }; // namespace traits
 
@@ -1070,6 +1091,211 @@ template <typename T, typename V, std::size_t N>
 constexpr auto make_constexpr_map(std::pair<T, V> const (&items)[N]) {
   return constexpr_map<T, V, N>{items};
 }
+enum class instruction_t : uint8_t {
+  nop = 0,
+
+  // Jumps
+  jmp,
+  je,
+  jne,
+  jz,
+  jnz,
+  jg,
+  jge,
+  jl,
+  jle,
+
+  // Management
+  mov,
+  lea,
+  push,
+  pop,
+
+  // Comparison
+  cmp,
+  test,
+
+  // Bitwise
+  and_,
+  or_,
+  xor_,
+  not_,
+  inc,
+  dec,
+
+  // Arithmetics
+  add,
+  sub,
+  mul,
+  imul,
+  div,
+  idiv,
+
+  // Misc
+  syscall,
+  ret,
+  call,
+
+  // Variables
+  global,
+
+  // Not instructions
+  address_of,
+  deref,
+};
+
+enum class operator_t : uint8_t {
+  plus = 0,
+  minus,
+  star,
+  fslash,
+
+  pre_inc,
+  pre_dec,
+  post_inc,
+  post_dec,
+
+  // xor_b,
+  // or_b,
+  // and_b,
+  // not_b,
+
+  eq,
+  neq,
+  lt,
+  le,
+  gt,
+  ge,
+
+  xor_,
+  or_,
+  and_,
+  not_,
+
+  ampersand,
+  assign,
+  o_paren,
+  c_paren,
+  o_bracket,
+  c_bracket,
+  o_curly,
+  c_curly
+};
+
+enum class keyword_t : uint8_t { IF, WHILE, FOR, GOTO, BREAK, CONTINUE, RETURN };
+enum class instruction_result_reg : uint8_t { NONE, LEFT, RIGHT, ACCUMULATOR };
+
+enum class arg_t : uint8_t { NONE, LEFT, RIGHT, ACC, AUX1, AUX2 };
+
+namespace assembly {
+enum class flag_t : uint16_t {
+  NONE      = 1 << 0,
+  CARRY     = 1 << 1, // CF  a > b
+  ZERO      = 1 << 2, // ZF  a = b
+  SIGN      = 1 << 3, // SF  a < b
+  OVERFLOW  = 1 << 4, // OF
+  PARITY    = 1 << 5, // PF
+  AUXILIARY = 1 << 6, // AF
+  DIRECTION = 1 << 7, // DF
+  INTERRUPT = 1 << 8, // IF
+
+  // System Flags
+  TRAP       = 1 << 9,  // TF
+  ALIGNMENT  = 1 << 10, // AC
+  VIRTUAL808 = 1 << 11, // VM
+  RESUME     = 1 << 12, // RF
+  NESTEDTASK = 1 << 13, // NT
+};
+}
+using namespace magic_enum::bitwise_operators;
+enum class comparison_t : uint8_t { EQ, NE, LE, LT, GE, GT, U_LT, U_GT };
+}; // namespace cmm
+
+template <>
+struct magic_enum::customize::enum_range<cmm::assembly::flag_t> {
+  static constexpr bool is_flags = true;
+};
+
+namespace cmm {
+
+enum class operator_sign : uint8_t { SIGNED, UNSIGNED };
+
+struct comparison_data : public enumeration<comparison_t>, public displayable {
+  BUILD_ENUMERATION_DATA(comparison,
+                         comparison_t,
+                         inverse,
+                         assembly::flag_t,
+                         flags,
+                         operator_sign,
+                         sign);
+  [[nodiscard]] instruction_t jump() const;
+  [[nodiscard]] instruction_t set() const;
+};
+
+enum class associativity_t : uint8_t { Either, L2R, R2L };
+BUILD_ENUMERATION_DATA_CLASS(operator,
+                             std::string,
+                             repr,
+                             uint8_t,
+                             precedence,
+                             associativity_t,
+                             assoc,
+                             std::optional<comparison_t>,
+                             comparison)
+
+BUILD_ENUMERATION_DATA_CLASS(instruction,
+                             short,
+                             n_params,
+                             bool,
+                             can_address_memory,
+                             instruction_result_reg,
+                             where);
+
+namespace assembly {
+enum class register_t : uint8_t {
+  RSP,
+  RBP,
+  ACCUMULATOR,
+  COUNTER,
+  AUX,
+  SYSCALL_1,
+  SYSCALL_2,
+  SCRATCH_1,
+  SCRATCH_2,
+  SCRATCH_3,
+  SCRATCH_4
+};
+}
+
+template <typename T>
+class pointer_container {
+  pointer_container() = default;
+  pointer_container(const pointer_container& other) {
+    if (other.m_ptr) {
+      m_ptr = other.m_ptr->clone();
+    }
+  };
+  pointer_container& operator=(const pointer_container& other) {
+    if (this != &other) {
+      // Create a deep copy using clone
+      if (other.m_ptr) {
+        m_ptr = other.m_ptr->clone();
+      } else {
+        m_ptr.reset();
+      }
+    }
+    return *this;
+  }
+  pointer_container(pointer_container&&) noexcept            = default;
+  pointer_container& operator=(pointer_container&&) noexcept = default;
+  pointer_container(const T& t)
+      : m_ptr(t) {}
+  pointer_container(const T* t)
+      : m_ptr(t) {}
+
+private:
+  std::unique_ptr<T> m_ptr;
+};
 } // namespace cmm
 
 #include "common.inl"

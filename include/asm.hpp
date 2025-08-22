@@ -1,30 +1,34 @@
 #pragma once
 
-#include "ast.hpp"     // for identifier, variable
-#include "common.hpp"  // for cstring, formattable, DATASIZE, string_buffer
-#include "macros.hpp"  // for BUILD_ENUMERATION_DATA_CLASS, CTOR_ASSIGN_DATA_4
-#include "types.hpp"   // for cr_type
 #include <algorithm>   // for __count_if_fn, count_if
 #include <array>       // for array
+#include <cstddef>     // for size_t
 #include <cstdint>     // for uint8_t, int64_t, uint64_t
 #include <format>      // for format_string, format
 #include <memory>      // for unique_ptr
 #include <optional>    // for optional
-#include <ranges>      // for pair
-#include <stddef.h>    // for size_t
 #include <string>      // for basic_string, string, char_traits
 #include <type_traits> // for remove_cvref_t, is_abstract_v, remove_cvref
 #include <utility>     // for pair, make_pair, forward
 #include <variant>     // for variant
 #include <vector>      // for vector
 
+#include "ast.hpp"    // for identifier, variable
+#include "common.hpp" // for cstring, formattable, DATASIZE, string_buffer
+#include "macros.hpp" // for BUILD_ENUMERATION_DATA_CLASS, CTOR_ASSIGN_DATA_4
+#include "types.hpp"  // for crtype
+
+namespace cmm {
+enum class instruction_t : uint8_t;
+} // namespace cmm
+
 namespace cmm::assembly {
 
 namespace bits {
-  constexpr auto BIT_DATASIZE = DATASIZE * 8;
-  namespace masks {
-    constexpr auto TO_BOOL = 0x1;
-  }
+constexpr auto BIT_DATASIZE = DATASIZE * 8;
+namespace masks {
+constexpr auto TO_BOOL = 0x1;
+}
 } // namespace bits
 
 enum class syscall_t : uint8_t {
@@ -69,7 +73,7 @@ struct operand : public formattable {
   [[nodiscard]] std::string format() const override;
 
   [[nodiscard]] std::optional<symbol_container> content() const;
-  [[nodiscard]] cr_type content_type() const;
+  [[nodiscard]] crtype content_type() const;
   [[nodiscard]] content_t variable() const;
   operand* hold_value(content_t);
   operand* hold_address(content_t);
@@ -103,6 +107,17 @@ protected:
   std::string m_name;
 };
 
+struct register_placeholder : public reg {
+  register_placeholder()
+      : reg(std::format("placeholder_{}", i++)) {}
+  template <register_t Reg>
+  register_placeholder();
+
+  void bind(reg*);
+  reg* bound_reg{};
+  static inline int i = 1;
+};
+
 struct reg_memory : public reg {
   reg_memory(std::string, int64_t);
   using reg::hold_address;
@@ -111,10 +126,6 @@ struct reg_memory : public reg {
   [[nodiscard]] std::string value() const override;
 
 protected:
-  // [ base + index*scale + offset]
-  // reg* m_base;
-  // reg* m_index;
-  // int m_scale;
   int64_t m_offset;
 };
 
@@ -185,20 +196,6 @@ struct registers {
 
   registers();
 
-  enum register_t : uint8_t {
-    RSP,
-    RBP,
-    ACCUMULATOR,
-    COUNTER,
-    AUX,
-    SYSCALL_1,
-    SYSCALL_2,
-    SCRATCH_1,
-    SCRATCH_2,
-    SCRATCH_3,
-    SCRATCH_4
-  };
-
   constexpr static std::string to_realname(register_t);
   [[nodiscard]] reg* get(register_t) const;
   [[nodiscard]] size_t available_parameters() const {
@@ -208,7 +205,7 @@ struct registers {
   // reg* last_opfunction_result;
   const ast::decl::variable* find_var(const ast::identifier&);
 
-  [[nodiscard]] constexpr reg* parameter_at(size_t i) const;
+  [[nodiscard]] constexpr reg* parameter_at(int i) const;
   struct parameters_transaction {
     parameters_transaction(registers* p)
         : params(p) {}
@@ -222,8 +219,12 @@ struct registers {
     std::vector<reg*> m_regs;
   };
 
-  constexpr static const std::array<register_t, 6> m_parameters =
-      {SYSCALL_1, SYSCALL_2, SCRATCH_1, SCRATCH_4, SCRATCH_2, SCRATCH_3};
+  constexpr static const std::array<register_t, 6> m_parameters = {register_t::SYSCALL_1,
+                                                                   register_t::SYSCALL_2,
+                                                                   register_t::SCRATCH_1,
+                                                                   register_t::SCRATCH_4,
+                                                                   register_t::SCRATCH_2,
+                                                                   register_t::SCRATCH_3};
 
   registers::parameters_transaction parameters();
 
@@ -233,6 +234,7 @@ private:
   constexpr static store_type initialize_registers();
 };
 
+// Usage example
 static_assert(!std::is_abstract_v<label>);
 static_assert(!std::is_abstract_v<reg_memory>);
 static_assert(!std::is_abstract_v<immediate_memory>);
@@ -240,45 +242,18 @@ static_assert(!std::is_abstract_v<label_memory>);
 static_assert(!std::is_abstract_v<reg>);
 static_assert(!std::is_abstract_v<immediate>);
 
-struct assembly_code : public formattable {};
-struct assembly_label : public assembly_code {
-  std::string label;
-  assembly_label(std::string);
-  [[nodiscard]] std::string format() const override;
-};
+struct assembly_code : public displayable {};
 
-struct assembly_instruction0 : public assembly_code {
-  instruction_t instruction;
-
-  assembly_instruction0(instruction_t);
-  [[nodiscard]] std::string format() const override;
-};
-struct assembly_instruction1 : public assembly_code {
-  instruction_t instruction;
-  operand* left;
-
-  assembly_instruction1(instruction_t, operand*);
-  [[nodiscard]] std::string format() const override;
-};
-struct assembly_instruction2 : public assembly_code {
-  instruction_t instruction;
-  operand* left;
-  operand* right;
-
-  assembly_instruction2(instruction_t, operand*, operand*);
-  [[nodiscard]] std::string format() const override;
-};
-
-struct assembly_line : public formattable {};
+struct assembly_line : public displayable {};
 struct assembly_empty_line : public assembly_line {
-  [[nodiscard]] std::string format() const override;
+  [[nodiscard]] std::string string() const override;
 };
 
 struct assembly_comment_line : public assembly_line {
   std::string comment;
   assembly_comment_line(std::string);
 
-  [[nodiscard]] std::string format() const override;
+  [[nodiscard]] std::string string() const override;
 };
 
 struct assembly_code_line : public assembly_line {
@@ -287,7 +262,7 @@ struct assembly_code_line : public assembly_line {
 
   assembly_code_line(decltype(instruction)&&, decltype(comment));
 
-  [[nodiscard]] std::string format() const override;
+  [[nodiscard]] std::string string() const override;
 };
 
 class comment_block;

@@ -1,8 +1,12 @@
 #pragma once
 
+#include <cpptrace/cpptrace.hpp>
+#include <filesystem>
+#include <string>
+#include <string_view>
+
 #include "common.hpp"
 #include "fs.hpp"
-#include <cpptrace/cpptrace.hpp>
 
 namespace cmm {
 

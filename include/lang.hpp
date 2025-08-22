@@ -1,19 +1,29 @@
 #pragma once
 
-#include "common.hpp"
-#include "types.hpp"
 #include <cstddef>
 #include <cstdint>
-#include <frozen/unordered_map.h>
+#include <format>
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_containers.hpp>
 #include <magic_enum/magic_enum_format.hpp>
+#include <ranges>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "common.hpp"
+#include "macros.hpp"
+#include "types.hpp"
 
 namespace cmm {
 
+namespace assembly {
+class operand;
+}
 namespace ast::decl {
-  class function;
-  class signature;
+class function;
+class signature;
 } // namespace ast::decl
 class mangled_name {
 
@@ -24,10 +34,10 @@ public:
   mangled_name(value_type&& v)
       : m_string(std::move(v)) {}
 
-  static mangled_name variable(cstring, cr_type);
+  static mangled_name variable(cstring, crtype);
   static mangled_name label(cstring);
-  static mangled_name function(cstring, const std::vector<ptr_type>&);
-  static mangled_name direct_conversion_function(cr_type, cr_type);
+  static mangled_name function(cstring, const std::vector<ptype>&);
+  static mangled_name direct_conversion_function(crtype, crtype);
   static std::string types(const std::vector<const type*>&);
 
   [[nodiscard]] const value_type& str() const;
@@ -37,117 +47,32 @@ private:
   value_type m_string;
 };
 
-enum class instruction_result_reg : uint8_t { NONE, LEFT, RIGHT, ACCUMULATOR };
-enum class instruction_t : uint8_t {
-  nop = 0,
+template <typename T>
+concept Operand = (std::is_same_v<assembly::operand*, T> || std::is_same_v<arg_t, T>);
 
-  // Jumps
-  jmp,
-  je,
-  jne,
-  jz,
-  jnz,
-  jg,
-  jge,
-  jl,
-  jle,
-
-  // Management
-  mov,
-  lea,
-  push,
-  pop,
-
-  // Comparison
-  cmp,
-  test,
-
-  // Bitwise
-  and_,
-  or_,
-  xor_,
-  not_,
-  inc,
-  dec,
-
-  // Arithmetics
-  add,
-  sub,
-  mul,
-  imul,
-  div,
-  idiv,
-
-  // Misc
-  syscall,
-  ret,
-  call,
-
-  // Variables
-  global,
-
-  // Not instructions
-  address_of,
-  deref,
+struct instruction {
+  instruction_t ins;
+  arg_t arg1;
+  arg_t arg2;
 };
 
-enum class operator_t : uint8_t {
-  plus = 0,
-  minus,
-  star,
-  fslash,
+struct signature {
+  std::string name;
+  std::vector<ptype_spec> argument_types;
 
-  pre_inc,
-  pre_dec,
-  post_inc,
-  post_dec,
-
-  // xor_b,
-  // or_b,
-  // and_b,
-  // not_b,
-
-  eq,
-  neq,
-  lt,
-  le,
-  gt,
-  ge,
-
-  xor_,
-  or_,
-  and_,
-  not_,
-
-  ampersand,
-  assign,
-  o_paren,
-  c_paren,
-  o_bracket,
-  c_bracket,
-  o_curly,
-  c_curly
+  signature(operator_t, std::vector<ptype_spec>);
+  bool operator==(const signature& other) const {
+    return name == other.name &&
+           std::ranges::all_of(std::views::zip(argument_types, other.argument_types),
+                               [](const auto& type_pair) {
+                                 const auto& [t, other_t] = type_pair;
+                                 return t == other_t;
+                               });
+  }
 };
-
-enum class associativity_t : uint8_t { Either, L2R, R2L };
-BUILD_ENUMERATION_DATA_CLASS(operator,
-                             std::string,
-                             repr,
-                             uint8_t,
-                             precedence,
-                             associativity_t,
-                             assoc)
-
-BUILD_ENUMERATION_DATA_CLASS(instruction,
-                             short,
-                             n_params,
-                             bool,
-                             can_address_memory,
-                             instruction_result_reg,
-                             where);
 
 enum class builtin_signature_t : uint8_t { MAIN, SYSCALL, EXIT, PRINT };
-using header_arguments_t = std::vector<ptr_type>;
+using header_arguments_t = std::vector<ptype>;
 struct builtin_signature_data : public cmm::enumeration<builtin_signature_t>, public displayable {
   BUILD_ENUMERATION_DATA(builtin_signature,
                          std::string_view,
@@ -156,61 +81,31 @@ struct builtin_signature_data : public cmm::enumeration<builtin_signature_t>, pu
                          args);
   [[nodiscard]] ast::decl::signature signature() const;
 };
-enum class keyword_t : uint8_t { IF, WHILE, FOR, GOTO, BREAK, CONTINUE, RETURN };
 
-enum class arg_t : uint8_t { NONE, LEFT, RIGHT, ACC, AUX1, AUX2 };
-
-using execution = std::pair<instruction_t, std::array<arg_t, 2>>;
-
-#define CREATE_SIMPLE_INS(INS) \
-  {std::make_pair(instruction_t ::INS, std::make_pair(arg_t::LEFT, arg_t::RIGHT))}
-
-#define CREATE_COND(INS) \
-  { \
-    std::make_pair(instruction_t ::cmp, std::make_pair(arg_t::LEFT, arg_t::RIGHT)), { \
-      instruction_t ::INS, {} \
-    } \
+struct operator_builtin_data {
+  std::unique_ptr<type_specifier> ret;
+  std::unique_ptr<type_specifier> arg1;
+  std::unique_ptr<type_specifier> arg2;
+  std::vector<instruction> ins;
+  operator_builtin_data(ptype c, ptype b, ptype a, decltype(ins)&& e)
+      : ret(std::make_unique<type>(*c)),
+        arg1(std::make_unique<type>(*b)),
+        arg2(std::make_unique<type>(*a)),
+        ins(std::move(e)) {}
+  operator_builtin_data(type_converter c,
+                        const type_matcher& first,
+                        const type_matcher& second,
+                        decltype(ins)&& e)
+      : ins(std::move(e)) {
+    type_placeholder p(first);
+    arg1 = p.create_dependant(p);
   }
+};
 
-#define CREATE_CONDITION(OP, INS) \
-  { \
-      {{instruction_t ::cmp, {arg_t::LEFT, arg_t::RIGHT}}, {instruction_t ::INS, {}}} \
-},
+extern const std::unordered_map<operator_t, operator_builtin_data> builtin_operators;
+static_assert(std::formattable<cmm::instruction_t, char>);
 
-constexpr magic_enum::containers::
-    array<operator_t, std::array<std::pair<instruction_t, std::pair<arg_t, arg_t>>, 3>>
-        builtin_operators{
-            {{CREATE_SIMPLE_INS(add),
-              CREATE_SIMPLE_INS(sub),
-              {std::make_pair(instruction_t::mov, std::make_pair(arg_t::ACC, arg_t::LEFT)),
-               std::make_pair(instruction_t ::mul, std::make_pair(arg_t ::RIGHT, arg_t::NONE)),
-               std::make_pair(instruction_t ::mov, std::make_pair(arg_t ::LEFT, arg_t::ACC))},
-              {std::make_pair(instruction_t::mov, std::make_pair(arg_t::ACC, arg_t::LEFT)),
-               std::make_pair(instruction_t ::div, std::make_pair(arg_t ::RIGHT, arg_t::NONE)),
-               std::make_pair(instruction_t ::mov, std::make_pair(arg_t ::LEFT, arg_t::ACC))},
-              CREATE_SIMPLE_INS(inc),
-              CREATE_SIMPLE_INS(dec),
-              CREATE_SIMPLE_INS(inc),
-              CREATE_SIMPLE_INS(dec),
-              CREATE_COND(jne),
-              CREATE_COND(je),
-              CREATE_COND(jge),
-              CREATE_COND(jg),
-              CREATE_COND(jle),
-              CREATE_COND(jl),
-              CREATE_SIMPLE_INS(xor_),
-              CREATE_SIMPLE_INS(or_),
-              CREATE_SIMPLE_INS(and_),
-              CREATE_SIMPLE_INS(not_),
-              {},
-              CREATE_SIMPLE_INS(mov)}}};
-
-constexpr auto get_builtin_operator(operator_t op) {
-  return builtin_operators.at(op) |
-         std::views::filter([](const auto& ins) { return ins.first != instruction_t::nop; });
-}
-// constexpr auto get_builtin_operator(operator_t)
-static_assert(magic_enum::enum_count<operator_t>() == builtin_operators.size());
+std::optional<operator_builtin_data> get_builtin_operator(operator_t, const std::vector<ptype>&);
 
 enum class attribute : uint8_t {
   no_return          = 1 << 1,
@@ -234,14 +129,11 @@ enum class modifier_t : uint8_t {
   consteval_,
 };
 
-template <typename T>
-struct storage {
+template <typename T> struct storage {
   virtual T& stored() const = 0;
 };
-template <typename T>
-struct static_storage : public storage<T> {};
-template <typename T>
-struct dynamic_storage : public storage<T> {
+template <typename T> struct static_storage : public storage<T> {};
+template <typename T> struct dynamic_storage : public storage<T> {
   uintptr_t address;
 };
 
@@ -259,11 +151,6 @@ struct composite_value : public value {
 };
 struct object;
 
-// struct typeof {
-//   STATIC_CLS(typeof);
-//   constexpr static category_t operator()(const type&);
-// };
-
 struct sizeof_ {
   STATIC_CLS(sizeof_);
   constexpr static size_t operator()(const type&);
@@ -279,7 +166,44 @@ struct object {
   cmm::type type;
   cmm::value* value;
 };
-} // namespace cmm
-static_assert(std::formattable<cmm::instruction_t, char>);
 
+constexpr size_t cmm::sizeof_::operator()(const type& t) {
+  using enum type_category_t;
+  switch (t.category) {
+    case lvalue_ref_t:
+    case rvalue_ref_t:
+    case nullptr_t:
+    case pointer_t:
+      return 8;
+    case bool_t:
+      return 1;
+    case char_t:
+      return 1;
+    case uint_t:
+    case sint_t:
+      return 4;
+    case float_t:
+      return 8;
+    case array_t:
+    case function_t:
+    case void_t:
+    case scoped_enum_t:
+    case unscoped_enum_t:
+    case class_t:
+      return 0;
+    case type_category_t::any_t:
+    case type_category_t::fundamental_t:
+    case type_category_t::arithmetic_t:
+    case type_category_t::integral_t:
+    case type_category_t::compound_t:
+    case type_category_t::indirection_t:
+    case type_category_t::reference_t:
+    case type_category_t::enum_t:
+    default:
+      break;
+  }
+  return 0;
+}
+constexpr size_t cmm::sizeof_::operator()(const object& o) { return sizeof_::operator()(o.type); }
+} // namespace cmm
 #include "lang.inl"

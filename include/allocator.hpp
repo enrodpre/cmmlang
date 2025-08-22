@@ -1,7 +1,5 @@
 #pragma once
 
-#include "common.hpp"
-#include "traits.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list> // for begin, end
@@ -11,6 +9,9 @@
 #include <type_traits>
 #include <utility>
 #include <vector> // for vector
+
+#include "common.hpp"
+#include "traits.hpp"
 
 namespace cmm::memory {
 

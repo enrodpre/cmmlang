@@ -1,12 +1,23 @@
 #pragma once
 
-#include "common.hpp"
+#include <stddef.h>
+#include <magic_enum/magic_enum.hpp>
+#include <magic_enum/magic_enum_containers.hpp>
 #include <cstdint>
 #include <initializer_list>
 #include <ranges>
 #include <utility>
+#include <format>
+#include <string>
+#include <tuple>
+#include <variant>
+#include <vector>
+
+#include "common.hpp"
+#include "macros.hpp"
 
 namespace cmm {
+struct token_data;
 
 enum class token_t : uint8_t {
   // specifiers

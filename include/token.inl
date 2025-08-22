@@ -2,7 +2,10 @@
 
 #include "token.hpp"
 
+#include <tuple>
+
 namespace cmm {
+enum class token_t : uint8_t;
 
 constexpr const token_data::properties_map& token_data::properties_array() {
   using enum token_data::pattern_t;

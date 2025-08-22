@@ -1,8 +1,14 @@
 #pragma once
 
-#include "traits.hpp"
+#include <cstdint>
 #include <fcntl.h>
 #include <filesystem>
+#include <format>
+#include <string>
+#include <string_view>
+#include <utility>
+
+#include "traits.hpp"
 
 #define LOG_PATH() REGISTER_INFO("Current path: {}", fs::current_path().string());
 

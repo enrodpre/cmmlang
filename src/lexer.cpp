@@ -1,10 +1,19 @@
 #include "lexer.hpp"
 
+#include <ctype.h>
+#include <stdlib.h>
+#include <magic_enum/magic_enum_containers.hpp>
 #include <algorithm>
 #include <ranges>
 #include <regex>
 #include <string>
 #include <string_view>
+#include <compare>
+#include <format>
+#include <tuple>
+#include <utility>
+
+#include "token.inl"
 
 namespace cmm {
 

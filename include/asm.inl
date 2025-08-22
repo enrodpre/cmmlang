@@ -1,8 +1,26 @@
 #pragma once
 
 #include "asm.hpp"
+
 #include <cpptrace/exceptions.hpp>
+#include <format>
+#include <libassert/assert-macros.hpp>
 #include <magic_enum/magic_enum.hpp>
+#include <optional>
+#include <string>
+#include <type_traits>
+#include <utility>
+
+#include "allocator.hpp"
+
+namespace cmm::assembly {
+enum class syscall_t : uint8_t;
+struct label;
+struct label_literal;
+struct label_memory;
+struct reg;
+struct stack_memory;
+} // namespace cmm::assembly
 
 namespace cmm::assembly {
 
@@ -13,6 +31,7 @@ namespace cmm::assembly {
 }
 
 constexpr std::string registers::to_realname(register_t r) {
+  using enum register_t;
   switch (r) {
     case RSP:
       return "rsp";
@@ -41,8 +60,8 @@ constexpr std::string registers::to_realname(register_t r) {
   }
 }
 
-[[nodiscard]] constexpr reg* registers::parameter_at(size_t i_) const {
-  auto* reg_ = get(magic_enum::enum_cast<registers::register_t>(m_parameters.at(i_)).value());
+[[nodiscard]] constexpr reg* registers::parameter_at(const int i_) const {
+  auto* reg_ = get(m_parameters.at(i_));
   if (!reg_->is_writtable()) {
     REGISTER_WARN("Overwriting not writtable register {}", reg_->format());
   }
@@ -50,12 +69,12 @@ constexpr std::string registers::to_realname(register_t r) {
   return reg_;
 }
 namespace {
-  constexpr reg* create_register(int i) {
+constexpr reg* create_register(int i) {
 
-    auto idx         = magic_enum::enum_cast<registers::register_t>(i);
-    std::string name = registers::to_realname(idx.value());
-    return operand_factory::create<reg>(name);
-  }
+  auto idx         = magic_enum::enum_cast<register_t>(i);
+  std::string name = registers::to_realname(idx.value());
+  return operand_factory::create<reg>(name);
+}
 }; // namespace
 
 constexpr registers::store_type registers::initialize_registers() {
@@ -80,21 +99,21 @@ V* operand_factory::create(Args&&... args) {
 }
 
 namespace {
-  template <typename... Args>
-    requires(sizeof...(Args) == 0)
-  constexpr std::string format_ins(instruction_t ins, Args&&...) {
-    return std::format("{}", ins);
-  }
-  template <typename... Args>
-    requires(sizeof...(Args) == 1)
-  constexpr std::string format_ins(instruction_t ins, Args&&... args) {
-    return std::format("{} {}", ins, std::forward<Args>(args)...);
-  }
-  template <typename... Args>
-    requires(sizeof...(Args) == 2)
-  constexpr std::string format_ins(instruction_t ins, Args&&... args) {
-    return std::format("{} {}, {}", ins, std::forward<Args>(args)...);
-  }
+template <typename... Args>
+  requires(sizeof...(Args) == 0)
+constexpr std::string format_ins(instruction_t ins, Args&&...) {
+  return std::format("{}", ins);
+}
+template <typename... Args>
+  requires(sizeof...(Args) == 1)
+constexpr std::string format_ins(instruction_t ins, Args&&... args) {
+  return std::format("{} {}", ins, std::forward<Args>(args)...);
+}
+template <typename... Args>
+  requires(sizeof...(Args) == 2)
+constexpr std::string format_ins(instruction_t ins, Args&&... args) {
+  return std::format("{} {}, {}", ins, std::forward<Args>(args)...);
+}
 } // namespace
 
 template <typename... Args>

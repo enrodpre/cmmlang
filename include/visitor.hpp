@@ -1,11 +1,19 @@
 #pragma once
 
-#include "common.hpp"
-#include "macros.hpp"
-#include <algorithm>
 #include <cpptrace/utils.hpp>
 #include <revisited/visitor.h>
+#include <algorithm>
 #include <type_traits>
+#include <format>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <utility>
+#include <vector>
+
+#include "common.hpp"
+#include "macros.hpp"
+#include "static_type_info/type_id.h"
 
 namespace cmm::ast {
 

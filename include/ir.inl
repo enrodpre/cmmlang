@@ -1,10 +1,14 @@
 #pragma once
 
-#include "common.hpp"
-#include "ir.hpp"
-#include "lang.hpp"
+#include <format>
 #include <libassert/assert.hpp>
 #include <magic_enum/magic_enum.hpp>
+#include <tuple>
+#include <utility>
+
+#include "asm.hpp"
+#include "common.hpp"
+#include "ir.hpp"
 
 namespace cmm::ir {
 
@@ -26,7 +30,7 @@ void compilation_unit::instruction(const instruction_t& ins, Args&&... args) {
       static_assert(std::formattable<cmm::instruction_t, char>);
       if (!op->empty() &&
           op->content()->attribute == operand::symbol_container::symbol_attr::ADDRESS) {
-        auto* aux = regs.get(assembly::registers::AUX);
+        auto* aux = regs.get(assembly::register_t::AUX);
         asmgen.write_instruction(instruction_t::mov, aux->value(), op->value());
         asmgen.write_instruction(ins, aux->value());
         asmgen.write_instruction(instruction_t::mov, op->value(), aux->value());

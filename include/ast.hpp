@@ -84,8 +84,7 @@ struct operator_ : visitable<operator_, leaf> {
 private:
   operator_t m_value;
 };
-template <typename T>
-struct specifier : visitable<specifier<T>, leaf> {
+template <typename T> struct specifier : visitable<specifier<T>, leaf> {
   using parent_t = visitable<specifier<T>, leaf>;
   using parent_t::parent_t;
   specifier() = default;
@@ -122,17 +121,17 @@ struct linkage : visitable<linkage, specifier<linkage_t>> {
 private:
   linkage_t m_value{};
 };
-struct type : visitable<type, specifier<cr_type>> {
-  type(cr_type t)
+struct type : visitable<type, specifier<crtype>> {
+  type(crtype t)
       : m_value(t) {}
 
   std::string string() const override { return std::format("{}", m_value); }
-  [[nodiscard]] cr_type value() const { return m_value; }
-  operator cr_type() const { return m_value; }
+  [[nodiscard]] crtype value() const { return m_value; }
+  operator crtype() const { return m_value; }
   // AST_LEAF
 
 private:
-  cr_type m_value;
+  crtype m_value;
 };
 struct identifier : visitable<identifier, leaf> {
   identifier() = default;
@@ -180,13 +179,13 @@ inline empty_statement_t _empty_statement{};                   // NOLINT
 inline empty_statement_t* empty_statement = &_empty_statement; // NOLINT
 
 namespace expr {
-  struct expression;
-  struct literal;
-  struct identifier;
-  struct unary_operator;
-  struct call;
-  struct binary_operator;
-  struct implicit_type_conversion;
+struct expression;
+struct literal;
+struct identifier;
+struct unary_operator;
+struct call;
+struct binary_operator;
+struct implicit_type_conversion;
 }; // namespace expr
 
 template <typename T>
@@ -214,9 +213,9 @@ struct declaration : revisited::DerivedVisitable<declaration, anonymous_declarat
 };
 
 namespace decl {
-  class function;
-  class variable;
-  class label;
+class function;
+class variable;
+class label;
 }; // namespace decl
 
 struct variable_store : public hashmap<mangled_key, decl::variable*> {
@@ -224,7 +223,8 @@ struct variable_store : public hashmap<mangled_key, decl::variable*> {
   void put(decl::variable*);
 };
 
-// constexpr auto static CAST_TO_NODE = [](auto&& elem) { return dynamic_cast<node*>(elem); };
+// constexpr auto static CAST_TO_NODE = [](auto&& elem) { return
+// dynamic_cast<node*>(elem); };
 
 template <typename T>
 struct siblings : public vector<T>, public revisited::DerivedVisitable<siblings<T>, composite> {
@@ -258,7 +258,7 @@ struct siblings : public vector<T>, public revisited::DerivedVisitable<siblings<
 };
 
 namespace expr {
-  using arguments = siblings<expr::expression*>;
+using arguments = siblings<expr::expression*>;
 }
 
 DERIVE_OK(composite, statement);
@@ -279,184 +279,185 @@ protected:
   virtual void declare_variable(ast::decl::variable*);
 };
 
-template <typename T>
-struct executable_scope : scope, siblings<T> {};
+template <typename T> struct executable_scope : scope, siblings<T> {};
 
 using label_store = std::unordered_map<std::string, const decl::label*>;
 
 namespace decl {
-  struct block : visitable<block, scope> {
-    block(const statements& s)
-        : stmts(s) {
-      add(s.data());
+struct block : visitable<block, scope> {
+  block(const statements& s)
+      : stmts(s) {
+    add(s.data());
+  }
+  void declare_label(const decl::label*);
+  // AST_SIBLINGS()
+  statements stmts;
+  label_store labels;
+};
+
+struct specifiers : visitable<specifiers, composite> {
+  ast::type type;
+  ast::linkage linkage;
+  ast::storage storage;
+  specifiers(ast::type&&, ast::linkage&&, ast::storage&&);
+  specifiers(crtype t, decltype(linkage) l = {}, decltype(storage) s = {})
+      : type(t),
+        linkage(std::move(l)),
+        storage(std::move(s)) {
+    add_all(&type, &linkage, &storage);
+  }
+  AST_COMPOSITE(&type, &linkage, &storage)
+};
+struct rank : visitable<rank, composite> {
+  ast::operator_ open;
+  expr::expression* number;
+  ast::operator_ close;
+
+  rank(const token&, const token&);
+  rank(const token&, decltype(number), const token&);
+  AST_COMPOSITE(&open, &linkage, &storage);
+};
+struct symbol {
+
+  assembly::operand* address{};
+};
+struct label : public visitable<label, declaration>, public symbol {
+  label(const token&);
+  // AST_COMPOSITE(ident)
+};
+
+struct variable : visitable<variable, declaration>, public symbol {
+  specifiers specs;
+  decl::rank* rank;
+  expr::expression* init;
+
+  variable(specifiers&&, decltype(rank), identifier&&, decltype(init));
+  variable(crtype, decltype(ident)&&, decltype(init));
+  variable(crtype, std::string);
+  // std ::string string() const override { return ident.value(); }
+  std::string repr() const override { return std::format("variable_{}", string()); }
+};
+
+struct signature;
+struct function : visitable<function, declaration>, public symbol {
+  using parameter         = variable*;
+  using loaded_parameters = std::vector<parameter>;
+
+  struct definition;
+  struct parameters : public visitable<parameters, siblings<parameter>> {
+    using vector_t = vector<parameter>;
+    parameters(siblings<parameter>&& p)
+        : visitable<parameters, siblings<parameter>>(std::move(p)) {}
+    void load_arguments(const siblings<expr::expression*>&);
+    [[nodiscard]] std::vector<ptype> types() const {
+      return vector<parameter>::data() |
+             std::views::transform(
+                 [](const parameter& param) -> ptype { return &param->specs.type.value(); }) |
+             std::ranges::to<std::vector>();
     }
-    void declare_label(const decl::label*);
-    // AST_SIBLINGS()
-    statements stmts;
-    label_store labels;
+    std ::string string() const override { return cpptrace ::demangle(typeid(this).name()); }
   };
 
-  struct specifiers : visitable<specifiers, composite> {
-    ast::type type;
-    ast::linkage linkage;
-    ast::storage storage;
-    specifiers(ast::type&&, ast::linkage&&, ast::storage&&);
-    specifiers(cr_type t, decltype(linkage) l = {}, decltype(storage) s = {})
-        : type(t),
-          linkage(std::move(l)),
-          storage(std::move(s)) {
-      add_all(&type, &linkage, &storage);
-    }
-    AST_COMPOSITE(&type, &linkage, &storage)
-  };
-  struct rank : visitable<rank, composite> {
-    ast::operator_ open;
-    expr::expression* number;
-    ast::operator_ close;
+  specifiers specs;
+  decl::function::parameters params;
+  definition* body;
 
-    rank(const token&, const token&);
-    rank(const token&, decltype(number), const token&);
-    AST_COMPOSITE(&open, &linkage, &storage);
-  };
-  struct symbol {
+  function(decltype(specs)&&, decltype(ident)&&, decltype(params)&&, decltype(body));
+  function(operator_& name, ptype ret, parameters& params, decltype(body) b)
+      : specs(*ret),
+        visitable<function, declaration>(name),
+        params(params),
+        body(b) {
+    add_all(&specs, &ident, &params, body);
+  }
+  // FORMAT_DECL_IMPL();
+  signature sig() const;
+  // AST_COMPOSITE(ident, specs, params, body)
+};
 
-    assembly::operand* address{};
-  };
-  struct label : public visitable<label, declaration>, public symbol {
-    label(const token&);
-    // AST_COMPOSITE(ident)
-  };
+struct function::definition : visitable<definition, block> {
+  definition(const siblings<statement*>& s)
+      : visitable<definition, block>(s) {}
+  struct {
+    [[nodiscard]] size_t size() const { return stack_size; };
+    void push() { stack_size++; };
+    void pop(size_t times = 1) { stack_size -= times; }
 
-  struct variable : visitable<variable, declaration>, public symbol {
-    specifiers specs;
-    decl::rank* rank;
-    expr::expression* init;
+  private:
+    size_t stack_size = 0;
+  } local_stack;
 
-    variable(specifiers&&, decltype(rank), identifier&&, decltype(init));
-    variable(cr_type, decltype(ident)&&, decltype(init));
-    variable(cr_type, std::string);
-    // std ::string string() const override { return ident.value(); }
-    std::string repr() const override { return std::format("variable_{}", string()); }
-  };
+  block* active_scope() { return local_scopes.top(); }
+  const block* active_scope() const { return local_scopes.top(); }
+  bool is_declared(const identifier& ident) const override;
+  void create_scope(block&) noexcept;
+  [[nodiscard]] decl::variable* get_variable(const identifier& ident) override;
+  [[nodiscard]] const decl::variable* get_variable(const identifier& ident) const override;
+  assembly::operand* declare_parameter(ast::decl::variable*, assembly::operand*);
+  size_t destroy_scope() noexcept;
+  void clear() noexcept;
+  label_store labels;
+  stack<block*> local_scopes;
+};
+static_assert(std::is_base_of_v<block, function::definition>);
+struct signature : public formattable {
+  identifier name;
+  std::vector<ptype> types;
+  signature(std::string n, const std::vector<ptype>& t)
+      : name(std::move(n)),
+        types(t) {}
+  signature(identifier id, const std::vector<ptype>& t)
+      : name(std::move(id)),
+        types(t) {}
 
-  struct signature;
-  struct function : visitable<function, declaration>, public symbol {
-    using parameter         = variable*;
-    using loaded_parameters = std::vector<parameter>;
+  bool operator==(const signature& other) const {
+    return name.value() == other.name.value() &&
+           std::ranges::all_of(std::views::zip(types, other.types), [](const auto& type_pair) {
+             const auto& [t, other_t] = type_pair;
+             return t == other_t;
+           });
+  }
+  [[nodiscard]] std::string format() const override {
+    return mangled_name::function(name.value(), types);
+  }
+  operator std::string() const { return format(); }
+};
 
-    struct definition;
-    struct parameters : public visitable<parameters, siblings<parameter>> {
-      using vector_t = vector<parameter>;
-      parameters(siblings<parameter>&& p)
-          : visitable<parameters, siblings<parameter>>(std::move(p)) {}
-      void load_arguments(const siblings<expr::expression*>&);
-      [[nodiscard]] std::vector<ptr_type> types() const {
-        return vector<parameter>::data() |
-               std::views::transform(
-                   [](const parameter& param) -> ptr_type { return &param->specs.type.value(); }) |
-               std::ranges::to<std::vector>();
-      }
-      std ::string string() const override { return cpptrace ::demangle(typeid(this).name()); }
-    };
+// static_assert(std::formattable<function, char>);
+static_assert(std::is_polymorphic_v<statement>);
+static_assert(std::is_polymorphic_v<variable>);
+static_assert(std::is_base_of_v<statement, variable>);
+DERIVE_OK(statement, variable);
+DERIVE_OK(statement, label);
+DERIVE_OK(statement, function);
 
-    specifiers specs;
-    decl::function::parameters params;
-    definition* body;
-
-    function(decltype(specs)&&, decltype(ident)&&, decltype(params)&&, decltype(body));
-    function(operator_& name, ptr_type ret, parameters& params, decltype(body) b)
-        : specs(*ret),
-          visitable<function, declaration>(name),
-          params(params),
-          body(b) {
-      add_all(&specs, &ident, &params, body);
-    }
-    // FORMAT_DECL_IMPL();
-    signature sig() const;
-    // AST_COMPOSITE(ident, specs, params, body)
-  };
-
-  struct function::definition : visitable<definition, block> {
-    definition(const siblings<statement*>& s)
-        : visitable<definition, block>(s) {}
-    struct {
-      [[nodiscard]] size_t size() const { return stack_size; };
-      void push() { stack_size++; };
-      void pop(size_t times = 1) { stack_size -= times; }
-
-    private:
-      size_t stack_size = 0;
-    } local_stack;
-
-    block* active_scope() { return local_scopes.top(); }
-    const block* active_scope() const { return local_scopes.top(); }
-    bool is_declared(const identifier& ident) const override;
-    void create_scope(block&) noexcept;
-    [[nodiscard]] decl::variable* get_variable(const identifier& ident) override;
-    [[nodiscard]] const decl::variable* get_variable(const identifier& ident) const override;
-    assembly::operand* declare_parameter(ast::decl::variable*, assembly::operand*);
-    size_t destroy_scope() noexcept;
-    void clear() noexcept;
-    label_store labels;
-    stack<block*> local_scopes;
-  };
-  static_assert(std::is_base_of_v<block, function::definition>);
-  struct signature : public formattable {
-    identifier name;
-    std::vector<ptr_type> types;
-    signature(std::string n, const std::vector<ptr_type>& t)
-        : name(std::move(n)),
-          types(t) {}
-    signature(identifier id, const std::vector<ptr_type>& t)
-        : name(std::move(id)),
-          types(t) {}
-
-    bool operator==(const signature& other) const {
-      return name.value() == other.name.value() &&
-             std::ranges::all_of(std::views::zip(types, other.types), [](const auto& type_pair) {
-               const auto& [t, other_t] = type_pair;
-               return t == other_t;
-             });
-    }
-    [[nodiscard]] std::string format() const override {
-      return mangled_name::function(name.value(), types);
-    }
-    operator std::string() const { return format(); }
-  };
-
-  // static_assert(std::formattable<function, char>);
-  static_assert(std::is_polymorphic_v<statement>);
-  static_assert(std::is_polymorphic_v<variable>);
-  static_assert(std::is_base_of_v<statement, variable>);
-  DERIVE_OK(statement, variable);
-  DERIVE_OK(statement, label);
-  DERIVE_OK(statement, function);
-
-  struct conversion_function : public function {
-    enum class conversion_type_t : uint8_t { IMPLICIT, EXPLICIT };
-    conversion_type_t type;
-    conversion_function(const decltype(body)&);
-    [[nodiscard]] virtual bool is_convertible(cr_type) const noexcept = 0;
-    [[nodiscard]] virtual cr_type to(cr_type) const noexcept          = 0;
-    [[nodiscard]] virtual assembly::operand* operator()(assembly::operand*) const noexcept;
-    [[nodiscard]] bool is_implicit() const { return type == conversion_type_t::IMPLICIT; };
-    [[nodiscard]] bool is_explicit() const { return type == conversion_type_t::EXPLICIT; };
-  };
+struct conversion_function : public function {
+  enum class conversion_type_t : uint8_t { IMPLICIT, EXPLICIT };
+  conversion_type_t type;
+  conversion_function(const decltype(body)&);
+  [[nodiscard]] virtual bool is_convertible(crtype) const noexcept = 0;
+  [[nodiscard]] virtual crtype to(crtype) const noexcept          = 0;
+  [[nodiscard]] virtual assembly::operand* operator()(assembly::operand*) const noexcept;
+  [[nodiscard]] bool is_implicit() const { return type == conversion_type_t::IMPLICIT; };
+  [[nodiscard]] bool is_explicit() const { return type == conversion_type_t::EXPLICIT; };
+};
 
 }; // namespace decl
 
 class conversion_store {
 public:
   // using key_type       = mangled_key;
-  // using value_type     = std::unordered_map<key_type, decl::direct_conversion>;
-  // using container_type = std::unordered_map<key_type, value_type>;
+  // using value_type     = std::unordered_map<key_type,
+  // decl::direct_conversion>; using container_type =
+  // std::unordered_map<key_type, value_type>;
 
   // conversion_store() = default;
-  // [[nodiscard]] bool is_convertible(cr_type, cr_type) const;
-  // [[nodiscard]] std::vector<ptr_type> get_convertible_types(cr_type) const;
-  // [[nodiscard]] std::vector<const decl::conversion_function*> get_conversions(cr_type) const;
-  // void emplace_direct(const decltype(decl::conversion_function::body)&, cr_type, cr_type);
-  // void emplace_glob(std::string&&,
+  // [[nodiscard]] bool is_convertible(crtype, crtype) const;
+  // [[nodiscard]] std::vector<ptype> get_convertible_types(crtype) const;
+  // [[nodiscard]] std::vector<const decl::conversion_function*>
+  // get_conversions(crtype) const; void emplace_direct(const
+  // decltype(decl::conversion_function::body)&, crtype, crtype); void
+  // emplace_glob(std::string&&,
   //                   const decltype(decl::conversion_function::body)&,
   //                   const decl::glob_conversion::condition_t&,
   //                   const decl::glob_conversion::extractor_t&);
@@ -476,76 +477,76 @@ struct function_store : hashmap<decl::signature, decl::function*> {
 };
 
 namespace selection {
-  struct if_ : visitable<if_, statement> {
-    ast::keyword keyword;
-    expr::expression& condition;
-    decl::block* block;
-    decl::block* else_;
+struct if_ : visitable<if_, statement> {
+  ast::keyword keyword;
+  expr::expression& condition;
+  decl::block* block;
+  decl::block* else_;
 
-    if_(const token&, expr::expression&, decl::block*, decl::block* = nullptr);
-    AST_COMPOSITE(keyword, condition, block, else_)
-  };
+  if_(const token&, expr::expression&, decl::block*, decl::block* = nullptr);
+  AST_COMPOSITE(keyword, condition, block, else_)
+};
 
 }; // namespace selection
 
 namespace iteration {
-  struct iteration : public statement {
-    ~iteration() override = default;
-  };
+struct iteration : public statement {
+  ~iteration() override = default;
+};
 
-  struct while_ : visitable<while_, statement> {
-    ast::keyword keyword;
-    expr::expression& condition;
-    decl::block* body;
-    while_(const token&, expr::expression&, decl::block*);
-    // FORMAT_DECL_IMPL();
-    AST_COMPOSITE(keyword, condition, body)
-  };
+struct while_ : visitable<while_, statement> {
+  ast::keyword keyword;
+  expr::expression& condition;
+  decl::block* body;
+  while_(const token&, expr::expression&, decl::block*);
+  // FORMAT_DECL_IMPL();
+  AST_COMPOSITE(keyword, condition, body)
+};
 
-  DERIVE_OK(statement, while_);
-  static_assert(!std::is_abstract_v<while_>);
+DERIVE_OK(statement, while_);
+static_assert(!std::is_abstract_v<while_>);
 
-  struct for_ : visitable<for_, statement> {
-    ast::keyword keyword;
-    decl::variable* start;
-    expr::expression* condition;
-    expr::expression* step;
-    decl::block* body;
-    for_(const token& t,
-         decl::variable* start_,
-         expr::expression* condition_,
-         expr::expression* step_,
-         decl::block* block);
-    // FORMAT_DECL_IMPL();
-    AST_COMPOSITE(keyword, start, condition, step, body)
-  };
+struct for_ : visitable<for_, statement> {
+  ast::keyword keyword;
+  decl::variable* start;
+  expr::expression* condition;
+  expr::expression* step;
+  decl::block* body;
+  for_(const token& t,
+       decl::variable* start_,
+       expr::expression* condition_,
+       expr::expression* step_,
+       decl::block* block);
+  // FORMAT_DECL_IMPL();
+  AST_COMPOSITE(keyword, start, condition, step, body)
+};
 
 }; // namespace iteration
 
 namespace jump {
-  struct goto_ : visitable<goto_, statement> {
-    identifier term;
-    goto_(const token&);
-    AST_COMPOSITE(term)
-  };
-  struct break_ : visitable<break_, statement> {
-    ast::keyword keyword;
-    explicit break_(const token& token);
-    AST_COMPOSITE(keyword)
-  };
+struct goto_ : visitable<goto_, statement> {
+  identifier term;
+  goto_(const token&);
+  AST_COMPOSITE(term)
+};
+struct break_ : visitable<break_, statement> {
+  ast::keyword keyword;
+  explicit break_(const token& token);
+  AST_COMPOSITE(keyword)
+};
 
-  struct continue_ : visitable<continue_, statement> {
-    ast::keyword keyword;
-    explicit continue_(const token& token);
-    AST_COMPOSITE(keyword)
-  };
+struct continue_ : visitable<continue_, statement> {
+  ast::keyword keyword;
+  explicit continue_(const token& token);
+  AST_COMPOSITE(keyword)
+};
 
-  struct return_ : visitable<return_, statement> {
-    ast::keyword keyword;
-    expr::expression* expr;
-    return_(ast::keyword&& k, expr::expression* expr_);
-    AST_COMPOSITE(keyword, expr)
-  };
+struct return_ : visitable<return_, statement> {
+  ast::keyword keyword;
+  expr::expression* expr;
+  return_(ast::keyword&& k, expr::expression* expr_);
+  AST_COMPOSITE(keyword, expr)
+};
 
 } // namespace jump
 
@@ -577,7 +578,7 @@ struct translation_unit : visitable<translation_unit, scope> {
   const decl::variable* get_variable(const ast::identifier&) const override;
   void declare_function(ast::decl::function*, bool = false);
   void declare_variable(ast::decl::variable*) override;
-  // std::vector<ptr_type> get_conversions(cr_type t) {
+  // std::vector<ptype> get_conversions(crtype t) {
   //   return m_conversions.get_convertible_types(t);
   // }
 
@@ -596,10 +597,6 @@ private:
   function_store m_functions;
   stack<decl::function::definition*> m_stackframe;
   ir::compilation_unit* m_context{};
-
-  std::optional<decl::function*> progressive_prefix_match(
-      const std::vector<ptr_type>&,
-      const std::vector<decl::function*>&) const;
 };
 using namespace_ = translation_unit;
 

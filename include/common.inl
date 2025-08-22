@@ -1,11 +1,34 @@
 #pragma once
 
 #include "common.hpp"
+
+#include <algorithm>
+#include <cassert>
 #include <concepts>
-#include <print>
+#include <cpptrace/utils.hpp>
+#include <cstddef>
+#include <format>
+#include <initializer_list>
+#include <iterator>
+#include <libassert/assert-macros.hpp>
+#include <magic_enum/magic_enum.hpp>
+#include <optional>
+#include <ranges>
+#include <string>
 #include <type_traits>
+#include <typeinfo>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "os.hpp"
+#include "traits.hpp"
 
 namespace cmm {
+enum class compilation_error_t : uint8_t;
+namespace log {
+enum class style_t : uint8_t;
+} // namespace log
 
 [[nodiscard]] constexpr const compilation_error_data::properties_map&
 compilation_error_data::properties_array() {
@@ -41,42 +64,42 @@ compilation_error_data::properties_array() {
 }; // namespace cmm
 
 namespace log {
-  template <typename T>
-  constexpr std::string apply(T&& t, style_t s) {
-    std::string pre;
-    switch (s) {
-      case style_t::HEADER:
-        pre = "\033[40;1;35m";
-        break;
-      case style_t::BOLD:
-        pre = "\033[1;33m";
-        break;
-      case style_t::ERROR:
-        pre = "\033[1;38;2;205;92;92m";
-        break;
-      case style_t::RED:
-        pre = "\e[0;31m";
-        break;
-      case style_t::MAGENTA:
-        pre = "\e[0;35m";
-        break;
-      case style_t::YELLOW:
-        pre = "\e[0;33m";
-        break;
-      case style_t::GREEN:
-        pre = "\e[0;32m";
-        break;
-      case style_t::WHITE:
-        pre = "\e[0;37m";
-        break;
-      case style_t::WHITE_SMOKE:
-      case style_t::DARK_RED:
-      case style_t::NORMAL:
-        return t;
-    };
+template <typename T>
+constexpr std::string apply(T&& t, style_t s) {
+  std::string pre;
+  switch (s) {
+    case style_t::HEADER:
+      pre = "\033[40;1;35m";
+      break;
+    case style_t::BOLD:
+      pre = "\033[1;33m";
+      break;
+    case style_t::ERROR:
+      pre = "\033[1;38;2;205;92;92m";
+      break;
+    case style_t::RED:
+      pre = "\e[0;31m";
+      break;
+    case style_t::MAGENTA:
+      pre = "\e[0;35m";
+      break;
+    case style_t::YELLOW:
+      pre = "\e[0;33m";
+      break;
+    case style_t::GREEN:
+      pre = "\e[0;32m";
+      break;
+    case style_t::WHITE:
+      pre = "\e[0;37m";
+      break;
+    case style_t::WHITE_SMOKE:
+    case style_t::DARK_RED:
+    case style_t::NORMAL:
+      return t;
+  };
 
-    return std::format("{}{}{}", pre, t, "\033[0m");
-  }
+  return std::format("{}{}{}", pre, t, "\033[0m");
+}
 } // namespace log
 
 template <std::ranges::range T>
@@ -107,15 +130,15 @@ auto formattable_range<T>::element_merger() const {
 constexpr formattable::operator std::string() const { return format(); }
 
 namespace {
-  template <typename T>
-  std::string classname_only() {
-    auto demangled  = cpptrace::demangle(typeid(T).name());
-    auto last_colon = demangled.rfind("::");
-    if (last_colon != std::string::npos) {
-      return demangled.substr(last_colon + 2);
-    }
-    return demangled;
+template <typename T>
+std::string classname_only() {
+  auto demangled  = cpptrace::demangle(typeid(T).name());
+  auto last_colon = demangled.rfind("::");
+  if (last_colon != std::string::npos) {
+    return demangled.substr(last_colon + 2);
   }
+  return demangled;
+}
 } // namespace
 
 template <ScopedEnum E>
@@ -506,4 +529,181 @@ template <typename K, typename V>
 void hashmap<K, V>::clear() {
   m_store.clear();
 }
+
+[[nodiscard]] constexpr const instruction_data::properties_map&
+instruction_data::properties_array() {
+  using enum instruction_t;
+  using enum instruction_result_reg;
+  static constexpr properties_map MAP{{{
+      {nop, 0, false, {}},            // nop
+      {jmp, 1, false, {}},            //
+      {je, 1, false, {}},             //
+      {jne, 1, false, {}},            //
+      {jz, 1, false, {}},             //
+      {jnz, 1, false, {}},            // jnz
+      {jg, 1, false, {}},             //
+      {jge, 1, false, {}},            // jge
+      {jl, 1, false, {}},             //
+      {jle, 2, false, {}},            // jle
+      {mov, 2, true, {LEFT}},         //
+      {lea, 2, false, {LEFT}},        // lea
+      {push, 1, false, {}},           //
+      {pop, 1, false, {}},            //
+      {cmp, 2, true, {}},             //
+      {test, 2, true, {}},            // test
+      {and_, 2, true, {}},            //
+      {or_, 2, true, {}},             // or
+      {xor_, 2, true, {}},            //
+      {not_, 1, true, {}},            // not
+      {inc, 1, false, {LEFT}},        //
+      {dec, 1, false, {LEFT}},        // dec
+      {add, 2, true, {LEFT}},         //
+      {sub, 2, true, {LEFT}},         // sub
+      {mul, 1, true, {ACCUMULATOR}},  // mul
+      {imul, 1, true, {ACCUMULATOR}}, // imul
+      {div, 1, true, {ACCUMULATOR}},  // div
+      {idiv, 1, true, {ACCUMULATOR}}, // idiv
+      {syscall, 0, false, {}},        // syscall
+      {ret, 0, false, {}},            // ret
+      {call, 1, false, {}},           // call
+      {global, 1, false, {}},         // global
+      {address_of, 1, true, {}},      // address_of
+      {deref, 1, true, {}},           // deref
+  }}};
+  return MAP;
+}
+[[nodiscard]] constexpr const operator_data::properties_map& operator_data::properties_array() {
+  using enum operator_t;
+  using enum comparison_t;
+
+  static constexpr properties_map MAP{{{
+
+      // Arithmetics
+      {plus,
+       "+",
+       6, // +
+       associativity_t::L2R,
+       {}},
+      {minus,
+       "-",
+       6, // -
+       associativity_t::L2R,
+       {}},
+      {star,
+       "*",
+       5, // *
+       associativity_t::L2R,
+       {}},
+      {fslash,
+       "/",
+       5, // /
+       associativity_t::L2R,
+       {}},
+
+      // Inc / dec
+      {pre_inc,
+       "++",
+       3, // preinc
+       associativity_t::R2L,
+       {}},
+      {pre_dec,
+       "--",
+       3, // predec
+       associativity_t::R2L,
+       {}},
+      {post_inc,
+       "++",
+       2, // postinc
+       associativity_t::L2R,
+       {}},
+      {post_dec,
+       "--",
+       2, // postdec
+       associativity_t::L2R,
+       {}},
+
+      // Comparators
+      {eq,
+       "==",
+       10, // ==
+       associativity_t::L2R,
+       EQ},
+
+      {neq,
+       "!=",
+       10, // !=
+       associativity_t::L2R,
+       NE},
+      {le,
+       "<",
+       9, // <
+       associativity_t::L2R,
+       LE},
+      {lt,
+       "<=",
+       9, // <=
+       associativity_t::L2R,
+       LT},
+      {gt,
+       ">",
+       9, // >
+       associativity_t::L2R,
+       GT},
+      {ge,
+       ">=",
+       9, // >=
+       associativity_t::L2R,
+       GE},
+
+      // Logical
+      {xor_,
+       "^",
+       12, // ^
+       associativity_t::L2R,
+       {}},
+      {or_,
+       "||",
+       15, // ||
+       associativity_t::L2R,
+       {}},
+      {and_,
+       "&&",
+       14, // &&
+       associativity_t::L2R,
+       {}},
+      {not_,
+       "!",
+       3, // !
+       associativity_t::R2L,
+       {}},
+      {ampersand,
+       "&",
+       3, // &
+       associativity_t::R2L,
+       {}},
+      // Assignment
+      {assign,
+       "=",
+       16, // =
+       associativity_t::R2L,
+       {}}}}};
+
+  return MAP;
+}
+[[nodiscard]] constexpr const comparison_data::properties_map& comparison_data::properties_array() {
+  using enum comparison_t;
+  using enum assembly::flag_t;
+  using enum instruction_t;
+  using enum operator_sign;
+  static constexpr properties_map MAP{{{{EQ, NE, ZERO, SIGNED},
+                                        {NE, EQ, ~ZERO, SIGNED},
+                                        {LE, GT, SIGN | OVERFLOW, SIGNED},
+                                        {LT, GE, ~SIGN | OVERFLOW, SIGNED},
+                                        {GE, LT, SIGN | OVERFLOW, SIGNED},
+                                        {GT, LE, ~SIGN | OVERFLOW, SIGNED},
+                                        {U_LT, U_GT, CARRY, UNSIGNED},
+                                        {U_GT, U_LT, ~CARRY, UNSIGNED}}}};
+  return MAP;
+}
+
 }; // namespace cmm

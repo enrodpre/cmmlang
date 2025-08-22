@@ -1,11 +1,12 @@
 #include "lang.hpp"
-#include "ast.hpp"
-#include "types.hpp"
-#include <sys/types.h>
 
-// std::size_t cmm::type_info::hash() const {
-//   return std::hash<cmm::type_info>{}(*this);
-// }
+#include "asm.hpp"
+#include <utility>
+
+#include "ast.hpp"
+#include "common.hpp"
+#include "types.hpp"
+
 namespace cmm {
 
 [[nodiscard]] ast::decl::signature builtin_signature_data::signature() const {
@@ -16,58 +17,104 @@ mangled_name mangled_name::function(cstring name, const std::vector<const type*>
   return std::format("{}_{}", name, types(t));
 }
 
-std::string mangled_name::types(const std::vector<ptr_type>& types) {
-  return types | std::views::transform([](ptr_type t) { return t->format(); }) |
+std::string mangled_name::types(const std::vector<ptype>& types) {
+  return types | std::views::transform([](ptype t) { return t->string(); }) |
          std::views::join_with('_') | std::ranges::to<std::string>();
 }
 
-mangled_name mangled_name::direct_conversion_function(cr_type f, cr_type t) {
-  return function("conv_{}", std::vector<ptr_type>{&f, &t});
+mangled_name mangled_name::direct_conversion_function(crtype f, crtype t) {
+  return function("conv_{}", std::vector<ptype>{&f, &t});
 }
 
 mangled_name mangled_name::label(cstring name) { return std::string(name); }
-mangled_name mangled_name::variable(cstring name, cr_type) { return std::string(name); }
+mangled_name mangled_name::variable(cstring name, crtype) { return std::string(name); }
 
+signature::signature(operator_t op, std::vector<ptype_spec> types)
+    : name(std::format("operator{}", op)),
+      argument_types(std::move(types)) {}
 mangled_name::operator std::string() const { return m_string; }
-// constexpr type_t typeof ::operator()(type) { return type_t::nullptr_t; }
 
-// constexpr category_t typeof ::operator()(const type& t) { return t.category; }
-constexpr size_t sizeof_::operator()(const type& t) {
-  using enum type_category_t;
-  switch (t.category) {
-    case lvalue_ref_t:
-    case rvalue_ref_t:
-    case nullptr_t:
-    case pointer_t:
-      return 8;
-    case bool_t:
-      return 1;
-    case char_t:
-      return 1;
-    case uint_t:
-    case sint_t:
-      return 4;
-    case float_t:
-      return 8;
-    case array_t:
-    case function_t:
-    case void_t:
-    case scoped_enum_t:
-    case unscoped_enum_t:
-    case class_t:
-      return 0;
-    case type_category_t::any_t:
-    case type_category_t::fundamental_t:
-    case type_category_t::arithmetic_t:
-    case type_category_t::integral_t:
-    case type_category_t::compound_t:
-    case type_category_t::indirection_t:
-    case type_category_t::reference_t:
-    case type_category_t::enum_t:
-    default:
-      break;
-  }
-  return 0;
+namespace {
+template <instruction_t Ins>
+instruction single_ins(arg_t l = arg_t::LEFT, arg_t r = arg_t::RIGHT) {
+  return instruction{.ins = Ins, .arg1 = l, .arg2 = r};
+} // namespace
+template <instruction_t Ins>
+std::vector<instruction> create_ins(arg_t l = arg_t::LEFT, arg_t r = arg_t::RIGHT) {
+  return {
+      instruction{.ins = Ins, .arg1 = l, .arg2 = r}
+  };
 }
-constexpr size_t sizeof_::operator()(const object& o) { return sizeof_::operator()(o.type); }
+} // namespace
+const std::unordered_map<operator_t, operator_builtin_data> builtin_operators{
+    {operator_t::assign,
+     {&matchers::is_ref, &matchers::is_ref, &matchers::is_cref, create_ins<instruction_t::mov>()}    },
+
+    // Unary
+    {operator_t::pre_inc,  {SINTREF_T, SINTREF_T, VOID_T, create_ins<instruction_t::inc>()}          },
+    {operator_t::pre_dec,  {SINTREF_T, SINTREF_T, VOID_T, create_ins<instruction_t::dec>()}          },
+    {operator_t::post_inc, {SINT_T, SINTREF_T, SINT_T, create_ins<instruction_t::inc>()}             },
+    {operator_t::post_dec, {SINT_T, SINTREF_T, SINT_T, create_ins<instruction_t::dec>()}             },
+    // Comparisons
+    {operator_t::eq,       {BOOL_T, &matchers::any, &matchers::any, create_ins<instruction_t::mov>()}},
+    {operator_t::neq,      {BOOL_T, &matchers::any, &matchers::any, create_ins<instruction_t::mov>()}},
+    {operator_t::gt,
+     {BOOL_T, &matchers::is_integral, &matchers::is_integral, create_ins<instruction_t::mov>()}      },
+    {operator_t::ge,
+     {BOOL_T, &matchers::is_integral, &matchers::is_integral, create_ins<instruction_t::mov>()}      },
+    {operator_t::lt,
+     {BOOL_T, &matchers::is_integral, &matchers::is_integral, create_ins<instruction_t::mov>()}      },
+    {operator_t::le,
+     {BOOL_T, &matchers::is_integral, &matchers::is_integral, create_ins<instruction_t::mov>()}      },
+    // Arithmetic
+    {operator_t::plus,
+     {&matchers::is_integral,
+      &matchers::is_integral,
+      &matchers::is_integral,
+      create_ins<instruction_t::add>()}                                                              },
+    {operator_t::minus,
+     {&matchers::is_integral,
+      &matchers::is_integral,
+      &matchers::is_integral,
+      create_ins<instruction_t::sub>()}                                                              },
+    {operator_t::star,
+     {&matchers::is_integral,
+      &matchers::is_integral,
+      &matchers::is_integral,
+      {single_ins<instruction_t::mov>(arg_t::ACC, arg_t::LEFT),
+       single_ins<instruction_t::mul>(arg_t::RIGHT),
+       single_ins<instruction_t::mov>(arg_t::LEFT, arg_t::ACC)}}                                     },
+    {operator_t::fslash,
+     {&matchers::is_integral,
+      &matchers::is_integral,
+      &matchers::is_integral,
+      {single_ins<instruction_t::mov>(arg_t::ACC, arg_t::LEFT),
+       single_ins<instruction_t::div>(arg_t::RIGHT),
+       single_ins<instruction_t::mov>(arg_t::LEFT, arg_t::ACC)}}                                     },
+    {operator_t::xor_,
+     {&matchers::any, &matchers::any, &matchers::any, create_ins<instruction_t::xor_>()}             },
+    {operator_t::or_,
+     {&matchers::any, &matchers::any, &matchers::any, create_ins<instruction_t::or_>()}              },
+    {operator_t::and_,
+     {&matchers::any, &matchers::any, &matchers::any, create_ins<instruction_t::and_>()}             },
+    {operator_t::not_,
+     {&matchers::any, &matchers::any, VOID_T, create_ins<instruction_t::not_>()}                     }
+};
+
+namespace {
+constexpr bool try_match(ptype t, ptype p) {
+  if (const auto* matcher = dynamic_cast<const type_matcher*>(p)) {
+    return matcher->match(*t);
+  }
+  return t == p;
+}
+} // namespace
+std::optional<operator_builtin_data> get_builtin_operator(operator_t op,
+                                                          const std::vector<ptype>& types) {
+  const auto& data = builtin_operators.at(op);
+  if (try_match(types.at(1), data.arg2) && try_match(types.at(0), data.arg1)) {
+    return data;
+  }
+  return {};
+}
 } // namespace cmm

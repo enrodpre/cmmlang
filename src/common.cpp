@@ -1,4 +1,7 @@
 #include "common.hpp"
+#include <libassert/assert-macros.hpp>
+#include <magic_enum/magic_enum.hpp>
+#include <string>
 
 #define TYPE_INDEX(cls) std::type_index(typeid(cls))
 namespace cmm {
@@ -108,4 +111,17 @@ string_buffer::reference_type string_buffer::active() noexcept { return m_active
   return m_actives.top();
 }
 cstring string_buffer::snapshot() const noexcept { return active().view(); }
-} // namespace cmm
+
+namespace {
+auto cast_to_ins(operator_sign sign, comparison_t c, std::string str, std::string prefix) {
+  if (sign == operator_sign::UNSIGNED && (c == comparison_t::U_LT || c == comparison_t::U_GT)) {
+    str = str.substr(2);
+  }
+  return magic_enum::enum_cast<instruction_t>(std::format("{}{}", prefix, str),
+                                              magic_enum::case_insensitive)
+      .value();
+}
+} // namespace
+instruction_t comparison_data::jump() const { return cast_to_ins(sign, m_value, name(), "j"); }
+instruction_t comparison_data::set() const { return cast_to_ins(sign, m_value, name(), "set"); }
+}; // namespace cmm

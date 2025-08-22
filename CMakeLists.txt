@@ -18,6 +18,60 @@ if(PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
   )
 endif()
 
+find_program(IWYU_PATH NAMES include-what-you-use iwyu)
+set (ENABLE_IWYU ON)
+set (IWYU_AUTOFIX ON)
+option(ENABLE_IWYU "Enable include-what-you-use analysis" OFF)
+option(IWYU_AUTOFIX "Automatically apply IWYU suggestions" OFF)
+
+# IWYU command line options
+set(IWYU_OPTS
+    # Basic options
+    --verbose=1
+    --max_line_length=100
+
+    # Mapping files (optional)
+    # --mapping_file=${CMAKE_SOURCE_DIR}/iwyu.imp
+
+    # Analysis options
+    --no_default_mappings
+    --check_also="*.h"
+    --check_also="*.hpp"
+    --check_also="*.hxx"
+)
+add_custom_target(iwyu
+    COMMAND ${CMAKE_COMMAND} -E echo "Running include-what-you-use analysis..."
+    COMMENT "Analyzing includes with IWYU"
+)
+function(add_iwyu_to_target target_name)
+  if(NOT IWYU_PATH OR NOT ENABLE_IWYU)
+    return()
+  endif()
+
+  # Set IWYU as the compiler launcher for this target
+  set_target_properties(${target_name} PROPERTIES
+        CXX_INCLUDE_WHAT_YOU_USE "${IWYU_PATH};${IWYU_OPTS}"
+    )
+
+  # Get target sources for custom commands
+  get_target_property(TARGET_SOURCES ${target_name} SOURCES)
+
+  if(IWYU_AUTOFIX)
+    # Create custom command to apply IWYU fixes
+    add_custom_target(iwyu_fix_${target_name}
+            COMMAND ${CMAKE_COMMAND} -E echo "Applying IWYU fixes to ${target_name}..."
+            COMMAND ${CMAKE_SOURCE_DIR}/scripts/apply_iwyu_fixes.sh ${target_name}
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            COMMENT "Applying IWYU fixes to ${target_name}"
+            VERBATIM
+        )
+
+    # Make it depend on the main iwyu target
+    if(TARGET iwyu)
+      add_dependencies(iwyu iwyu_fix_${target_name})
+    endif()
+  endif()
+endfunction()
 include(cmake/cotire.cmake)
 
 set(CMAKE_CXX_STANDARD 26)
@@ -79,4 +133,4 @@ set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE
 # set(CPACK_PACKAGE_NAME ${})
 # set(CPACK_PACKAGE_VENDOR "enrodpre")
 # set(CPACK_PACKAGE_VERSION "1.0.0")
-
+add_iwyu_to_target(CmmLang)

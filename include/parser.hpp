@@ -1,11 +1,33 @@
 #pragma once
 
+#include <stdint.h>
+#include <libassert/assert.hpp>
+#include <format>
+#include <utility>
+#include <exception>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <vector>
+
 #include "allocator.hpp"
 #include "ast.hpp"
-#include <format>
-
 #include "token.hpp"
-#include <utility>
+#include "macros.hpp"
+
+namespace cmm {
+namespace ast {
+namespace expr {
+enum class literal_t : uint8_t;
+struct binary_operator;
+struct call;
+struct expression;
+struct identifier;
+struct literal;
+struct unary_operator;
+}  // namespace expr
+}  // namespace ast
+}  // namespace cmm
 
 namespace cmm::parser {
 class parser_exception : public std::exception {

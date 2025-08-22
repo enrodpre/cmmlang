@@ -1,18 +1,27 @@
 #pragma once
 
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <tuple>
+
+#include "allocator.hpp"
 #include "asm.hpp"
 #include "ast.hpp"
 #include "expr.h"
+#include "lang.hpp"
+#include "macros.hpp"
+#include "types.hpp"
 #include "visitor.hpp"
-#include <cstdint>
 
 namespace cmm::ir {
 
 using namespace ast;
 
 struct compilation_unit;
+
 namespace intents {
-  enum class intent_t : uint8_t;
+enum class intent_t : uint8_t;
 }
 
 struct expression_visitor;
@@ -50,7 +59,7 @@ public:
                                    assembly::operand*);
   assembly::operand* generate_expr(expr::expression&, ir::intents::intent_t);
   assembly::operand* generate_expr(expr::expression&);
-  assembly::operand* generate_expr(expr::expression&, cr_type, assembly::operand*);
+  assembly::operand* generate_expr(expr::expression&, crtype, assembly::operand*);
 
 private:
   compilation_unit& m_context;
@@ -61,11 +70,11 @@ private:
   void generate_variable_decl(decl::variable*);
   template <typename Jump>
   void generate_continue_break(const Jump&);
-  instruction_t generate_condition(expr::expression&);
+  void generate_condition(expr::expression&);
   void begin_scope(decl::block&);
   void end_scope();
   // std::optional<assembly::operand*> call_function(const identifier&,
-  //                                                 const std::vector<ptr_type>&,
+  //                                                 const std::vector<ptype>&,
   //                                                 const expr::arguments&);
   std::optional<assembly::operand*> call_function(const decl::function*, const expr::arguments&);
   std::optional<assembly::operand*> call_function(const identifier&, const expr::arguments&);

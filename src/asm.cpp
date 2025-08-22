@@ -1,19 +1,25 @@
 #include "asm.hpp"
-#include "ast.hpp"
-#include "ir.hpp"
+
 #include <algorithm>
 #include <cstdint>
-#include <libassert/assert.hpp>
 #include <magic_enum/magic_enum.hpp>
 #include <optional>
-#include <unistd.h>
+#include <string_view>
 #include <utility>
+
+#include "asm.inl"
+#include "ast.hpp"
+#include "ir.hpp"
+
+namespace cmm {
+enum class instruction_t : uint8_t;
+} // namespace cmm
 
 namespace cmm::assembly {
 
 std::string operand::format() const { return value(); }
 [[nodiscard]] std::optional<operand::symbol_container> operand::content() const { return m_symbol; }
-[[nodiscard]] cr_type operand::content_type() const {
+[[nodiscard]] crtype operand::content_type() const {
   return content().value().content->specs.type;
 };
 
@@ -45,22 +51,22 @@ reg::reg(std::string name)
     : m_name(std::move(name)) {}
 
 namespace {
-  template <typename T>
-  constexpr std::string get_var(immediate::stored_t stored) {
-    return std::to_string(*std::get_if<T>(&stored));
-  }
+template <typename T>
+constexpr std::string get_var(immediate::stored_t stored) {
+  return std::to_string(*std::get_if<T>(&stored));
+}
 
-  std::string format_offset(int64_t offset) {
-    return std::format(" {}{}", offset > 0 ? "+ " : "- ", offset * DATASIZE);
-  }
+std::string format_offset(int64_t offset) {
+  return std::format(" {}{}", offset > 0 ? "+ " : "- ", offset * DATASIZE);
+}
 
-  std::string format_addr(const std::string& v, int64_t offset) {
-    return std::format("[{}{}]", v, offset != 0 ? format_offset(offset) : "");
-  };
+std::string format_addr(const std::string& v, int64_t offset) {
+  return std::format("[{}{}]", v, offset != 0 ? format_offset(offset) : "");
+};
 
-  int64_t calculate_offset(int64_t original_size, int64_t current_size) {
-    return current_size - original_size;
-  }
+int64_t calculate_offset(int64_t original_size, int64_t current_size) {
+  return current_size - original_size;
+}
 
 } // namespace
 
@@ -99,6 +105,11 @@ std::string reg_memory::value() const { return format_addr(m_name, m_offset); }
 
 stack_memory::stack_memory(int64_t offset)
     : reg_memory("rsp", offset) {}
+
+template <register_t Reg>
+register_placeholder::register_placeholder()
+    : reg(std::format("placeholder_{}", Reg)),
+      bound_reg(ir::compilation_unit::instance().regs.get(Reg)) {}
 
 std::string stack_memory::value() const {
   auto& v                 = ir::compilation_unit::instance();
@@ -176,40 +187,6 @@ void registers::parameters_transaction::reset() {
   for (auto* r : m_regs) {
     r->release();
   }
-}
-
-assembly_instruction0::assembly_instruction0(instruction_t ins)
-    : instruction(ins) {}
-
-[[nodiscard]] std::string assembly_instruction0::format() const {
-  return std::format("{}", instruction);
-}
-assembly_instruction1::assembly_instruction1(instruction_t ins, operand* l)
-    : instruction(ins),
-      left(l) {}
-[[nodiscard]] std::string assembly_instruction1::format() const {
-  return std::format("{} {}", instruction, *left);
-}
-
-assembly_instruction2::assembly_instruction2(instruction_t ins, operand* l, operand* r)
-    : instruction(ins),
-      left(l),
-      right(r) {}
-[[nodiscard]] std::string assembly_instruction2::format() const {
-  return std::format("{} {}, {}", instruction, *left, *right);
-}
-
-[[nodiscard]] std::string assembly_empty_line::format() const { return ""; }
-
-assembly_comment_line::assembly_comment_line(std::string str)
-    : comment(std::move(str)) {}
-std::string assembly_comment_line::format() const { return std::format("; {}", comment); }
-assembly_code_line::assembly_code_line(decltype(instruction)&& ins, decltype(comment) comm)
-    : instruction(std::move(ins)),
-      comment(std::move(comm)) {}
-
-[[nodiscard]] std::string assembly_code_line::format() const {
-  return std::format("{}{}", *instruction, comment);
 }
 
 static_assert(std::formattable<instruction_t, char>);

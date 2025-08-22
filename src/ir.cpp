@@ -1,14 +1,17 @@
 #include "ir.hpp"
+
+#include <format>
+#include <ranges>
+#include <utility>
+#include <vector>
+
 #include "asm.hpp"
 #include "ast.hpp"
 #include "common.hpp"
 #include "expr.h"
 #include "lang.hpp"
 #include "types.hpp"
-#include <bits/ranges_algo.h>
-#include <format>
-#include <libassert/assert.hpp>
-#include <magic_enum/magic_enum.hpp>
+
 namespace cmm::ir {
 
 using namespace cmm::assembly;
@@ -35,7 +38,7 @@ operand* compilation_unit::move(operand* to, operand* from) {
   }
 
   if (to->type() == operand::type_t::MEMORY && from->type() == operand::type_t::MEMORY) {
-    auto* aux = regs.get(registers::SCRATCH_1);
+    auto* aux = regs.get(register_t::SCRATCH_1);
     asmgen.write_instruction(instruction_t::mov, aux->value(), from->value());
     asmgen.write_instruction(instruction_t::mov, to->value(), aux->value());
     aux->release();
@@ -50,7 +53,7 @@ operand* compilation_unit::move(operand* to, operand* from) {
 }
 
 operand* compilation_unit::return_reg(operand* r) {
-  move(regs.get(registers::ACCUMULATOR), r);
+  move(regs.get(register_t::ACCUMULATOR), r);
   return r;
 }
 
@@ -104,7 +107,7 @@ void compilation_unit::exit_successfully() {
 
 void compilation_unit::syscall() { asmgen.write_instruction(instruction_t::syscall); }
 void compilation_unit::syscall(cstring num_syscall) {
-  move_immediate(regs.get(registers::ACCUMULATOR), num_syscall);
+  move_immediate(regs.get(register_t::ACCUMULATOR), num_syscall);
   syscall();
 }
 void compilation_unit::label(cstring l) { asmgen.write_label(l); }
@@ -122,18 +125,29 @@ void compilation_unit::pop(operand* r) {
   ast->active_frame()->local_stack.pop();
 }
 std::string compilation_unit::end() {
-  // if (!table.is_entry_point_defined()) {
-  //   throw_error<_error_t::MISSING_ENTRY_POINT>();
-  // }
+  if (!ast->is_entry_point_defined()) {
+    // throw_error<compilation_error_t::MISSING_ENTRY_POINT>();
+  }
 
   REGISTER_TRACE("Code generation finished");
   return asmgen.end();
 }
 
+std::vector<operand*> compilation_unit::load_arguments(const ast::decl::function* fn,
+                                                       const ast::expr::arguments& args) {
+  auto registers = regs.parameters();
+  return std::views::zip(fn->params, args) |
+         std::views::transform([this, &registers, &fn](const auto& pair) {
+           const auto& [param, arg] = pair;
+           auto* reg = runner.generate_expr(*arg, param->specs.type, registers.next());
+           return fn->body->declare_parameter(param, reg);
+         }) |
+         std::ranges::to<std::vector>();
+}
 std::optional<assembly::operand*> compilation_unit::call_function(decl::signature sig,
                                                                   const ast::expr::arguments& args,
                                                                   bool inlined_) {
-  if (asmgen.exists_snippet(sig.name.value())) {
+  if (asmgen::exists_snippet(sig.name.value())) {
     asmgen.register_snippet(sig.name.value());
     call(sig.name.value());
     return {};
@@ -149,14 +163,7 @@ std::optional<assembly::operand*> compilation_unit::call_function(decl::signatur
   ast->create_frame(fn->body);
   auto* sc    = ast->active_scope();
   auto params = regs.parameters();
-  auto ps     = std::views::zip(fn->params, args) |
-            std::views::transform([this, &params, &fn](const auto& pair) {
-              const auto& [param, arg] = pair;
-              auto* reg = runner.generate_expr(*arg, param->specs.type, params.next());
-              return fn->body->declare_parameter(param, reg);
-            }) |
-            std::ranges::to<std::vector>();
-
+  auto ps     = load_arguments(fn, args);
   if (!inlined_) {
     ast->active_frame()->local_stack.push();
     call(sig.name.string());
@@ -177,52 +184,98 @@ std::optional<assembly::operand*> compilation_unit::call_function(decl::signatur
   }
 
   if (&fn->specs.type.value() != VOID_T) {
-    return regs.get(registers::ACCUMULATOR);
+    return regs.get(register_t::ACCUMULATOR);
   }
   return {};
 }
 namespace {
-  constexpr operand* set_operand(compilation_unit& v, arg_t side, operand* l, operand* r) {
-    switch (side) {
-      case arg_t::NONE:
-        return nullptr;
-      case arg_t::LEFT:
-        return l;
-      case arg_t::RIGHT:
-        return r;
-      case arg_t::ACC:
-        return v.regs.get(registers::ACCUMULATOR);
-      case arg_t::AUX1:
-        return v.regs.parameter_at(0);
-      case arg_t::AUX2:
-        return v.regs.parameter_at(1);
-      default:
-        NOT_IMPLEMENTED
-    }
+constexpr operand* set_operand(compilation_unit& v, arg_t side, operand* l, operand* r) {
+  switch (side) {
+    case arg_t::NONE:
+      return nullptr;
+    case arg_t::LEFT:
+      return l;
+    case arg_t::RIGHT:
+      return r;
+    case arg_t::ACC:
+      return v.regs.get(register_t::ACCUMULATOR);
+    case arg_t::AUX1:
+      return v.regs.parameter_at(0);
+    case arg_t::AUX2:
+      return v.regs.parameter_at(1);
+    default:
+      NOT_IMPLEMENTED
   }
+}
 } // namespace
-//
-operand* compilation_unit::builtin_operator(expr::binary_operator& bin, operand* l, operand* r) {
-  REGISTER_INFO("Calling builtin operator {}", bin.operator_);
-  operand* res = nullptr;
 
-  auto ops     = get_builtin_operator(bin.operator_.value()) | std::ranges::to<std::vector>();
-  if (ops.size() < 1) {
-    throw_error<compilation_error_t::UNDECLARED_SYMBOL>(bin.operator_);
+std::vector<long> compilation_unit::progressive_prefix_match(
+    const std::vector<ptype>& argument_types,
+    const std::vector<std::pair<long, std::vector<ptype>>>& possible_fns) const {
+  return argument_types | std::views::enumerate |
+         std::views::transform([this, &possible_fns](const auto& pair) {
+           auto i                 = std::get<0>(pair);
+           ptype castable_type = std::get<1>(pair);
+
+           auto r                 = conversions::get_convertible_types(castable_type) |
+                    std::views::transform([this, i, &possible_fns](ptype casted_type) {
+                      auto p =
+                          possible_fns | std::views::filter([this, i, casted_type](const auto& fn) {
+                            const auto& [j, types] = fn;
+                            return types.at(i)->format() == casted_type->format();
+                          }) |
+                          std::views::transform([](const auto& pair) { return std::get<0>(pair); });
+                      return p;
+                    }) |
+                    std::views::join | std::ranges::to<std::vector>();
+           return r;
+         }) |
+         std::views::join | std::ranges::to<std::vector>();
+}
+operator_builtin_data compilation_unit::get_operator_implementation(
+    const operator_& op,
+    const std::vector<ptype>& types) const {
+  std::vector<operator_builtin_data> builtins({get_builtin_operator(op, types).value()});
+  if (builtins.size() == 1) {
+    return builtins.front();
   }
 
-  for (const auto& ins : ops) {
-    instruction_data data(ins.first);
+  auto args = builtins | std::views::enumerate | std::views::transform([](const auto& pair) {
+                const auto& [i, types] = pair;
+                return std::make_pair(i, std::vector<ptype>{types.arg1, types.arg2});
+              }) |
+              std::ranges::to<std::vector>();
+  auto result = progressive_prefix_match(types, args) | std::ranges::to<std::vector>();
+  if (result.empty()) {
+    throw_error<compilation_error_t::UNDECLARED_SYMBOL>(op);
+  }
+  if (result.size() > 1) {
+    REGISTER_WARN("Matched operator {} more than one", op);
+  }
+  return builtins.at(result.front());
+}
+
+operand* compilation_unit::builtin_operator(const operator_& op,
+                                            const std::vector<ptype>& types,
+                                            const std::vector<operand*>& ops) {
+  REGISTER_INFO("Calling builtin operator {}", op);
+  operand* res   = nullptr;
+  auto operators = get_operator_implementation(op, types);
+  for (const auto& exec_unit : operators.ins) {
+    instruction_t ins = exec_unit.ins;
+    instruction_data data(ins);
+    operand* l = ops.at(0);
+    operand* r = ops.at(1);
 
     if (data.n_params == 0) {
-      instruction(ins.first);
+      instruction(ins);
     } else if (data.n_params == 1) {
-      l = set_operand(*this, ins.second.first, l, r);
-      instruction(ins.first, l);
+      l = set_operand(*this, exec_unit.arg1, l, r);
+      instruction(ins, l);
     } else if (data.n_params == 2) {
-      l = set_operand(*this, ins.second.first, l, r);
-      r = set_operand(*this, ins.second.second, l, r);
-      instruction(ins.first, l, r);
+      l = set_operand(*this, exec_unit.arg1, l, r);
+      r = set_operand(*this, exec_unit.arg2, l, r);
+      instruction(ins, l, r);
     } else {
       NOT_IMPLEMENTED
     }
@@ -235,39 +288,8 @@ operand* compilation_unit::builtin_operator(expr::binary_operator& bin, operand*
         res = r;
         break;
       case instruction_result_reg::ACCUMULATOR:
-        res = regs.get(registers::ACCUMULATOR);
+        res = regs.get(register_t::ACCUMULATOR);
         break;
-      case instruction_result_reg::NONE:
-        break;
-    }
-  }
-  return res;
-}
-operand* compilation_unit::builtin_operator(expr::unary_operator& unary, operand* e) {
-  REGISTER_INFO("Calling builtin operator {}", unary.operator_);
-  operand* res = nullptr;
-  auto ops     = get_builtin_operator(unary.operator_.value()) | std::ranges::to<std::vector>();
-  if (ops.size() < 1) {
-    throw_error<compilation_error_t::UNDECLARED_SYMBOL>(unary.operator_);
-  }
-  for (const auto& ins : ops) {
-
-    instruction_data data(ins.first);
-    if (data.n_params == 0) {
-      instruction(ins.first);
-    } else if (data.n_params == 1) {
-      instruction(ins.first, e);
-    } else {
-      NOT_IMPLEMENTED
-    }
-    switch (data.where) {
-      case instruction_result_reg::LEFT:
-        res = e;
-        break;
-      case instruction_result_reg::ACCUMULATOR:
-        res = regs.get(registers::ACCUMULATOR);
-        break;
-      case instruction_result_reg::RIGHT:
       case instruction_result_reg::NONE:
         break;
     }
@@ -276,4 +298,5 @@ operand* compilation_unit::builtin_operator(expr::unary_operator& unary, operand
 }
 static_assert(std::formattable<operand*, char>);
 
+#include "ir.inl"
 } // namespace cmm::ir

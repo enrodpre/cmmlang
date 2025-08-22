@@ -1,31 +1,28 @@
 #include "semantic.hpp"
+
+#include <format>
+#include <vector>
+
 #include "ast.hpp"
+#include "common.hpp"
 #include "expr.h"
 #include "ir.hpp"
+#include "lang.hpp"
 #include "types.hpp"
 
 namespace cmm {
 namespace {
-  constexpr const ast::decl::function* get_function(ir::compilation_unit& v,
-                                                    const ast::identifier& name,
-                                                    const std::vector<ptr_type>& types) {
-    ast::decl::signature sig(name, types);
-    if (const auto* fn = v.ast->get_function(sig)) {
-      return fn;
-    }
-    throw_error<compilation_error_t::UNDECLARED_SYMBOL>(name);
-  }
-  constexpr void load_operator_semantics(ir::compilation_unit& v,
-                                         const ast::expr::expression& expr,
-                                         const ast::operator_& name,
-                                         const std::vector<ptr_type>& types) {
-    const auto* fn = get_function(v, name, types);
-    cr_type type   = fn->specs.type;
-    auto cat       = is_reference_v::operator()(type) ? ast::expr::value_category_t::LVALUE
-                                                      : ast::expr::value_category_t::RVALUE;
-    expr.load_semantics(&type, cat);
-    // expr.semantics.fn = fn;
-  }
+void load_operator_semantics(ir::compilation_unit& v,
+                             const ast::expr::expression& expr,
+                             const ast::operator_& name,
+                             const std::vector<ptype>& types) {
+  auto op          = v.get_operator_implementation(name, types);
+  const auto* type = op.ret;
+  auto cat         = is_reference_v::operator()(*type) ? ast::expr::value_category_t::LVALUE
+                                                       : ast::expr::value_category_t::RVALUE;
+  expr.load_semantics(type, cat);
+  // expr.semantics.fn = fn;
+}
 }; // namespace
 //
 void semantics::load_program_semantics(ast::translation_unit* program) {
@@ -47,8 +44,8 @@ semantics::visitor::visitor()
 
 void semantics::visitor::visit(ast::expr::identifier& c) {
   TRACE_VISITOR(c);
-  // const auto* var = v.table.get_variable(c.string());
-  // c.load_semantics(var->type, ast::expr::value_category_t::LVALUE);
+  const auto* var = v.ast->get_variable(c.string());
+  c.load_semantics(&var->specs.type.value(), ast::expr::value_category_t::LVALUE);
   c.semantics.is_constant_evaluable = false;
 }
 void semantics::visitor::visit(ast::expr::unary_operator& c) {
@@ -72,7 +69,7 @@ void semantics::visitor::visit(ast::expr::binary_operator& c) {
   TRACE_VISITOR(c);
   c.left.accept(*this);
   c.right.accept(*this);
-  // load_operator_semantics(v, c, c.operator_, {c.right.type(), c.left.type()});
+  load_operator_semantics(v, c, c.operator_, {&c.right.type(), &c.left.type()});
   c.semantics.is_constant_evaluable =
       c.left.semantics.is_constant_evaluable && c.right.semantics.is_constant_evaluable;
 }
@@ -94,12 +91,6 @@ void semantics::visitor::visit(ast::expr::arguments& args) {
     arg->accept(*this);
   }
 }
-void semantics::visitor::visit(ast::iteration::while_& c) {}
-void semantics::visitor::visit(ast::iteration::for_& c) {}
-void semantics::visitor::visit(ast::selection::if_& c) {
-  c.condition.semantics.contextually_castable =
-      &cmm::type::create_fundamental(type_category_t::bool_t);
-}
-void semantics::visitor::visit(ast::jump::goto_& c) {}
-void semantics::visitor::visit(ast::jump::return_& c) {}
+// void semantics::visitor::visit(ast::jump::goto_& c) {}
+// void semantics::visitor::visit(ast::jump::return_& c) {}
 }; // namespace cmm

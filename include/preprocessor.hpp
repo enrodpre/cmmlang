@@ -1,7 +1,10 @@
 #pragma once
 
-#include "common.hpp"
+#include <stddef.h>
 #include <string>
+#include <string_view>
+
+#include "common.hpp"
 
 namespace cmm {
 

@@ -1,14 +1,21 @@
 #include "parser.hpp"
+
+#include <libassert/assert-macros.hpp>
+#include <magic_enum/magic_enum.hpp>
+#include <type_traits>
+#include <utility>
+#include <optional>
+#include <ranges>
+#include <stdexcept>
+
 #include "ast.hpp"
 #include "common.hpp"
-
 #include "expr.h"
 #include "lang.hpp"
 #include "token.hpp"
 #include "types.hpp"
-#include <magic_enum/magic_enum_format.hpp>
-#include <type_traits>
-#include <utility>
+#include "static_type_info/type_id.h"
+#include "visitor.hpp"
 
 namespace cmm::parser {
 
@@ -338,7 +345,7 @@ namespace {
     } // namespace cmm::ast
     return token_type.cast<type_category_t>();
   }
-  cr_type parse_type(const std::vector<token>& ts) {
+  crtype parse_type(const std::vector<token>& ts) {
     bool const_    = false;
     bool volatile_ = false;
     bool unsigned_ = false;

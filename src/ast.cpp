@@ -49,9 +49,9 @@ variable::variable(specifiers&& spec, decltype(rank) r, identifier&& id, decltyp
       init(i) {
   add_all(&specs, &ident, init);
 }
-variable::variable(cr_type t, decltype(ident)&& id, decltype(init) init)
+variable::variable(crtype t, decltype(ident)&& id, decltype(init) init)
     : variable(specifiers(t), nullptr, std::move(id), init) {}
-variable::variable(cr_type t, std::string s)
+variable::variable(crtype t, std::string s)
     : variable(t, identifier(std::move(s)), nullptr) {}
 
 function::function(decltype(specs)&& s,
@@ -72,9 +72,9 @@ function::function(decltype(specs)&& s,
 }
 
 assembly::operand* decl::conversion_function::operator()(assembly::operand* reg) const noexcept {
-  cr_type from = reg->content_type();
+  crtype from = reg->content_type();
   ASSERT(is_convertible(from));
-  cr_type to_t = to(from);
+  crtype to_t = to(from);
 
   // TODO
   return {};
@@ -107,8 +107,8 @@ selection::if_::if_(const token& t,
 }
 
 namespace {
-  std::string condition_label() { return std::format("cond_{}", "it"); }
-  std::string exit_label() { return std::format("exit_{}", "it"); }
+std::string condition_label() { return std::format("cond_{}", "it"); }
+std::string exit_label() { return std::format("exit_{}", "it"); }
 } // namespace
 iteration::while_::while_(const token& t, expr::expression& condition_, block* block)
     : keyword(t),
@@ -149,15 +149,15 @@ jump::return_::return_(ast::keyword&& k, expr::expression* expr_)
   add(&keyword);
 }
 
-// std::vector<ptr_type> conversion_store::get_convertible_types(cr_type from) const {
+// std::vector<ptype> conversion_store::get_convertible_types(crtype from) const {
 //   return get_conversions(from) | std::views::transform([&from](const auto& conversion) ->
-//   ptr_type {
+//   ptype {
 //            return &conversion->to(from);
 //          }) |
 //          std::ranges::to<std::vector>();
 // }
 
-// std::vector<const conversion_function*> conversion_store::get_conversions(cr_type from) const {
+// std::vector<const conversion_function*> conversion_store::get_conversions(crtype from) const {
 //   auto mangled_from = from.format();
 //   auto glob_range =
 //       m_glob_store | std::views::filter([&from](const glob_conversion& fn) -> bool {
@@ -341,62 +341,46 @@ void translation_unit::declare_variable(ast::decl::variable* var) {
   }
 }
 
-std::optional<function*> translation_unit::progressive_prefix_match(
-    const std::vector<ptr_type>& argument_types,
-    const std::vector<function*>& possible_fns) const {
-  auto range =
-      argument_types | std::views::enumerate |
-      std::views::transform([this, &possible_fns](const auto& pair) {
-        auto i                 = std::get<0>(pair);
-        ptr_type castable_type = std::get<1>(pair);
-
-        auto r                 = conversions::get_convertible_types(castable_type) |
-                 std::views::transform([this, i, &possible_fns](ptr_type casted_type) {
-                   auto p = possible_fns |
-                            std::views::filter([this, i, casted_type](const function* fn) {
-                              return fn->params.types().at(i)->format() == casted_type->format();
-                            });
-                   return p;
-                 }) |
-                 std::views::join | std::ranges::to<std::vector>();
-        return r;
-      }) |
-      std::views::join | std::ranges::to<std::vector>();
-  if (range.size() == 1) {
-    return range[0];
-  }
-
-  return std::nullopt; // no unique match found
-}
-
 function* translation_unit::get_function(const signature& sig) {
   const auto& [name, args_types] = sig;
   if (m_functions.contains(sig)) {
     return m_functions.at(sig);
   }
-  auto f                            = conversions::get_convertible_types(args_types.at(0));
   std::vector<function*> candidates = m_functions.get_by_name(name.value());
-  auto opt                          = progressive_prefix_match(args_types, candidates);
-  if (opt.has_value()) {
-    return opt.value();
-  }
+  if (!candidates.empty()) {
+    auto opt = m_context->progressive_prefix_match(
+        args_types,
+        candidates | std::views::enumerate | std::views::transform([](const auto& pair) {
+          const auto& [i, fn] = pair;
+          return std::make_pair(i, fn->sig().types);
+        }) | std::ranges::to<std::vector>());
 
-  throw_error<compilation_error_t::UNDECLARED_SYMBOL>(name);
+    if (!opt.empty()) {
+      return candidates.at(opt.front());
+    }
+  }
+  throw_error<compilation_error_t::UNDECLARED_SYMBOL>(sig.name);
 }
 
 const function* translation_unit::get_function(const signature& sig) const {
   const auto& [name, args_types] = sig;
-  if (const auto* candidate = m_functions.at(sig); candidate != nullptr) {
-    return candidate;
+  if (m_functions.contains(sig)) {
+    return m_functions.at(sig);
   }
-  auto f          = conversions::get_convertible_types(args_types.at(0));
-  auto candidates = m_functions.get_by_name(name.value());
-  auto opt        = progressive_prefix_match(args_types, candidates);
-  if (opt.has_value()) {
-    return opt.value();
-  }
+  std::vector<function*> candidates = m_functions.get_by_name(name.value());
+  if (!candidates.empty()) {
+    auto opt = m_context->progressive_prefix_match(
+        args_types,
+        candidates | std::views::enumerate | std::views::transform([](const auto& pair) {
+          const auto& [i, fn] = pair;
+          return std::make_pair(i, fn->sig().types);
+        }) | std::ranges::to<std::vector>());
 
-  throw_error<compilation_error_t::UNDECLARED_SYMBOL>(name);
+    if (!opt.empty()) {
+      return candidates.at(opt.front());
+    }
+  }
+  throw_error<compilation_error_t::UNDECLARED_SYMBOL>(sig.name);
 }
 
 void translation_unit::declare_function(decl::function* func, bool) {

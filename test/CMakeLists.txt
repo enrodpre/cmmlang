@@ -9,7 +9,7 @@ message(STATUS "CWD: ${CMAKE_CURRENT_SOURCE_DIR}")
 
 project(${TESTSNAME} LANGUAGES CXX)
 
-set(GTEST_DISABLE_PTHREADS ON)
+# set(GTEST_DISABLE_PTHREADS ON)
 add_definitions(-DGTEST_PRINT_ENABLED)
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
 
@@ -17,9 +17,6 @@ file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
 # include(../cmake/CPM.cmake)
 
 find_package(GTest REQUIRED QUIET)
-
-# include(GoogleTest)
-
 # ---- Unit test function ----
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGTEST_PRINT_ENABLED")
 # ---- Add unit tests ----
@@ -29,13 +26,18 @@ types parser)
 foreach(file ${UNIT_TEST_LIST})
   set(name unit_${file})
   add_executable(${name} "${CMAKE_CURRENT_SOURCE_DIR}/test_${file}.cpp")
-  target_link_libraries(${name} CmmLib gtest gtest_main)
+  target_link_libraries(${name} CmmLib gtest gtest_main Revisited)
   # gtest_discover_tests(${name})
   add_test(NAME ${name} COMMAND ${name})
   set_tests_properties(${name} PROPERTIES LABELS "unit")
-  # set_tests_properties(${name} PROPERTIES LABELS "unit")
 endforeach()
 
+target_include_directories(CmmLib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+include_directories(${GTEST_INCLUDE_DIRS})
+# include(GoogleTest)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 add_custom_target(run_unit_tests
 COMMAND ${CMAKE_CTEST_COMMAND}
 --output-on-failure
@@ -81,7 +83,7 @@ set_tests_properties(e2e PROPERTIES LABELS "e2e")
 add_custom_target(test_unit
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure --label-regex "unit"
     COMMENT "Running unit tests"
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 add_custom_target(test_e2e

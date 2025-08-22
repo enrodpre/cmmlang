@@ -27,7 +27,7 @@ IndentCaseLabels: true
 IndentPPDirectives: BeforeHash
 IndentRequiresClause:  true
 IndentWidth: 2
-NamespaceIndentation: Inner
+NamespaceIndentation: None
 PackConstructorInitializers: Never
 PenaltyIndentedWhitespace: 0
 PenaltyReturnTypeOnItsOwnLine: 200

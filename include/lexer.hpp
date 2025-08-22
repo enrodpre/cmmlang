@@ -1,6 +1,10 @@
 #pragma once
 
+#include <stddef.h>
+#include <vector>
+
 #include "token.hpp"
+#include "common.hpp"
 
 namespace cmm {
 class lexer {

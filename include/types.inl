@@ -1,68 +1,63 @@
 #pragma once
 
+#include <libassert/assert-macros.hpp>
+#include <new>
+#include <utility>
+
 #include "allocator.hpp"
 #include "types.hpp"
 
 namespace cmm {
+enum class type_category_t : uint8_t;
+struct type;
 
-#define MAKE_ROW(CAT, PARENT, ...) \
-  { \
-    CAT, PARENT, { __VA_ARGS__ } \
-  }
+[[nodiscard]] constexpr const type_category_data::properties_map&
+type_category_data::properties_array() {
+  static constexpr properties_map MAP{
+      {{{any_t, any_t, {fundamental_t, compound_t}},
+        {fundamental_t, any_t, {void_t, nullptr_t, arithmetic_t}},
+        {void_t, fundamental_t, {}},
+        {nullptr_t, fundamental_t, {}},
+        {arithmetic_t, fundamental_t, {integral_t, float_t}},
+        {integral_t, arithmetic_t, {bool_t, char_t, uint_t, sint_t}},
+        {bool_t, integral_t, {}},
+        {char_t, integral_t, {}},
+        {uint_t, integral_t, {}},
+        {sint_t, integral_t, {}},
+        {float_t, arithmetic_t, {}},
+        {compound_t, any_t, {}},
+        {indirection_t, compound_t, {reference_t, pointer_t}},
+        {reference_t, indirection_t, {lvalue_ref_t, rvalue_ref_t}},
+        {lvalue_ref_t, reference_t, {}},
+        {rvalue_ref_t, reference_t, {}},
+        {pointer_t, indirection_t, {}},
+        {array_t, compound_t, {}},
+        {function_t, compound_t, {}},
+        {enum_t, compound_t, {scoped_enum_t, unscoped_enum_t}},
+        {scoped_enum_t, enum_t, {}},
+        {unscoped_enum_t, enum_t, {}},
+        {class_t, compound_t, {}},
+        {matcher_t, matcher_t, {}},
+        {dummy_t, dummy_t, {}}}
 
-// Or for entries with no children:
-#define MAKE_LEAF_ROW(CAT, PARENT) \
-  { \
-    CAT, PARENT, {} \
-  }
-
-namespace {
-  constexpr type_metadata_store_t load_metadata() {
-    using enum type_category_t;
-    return {
-        {MAKE_ROW(any_t, any_t, fundamental_t, compound_t),
-         MAKE_ROW(fundamental_t, any_t, void_t, nullptr_t, arithmetic_t),
-         MAKE_LEAF_ROW(void_t, fundamental_t),
-         MAKE_LEAF_ROW(nullptr_t, fundamental_t),
-         MAKE_ROW(arithmetic_t, fundamental_t, integral_t, float_t),
-         MAKE_ROW(integral_t, arithmetic_t, bool_t, char_t, uint_t, sint_t),
-         MAKE_LEAF_ROW(bool_t, integral_t),
-         MAKE_LEAF_ROW(char_t, integral_t),
-         MAKE_LEAF_ROW(uint_t, integral_t),
-         MAKE_LEAF_ROW(sint_t, integral_t),
-         MAKE_LEAF_ROW(float_t, arithmetic_t),
-         MAKE_LEAF_ROW(compound_t, any_t),
-         MAKE_ROW(indirection_t, compound_t, reference_t, pointer_t),
-         MAKE_ROW(reference_t, indirection_t, lvalue_ref_t, rvalue_ref_t),
-         MAKE_LEAF_ROW(lvalue_ref_t, reference_t),
-         MAKE_LEAF_ROW(rvalue_ref_t, reference_t),
-         MAKE_LEAF_ROW(pointer_t, indirection_t),
-         MAKE_LEAF_ROW(array_t, compound_t),
-         MAKE_LEAF_ROW(function_t, compound_t),
-         MAKE_ROW(enum_t, compound_t, scoped_enum_t, unscoped_enum_t),
-         MAKE_LEAF_ROW(scoped_enum_t, enum_t),
-         MAKE_LEAF_ROW(unscoped_enum_t, enum_t),
-         MAKE_LEAF_ROW(class_t, compound_t)}
-    };
-  };
-} // namespace
+      }};
+  return MAP;
+}
 
 template <typename... Args>
 const type& type::create(type_category_t t, Args&&... args) {
   return *new (memory::Allocator::instance().allocate<type>()) type(t, std::forward<Args>(args)...);
 }
 
-inline constexpr const type_metadata_store_t type_metadata_store = load_metadata();
-
 constexpr bool is_const_v::operator()(const type& t) { return t.c; }
-constexpr bool is_indirect_v::operator()(cr_type t) {
+constexpr bool is_indirect_v::operator()(crtype t) {
   bool value = belongs_to(t.category, type_category_t::indirection_t);
   if (value) {
     ASSERT(t.underlying != nullptr);
   }
   return value;
 }
-constexpr bool is_reference_v::operator()(cr_type t) {
+constexpr bool is_reference_v::operator()(crtype t) {
   return belongs_to(t.category, type_category_t::reference_t);
 }
 

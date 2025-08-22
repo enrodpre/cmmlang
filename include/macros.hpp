@@ -8,6 +8,7 @@
 /// SPDX-License-Identifier: MIT
 #pragma once
 
+#include <print>
 /// @brief Invoke the pre-processor stringizing operator but fully expanding any
 /// macro argument first!
 #define STRINGIZE(s)      STRINGIZE_IMPL(s)
@@ -110,7 +111,8 @@
 
 #define AST_SIBLINGS(...) \
   std::string string() const override { return cpptrace::demangle(typeid(this).name()); }
-// std::vector<node*> children() const override { return transform(CAST_TO_NODE); }
+// std::vector<node*> children() const override { return
+// transform(CAST_TO_NODE); }
 #define AST_COMPOSITE(...) \
   std::string string() const override { return cpptrace::demangle(typeid(this).name()); }
 // std::vector<node*> children() const override { \
@@ -252,7 +254,7 @@
   DECLARE_VARS(__VA_ARGS__) \
   using member_types   = std::tuple<value_type, GET_TYPES(__VA_ARGS__)>; \
   using properties_map = magic_enum::containers::array<value_type, member_types>; \
-  std::string string() const override { return std::format("{}", self); } \
+  [[nodiscard]] std::string string() const override { return std::format("{}", self); } \
   static_assert(std::is_constant_evaluated()); \
   [[nodiscard]] static constexpr const properties_map& properties_array(); \
   constexpr CONCAT(TYPE, _data)(value_type e) \

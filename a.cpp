@@ -1,1 +1,4 @@
-int main() { char a[] = {"3"}; }
+int main() {
+  int a  = 8;
+  bool b = a == 8.;
+}

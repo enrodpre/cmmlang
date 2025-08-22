@@ -1,29 +1,43 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+#include <libassert/assert.hpp>
+#include <optional>
+#include <string>
+
 #include "asm.hpp"
 #include "ast.hpp"
 #include "common.hpp"
 #include "expr.h"
 #include "lang.hpp"
 #include "traverser.hpp"
-#include <cstdint>
-#include <libassert/assert.hpp>
-#include <optional>
+
+namespace cmm {
+enum class instruction_t : uint8_t;
+namespace ast {
+namespace decl {
+struct signature;
+} // namespace decl
+struct identifier;
+struct translation_unit;
+} // namespace ast
+} // namespace cmm
 
 namespace cmm::ir {
 
 using assembly::operand;
 
 namespace intents {
-  enum class address_intent_t : uint8_t { HAVING_VALUE = 0, HAVING_ADDRESS, CARENT };
-  enum class address_mode_intent_t : uint8_t { COPY = 0, ADDRESS_MEMORY, LOAD_ADDRESS };
+enum class address_intent_t : uint8_t { HAVING_VALUE = 0, HAVING_ADDRESS, CARENT };
+enum class address_mode_intent_t : uint8_t { COPY = 0, ADDRESS_MEMORY, LOAD_ADDRESS };
 
-  enum class intent_t : uint8_t {
-    MOVE_CONTENT,
-    LOAD_VARIABLE_VALUE,
-    LOAD_VARIABLE_ADDRESS,
-    SAVE_VARIABLE_VALUE
-  };
+enum class intent_t : uint8_t {
+  MOVE_CONTENT,
+  LOAD_VARIABLE_VALUE,
+  LOAD_VARIABLE_ADDRESS,
+  SAVE_VARIABLE_VALUE
+};
 } // namespace intents
 
 enum class Phase : uint8_t {
@@ -67,11 +81,22 @@ public:
   void reserve_memory(cstring, cstring, cstring);
   assembly::label_literal* reserve_constant(cstring);
   std::optional<operand*> call_function(decl::signature, const ast::expr::arguments&, bool = false);
+  [[nodiscard]]
+  std::vector<long> progressive_prefix_match(
+      const std::vector<ptype>& argument_types,
+      const std::vector<std::pair<long, std::vector<ptype>>>& possible_fns) const;
+
+  std::vector<operand*> load_arguments(const ast::decl::function*, const ast::expr::arguments&);
+  [[nodiscard]] operator_builtin_data get_operator_implementation(
+      const operator_&,
+      const std::vector<ptype>&) const;
+  const decl::function* get_function(const decl::signature&);
+  operand* builtin_operator(const operator_&,
+                            const std::vector<ptype>&,
+                            const std::vector<operand*>&);
 
   template <assembly::Operand... Args>
   void instruction(const instruction_t&, Args&&...);
-  operand* builtin_operator(expr::unary_operator&, operand*);
-  operand* builtin_operator(expr::binary_operator&, operand*, operand*);
   operand* move(operand*, operand*);
   operand* lea(operand*, operand*);
   operand* move_immediate(operand*, cstring);

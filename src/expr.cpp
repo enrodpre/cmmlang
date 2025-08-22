@@ -42,7 +42,7 @@ cmm::location expr::binary_operator::location() const {
 bool expr::expression::is_category(value_category_t cat) const {
   return semantics.value_category == cat;
 }
-void expr::expression::load_semantics(ptr_type t, value_category_t v) const {
+void expr::expression::load_semantics(ptype t, value_category_t v) const {
   semantics.loaded         = true;
   semantics.original_type  = t;
   semantics.value_category = v;
