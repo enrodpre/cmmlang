@@ -73,10 +73,15 @@ function(add_iwyu_to_target target_name)
   endif()
 endfunction()
 include(cmake/cotire.cmake)
+include(cmake/sanitizers.cmake)
+add_sanitizer_support(address)
 
+# unset(CMAKE_CXX_COMPILER_LAUNCHER)
+# set(CMAKE_CXX_COMPILER /usr/bin/clang++)
+# set(CMAKE_CXX_COMPILER g++)
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_EXTENSIONS ONN)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_SHELL, "/usr/bin/zsh")
 include(cmake/CPM.cmake)
@@ -108,7 +113,8 @@ set(FLAGS
   # -Wno-gnu-zero-variadic-macro-arguments
   # -Wno-switch
   # -Wshadow
-  # -fsanitize=undefined,address
+  -fsanitize=address
+#undefined,
 )
 
 add_library(${LIBNAME} ${sources})

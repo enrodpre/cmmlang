@@ -1,1 +1,1 @@
-set args build/test/unit_types
+set args examples/pre_inc.cmm

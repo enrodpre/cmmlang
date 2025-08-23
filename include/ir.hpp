@@ -15,7 +15,6 @@
 #include "traverser.hpp"
 
 namespace cmm {
-enum class instruction_t : uint8_t;
 
 namespace ast {
 struct identifier;
@@ -99,7 +98,6 @@ public:
   operand* zero(operand*);
   void jump(cstring);
   void jump(const instruction_t&, cstring);
-  // void move_rsp(size_t);
   void cmp(cstring, cstring);
   void exit(operand*);
   void call(cstring);

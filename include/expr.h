@@ -46,9 +46,7 @@ static_assert(std::is_base_of_v<statement, expression>);
 
 struct identifier : visitable<identifier, expression> {
   identifier(ast::identifier&& id);
-
   const std::string& value() const { return m_term.value(); }
-
   operator ast::identifier() const { return m_term; }
 
   AST_LEAF
@@ -62,16 +60,13 @@ DERIVE_OK(statement, expression);
 DERIVE_OK(expression, identifier);
 
 enum class literal_t : uint8_t { CHAR, STRING, SINT, UINT, FALSE, TRUE, FLOAT };
-
 struct literal : visitable<literal, expression> {
   literal_t category;
   literal(const token&, literal_t);
-  literal(cmm::location, std::string, literal_t);
+  literal(std::string, literal_t);
 
   const std::string& value() const { return m_term.value(); }
-
   operator ast::literal() const { return m_term; }
-
   AST_LEAF
 
 protected:
@@ -85,7 +80,6 @@ struct call : visitable<call, expression> {
   arguments args;
 
   call(decltype(ident)&& ident_, decltype(args)&& args);
-
   [[nodiscard]] std::vector<ptype> types() const {
     return args | std::views::transform([](const expr::expression* expr) -> ptype {
              return expr->type();
@@ -97,7 +91,6 @@ struct call : visitable<call, expression> {
 struct unary_operator : visitable<unary_operator, expression> {
   expression& expr;
   ast::operator_ operator_;
-
   unary_operator(expression* expression, ast::operator_&& op);
 };
 
@@ -105,7 +98,6 @@ struct binary_operator : visitable<binary_operator, expression> {
   expression& left;
   expression& right;
   ast::operator_ operator_;
-
   binary_operator(expression* left, expression* right, ast::operator_&& op);
 };
 

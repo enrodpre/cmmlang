@@ -52,9 +52,14 @@ concept is_node = std::is_base_of_v<ast::node, T>;
 template <typename T>
 concept is_pointer_node = std::is_assignable_v<T, ast::node*>;
 
-struct composite : revisited::DerivedVisitable<composite, node> {
+struct composite : visitable<composite, node> {
 
   composite() = default;
+  ~composite() {
+    for (const node* n : m_data) {
+      // delete n;
+    }
+  }
   composite(std::vector<node*>&& v)
       : m_data(std::move(v)) {}
 
@@ -70,17 +75,6 @@ struct composite : revisited::DerivedVisitable<composite, node> {
         .value();
   }
   vector<node*> m_data;
-  //
-  // void accept(revisited::VisitorBase& vis) override {
-  //   for (node* child : m_data) {
-  //     child->accept(vis);
-  //   }
-  // }
-  // void accept(revisited::VisitorBase& vis) const override {
-  //   for (const node* child : m_data) {
-  //     child->accept(vis);
-  //   }
-  // }
 
 protected:
   template <typename... Nodes>

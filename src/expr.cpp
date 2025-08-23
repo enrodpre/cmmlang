@@ -20,14 +20,14 @@ expr::identifier::identifier(ast::identifier&& id)
   add(m_term);
 }
 
-expr::literal::literal(cmm::location l, std::string s, literal_t t)
+expr::literal::literal(std::string s, literal_t t)
     : category(t),
       m_term(std::move(l), std::move(s)) {
   add(m_term);
 }
 
 expr::literal::literal(const token& t, literal_t l)
-    : literal(t.location(), t.value, l) {}
+    : literal(t.value, l) {}
 
 expr::call::call(decltype(ident)&& id, decltype(args)&& a = {})
     : ident(std::move(id)),

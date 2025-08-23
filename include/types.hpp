@@ -179,15 +179,15 @@ protected:
   std::string m_desc;
 };
 
-#define create_mod(NAME, RET)                                                     \
-  inline static const type_modifier NAME(#NAME, [](crptype t) -> ptype { RET; });
-#define create_wrapper(NAME, CAT)                                                  \
-  inline static const type_modifier NAME{                                          \
-      #NAME, [](crptype t) -> ptype {                                              \
-        return type::create(type_category_t::CAT, t->underlying, 0, false, false); \
-      }};
-#define create_to_type(NAME, TYPE)                                             \
-  inline static const type_modifier NAME(#NAME, [](crptype) { return TYPE; });
+#define create_mod(NAME, RET)                                              \
+  static const type_modifier NAME(#NAME, [](crptype t) -> ptype { RET; });
+#define create_wrapper(NAME, CAT)                                                              \
+  static const type_modifier NAME{#NAME, [](crptype t) -> ptype {                              \
+                                    return type::create(                                       \
+                                        type_category_t::CAT, t->underlying, 0, false, false); \
+                                  }};
+#define create_to_type(NAME, TYPE)                                      \
+  static const type_modifier NAME(#NAME, [](crptype) { return TYPE; });
 
 namespace modifiers {
 create_mod(identity, return t);
@@ -207,15 +207,20 @@ using match_t   = std::function<bool(crtype)>;
 using compare_t = std::function<bool(crtype, crtype)>;
 
 struct type_matcher : public type_specifier {
+  ~type_matcher() { REGISTER_WARN("Destroyed matcher {}", *this); }
   using value_type = std::function<bool(crptype)>;
   type_matcher(std::string desc, value_type v)
       : type_specifier(type_category_t::generic_t),
         m_matcher(std::move(v)),
-        m_desc(std::move(desc)) {}
+        m_desc(std::move(desc)) {
+    REGISTER_INFO("Created matcher {}", *this);
+  }
   type_matcher(std::string desc, const type_matcher& v)
       : type_specifier(type_category_t::generic_t),
         m_matcher(std::move(v)),
-        m_desc(std::move(desc)) {}
+        m_desc(std::move(desc)) {
+    REGISTER_INFO("Created matcher {}", *this);
+  }
   COPYABLE_CLS(type_matcher);
   NOT_MOVABLE_CLS(type_matcher);
   bool operator()(crptype) const;

@@ -39,6 +39,13 @@ struct leaf : visitable<leaf, node> {
 
   std::optional<cmm::location> location() const final { return m_location; }
 
+protected:
+  void add(node* n) {
+    if (n != nullptr) {
+      n->set_parent(this);
+    }
+  }
+
 private:
   std::optional<cmm::location> m_location;
 };
