@@ -3,7 +3,6 @@
 #include <regex>
 #include <string>
 #include <string_view>
-#include <filesystem>
 #include <utility>
 
 #include "fs.hpp"
@@ -25,9 +24,7 @@ std::string&& Preprocessor::preprocess() {
   return std::move(this->src);
 }
 
-std::string_view Preprocessor::string() const {
-  return cmm::cstring(src).substr(pointer);
-}
+std::string_view Preprocessor::string() const { return cmm::cstring(src).substr(pointer); }
 
 void Preprocessor::replace(size_t start, size_t end, cstring str) {
   src = src.replace(src.begin() + start, src.begin() + end, str);
@@ -45,17 +42,16 @@ void Preprocessor::remove_single_line_comments() {
 }
 
 namespace {
-  constexpr auto match_regex_sv(
-      cstring where,
-      cstring pattern,
-      std::match_results<cstring::const_iterator>& result) {
-    std::regex re(pattern.data());
-    return std::regex_match(where.cbegin(), where.cend(), result, re);
-  };
-  constexpr size_t find_next_newline(cstring data) {
-    size_t pos = data.find('\n');
-    return pos;
-  }
+constexpr auto match_regex_sv(cstring where,
+                              cstring pattern,
+                              std::match_results<cstring::const_iterator>& result) {
+  std::regex re(pattern.data());
+  return std::regex_match(where.cbegin(), where.cend(), result, re);
+};
+constexpr size_t find_next_newline(cstring data) {
+  size_t pos = data.find('\n');
+  return pos;
+}
 
 } // namespace
 void Preprocessor::remove_block_comments() {

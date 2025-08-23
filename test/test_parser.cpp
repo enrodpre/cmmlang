@@ -4,8 +4,6 @@
 #include "parser.hpp"
 #include "test_base.hpp"
 #include "types.hpp"
-#include <cpptrace/from_current.hpp>
-#include <cpptrace/utils.hpp>
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <utility>
@@ -68,11 +66,10 @@ protected:
     return to;
   }
 
-#define CAST(FROM, TO_T, TO)                                                          \
-  auto* TO = dynamic_cast<TO_T>(FROM);                                                \
-  EXPECT_TRUE(TO != nullptr) << std::format("Type {} assumed to be {}",               \
-                                            cpptrace::demangle(typeid(FROM).name()),  \
-                                            cpptrace::demangle(typeid(TO_T).name()));
+#define CAST(FROM, TO_T, TO)                                                                     \
+  auto* TO = dynamic_cast<TO_T>(FROM);                                                           \
+  EXPECT_TRUE(TO != nullptr) << std::format(                                                     \
+      "Type {} assumed to be {}", demangle(typeid(FROM).name()), demangle(typeid(TO_T).name()));
 
   static void check_literal(const expr::expression& expr, const std::string& value) {
     const auto* lit = dynamic_cast<const expr::literal*>(&expr);

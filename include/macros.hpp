@@ -110,11 +110,11 @@
   NOT_MOVABLE_CLS(CLS)
 
 #define AST_SIBLINGS(...)                                                                 \
-  std::string string() const override { return cpptrace::demangle(typeid(this).name()); }
+  std::string string() const override { return demangle(typeid(this).name()); }
 #define AST_COMPOSITE(...)                                                                \
-  std::string string() const override { return cpptrace::demangle(typeid(this).name()); }
+  std::string string() const override { return demangle(typeid(this).name()); }
 #define AST_LEAF                                                                          \
-  std::string string() const override { return cpptrace::demangle(typeid(this).name()); }
+  std::string string() const override { return demangle(typeid(this).name()); }
 
 #define ENUM_PROPERTY(TYPE, NAME, N) TYPE NAME
 

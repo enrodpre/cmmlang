@@ -18,7 +18,6 @@ def compile(filename: Path):
     compile_command = "{} -o {} {}".format(COMPILER_NAME, output_path, filename)
     print("Compiling with {}".format(compile_command))
     res = subprocess.run(compile_command, shell=True, capture_output=True, text=True)
-    assert res.returncode == 0
     return output_path
 
 
@@ -45,9 +44,12 @@ def get_ok_code(path) -> int:
 
 @pytest.mark.parametrize("filename", testfiles, ids=get_filename)
 @pytest.mark.timeout(3)
-def test_case(filename):
+def test_case(filename, request):
     ok_code = get_ok_code(filename)
     print("Expecting {}".format(ok_code))
     compiled_file = compile(filename)
+    assert compiled_file.exists()
+
     actual_status = run(compiled_file)
-    assert OK_STATUS == ok_code
+    request.node._exit_code = actual_status
+    assert OK_STATUS == actual_status

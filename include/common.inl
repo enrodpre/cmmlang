@@ -5,14 +5,12 @@
 #include <algorithm>
 #include <cassert>
 #include <concepts>
-#include <cpptrace/utils.hpp>
 #include <cstddef>
 #include <format>
 #include <initializer_list>
 #include <iterator>
-#include <libassert/assert-macros.hpp>
+
 #include <magic_enum/magic_enum.hpp>
-#include <optional>
 #include <ranges>
 #include <string>
 #include <type_traits>
@@ -25,7 +23,6 @@
 #include "traits.hpp"
 
 namespace cmm {
-enum class compilation_error_t : uint8_t;
 namespace log {
 enum class style_t : uint8_t;
 } // namespace log
@@ -132,7 +129,7 @@ constexpr formattable::operator std::string() const { return format(); }
 namespace {
 template <typename T>
 std::string classname_only() {
-  auto demangled  = cpptrace::demangle(typeid(T).name());
+  auto demangled  = demangle(typeid(T).name());
   auto last_colon = demangled.rfind("::");
   if (last_colon != std::string::npos) {
     return demangled.substr(last_colon + 2);
@@ -322,7 +319,6 @@ T stack<T>::pop_return() {
     m_data.pop_back(); // Remove it from the container
     return value;      // Return the copied value
   }
-  ASSERT(false, "T is not movable either copyable");
 }
 template <typename T>
 T&& stack<T>::pop_move() {

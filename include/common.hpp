@@ -4,15 +4,14 @@
 #include <array>
 #include <bits/version.h>
 #include <concepts>
-#include <cpptrace/utils.hpp>
 #include <cstdint>
 #include <cstdio>
+#include <cxxabi.h>
 #include <exception>
 #include <fmt/base.h>
 #include <format>
-#include <functional>
 #include <initializer_list>
-#include <libassert/assert.hpp>
+
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_all.hpp>
 #include <magic_enum/magic_enum_format.hpp>
@@ -25,14 +24,12 @@
 #include <string>
 #include <string_view>
 #include <sys/types.h>
-#include <tuple>
 #include <type_traits>
 #include <typeindex>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "fs.hpp"
 #include "macros.hpp"
 #include "os.hpp"
 #include "traits.hpp"
@@ -118,6 +115,8 @@ enum class Level : uint8_t { NONE = 0, ERROR, WARN, INFO, DEBUG, TRACE };
 #else
 #  define REGISTER_TRACE(std_string, ...)
 #endif
+
+#define WRITE_STDOUT(fmt_string, ...) std::print(stdout, fmt_string, ##__VA_ARGS__)
 
 #ifndef SAVE_PREPROCESSED
 #  define SAVE_PREPROCESSED 0
@@ -641,23 +640,6 @@ inline uint8_t string_hash(const std::string& str) {
   return hash;
 }
 
-class source_code {
-public:
-  source_code(const fs::ifile&);
-
-  [[nodiscard]] const std::string& get_code() const;
-  [[nodiscard]] const std::string& get_filename() const;
-  [[nodiscard]] bool is_valid(const location&) const;
-  [[nodiscard]] std::pair<size_t, size_t> get_line(const location&) const;
-  [[nodiscard]] std::string get_chunk(const location&) const;
-  [[nodiscard]] std::tuple<std::string, std::string, std::string> get_line_chunked(
-      const location&) const;
-
-private:
-  std::string m_code;
-  std::string m_filename;
-};
-
 class string_buffer {
 public:
   using buffer_type                                  = std::stringstream;
@@ -1108,6 +1090,75 @@ constexpr auto to_type       = [](const auto& v) { return v->type(); };
 constexpr auto to_location   = [](const auto& v) { return v->location(); };
 constexpr auto opt_to_value  = [](const auto& v) { return v.value(); };
 constexpr auto opt_has_value = [](const auto& v) { return v.has_value(); };
-} // namespace cmm
 
+template <typename T,
+          typename D,
+          typename std::enable_if<std::is_standard_layout<T>::value &&
+                                      std::is_trivially_copyable<T>::value,
+                                  int>::type                                               = 0,
+          typename std::enable_if<std::is_nothrow_move_constructible<T>::value, int>::type = 0>
+class raii_wrapper {
+  T obj;
+  std::optional<D> deleter;
+
+public:
+  raii_wrapper(T obj, D deleter)
+      : obj(obj),
+        deleter(deleter) {}
+  raii_wrapper(raii_wrapper&& other) noexcept
+      : obj(std::move(other.obj)),
+        deleter(std::move(other.deleter)) {
+    other.deleter = std::nullopt;
+  }
+  raii_wrapper(const raii_wrapper&)            = delete;
+  raii_wrapper& operator=(raii_wrapper&&)      = delete;
+  raii_wrapper& operator=(const raii_wrapper&) = delete;
+  ~raii_wrapper() {
+    if (deleter.has_value()) {
+      auto t = deleter.value();
+      t(obj);
+    }
+  }
+  operator T&() { return obj; }
+  operator const T&() const { return obj; }
+  T& get() { return obj; }
+  const T& get() const { return obj; }
+};
+template <typename T, typename D>
+raii_wrapper<typename std::remove_reference<T>::type, D> raii_wrap(T obj, D deleter) {
+  return raii_wrapper<typename std::remove_reference<T>::type, D>(obj, deleter);
+}
+
+inline std::string demangle(const std::string& name, bool check_prefix = true) {
+  if (check_prefix && !(name.starts_with("_Z") || name.starts_with("__Z"))) {
+    return name;
+  }
+  std::size_t offset = 0;
+  if (name.starts_with("__Z")) {
+    offset = 1;
+  }
+  auto end = name.find(' ');
+  std::string name_copy;
+  std::reference_wrapper<const std::string> to_demangle = name;
+  std::string rest;
+  if (end != std::string::npos) {
+    name_copy   = name.substr(0, end);
+    rest        = name.substr(end);
+    to_demangle = name_copy;
+  }
+  int status;
+  auto demangled =
+      raii_wrap(abi::__cxa_demangle(to_demangle.get().c_str() + offset, nullptr, nullptr, &status),
+                [](char* str) { std::free(str); });
+  if (demangled.get()) {
+    std::string str = demangled.get();
+    if (!rest.empty()) {
+      str += rest;
+    }
+    return str;
+  } else {
+    return name;
+  }
+}
+} // namespace cmm
 #include "common.inl"

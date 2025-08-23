@@ -2,7 +2,6 @@
 #include "common.hpp"
 
 #include <format>
-#include <utils.hpp>
 
 namespace cmm {
 
@@ -37,32 +36,32 @@ std::string type::string() const {
       return std::format("{}", underlying->string());
     case type_category_t::function_t:
     default:
-      NOT_IMPLEMENTED;
+      return "";
   }
 }
 
-ptype type::create_void() { return create(type_category_t::void_t); }
+[[nodiscard]] ptype type::create_void() { return create(type_category_t::void_t); }
 
-ptype type::create_fundamental(type_category_t cat, bool b, bool v) {
+[[nodiscard]] ptype type::create_fundamental(type_category_t cat, bool b, bool v) {
   return create(cat, nullptr, 0, b, v);
 }
 
-ptype type::create_pointer(ptype t, bool b, bool v) {
+[[nodiscard]] ptype type::create_pointer(ptype t, bool b, bool v) {
   return create(type_category_t::pointer_t, t, 0, b, v);
 }
 
-ptype type::create_lvalue(ptype t, bool b, bool v) {
+[[nodiscard]] ptype type::create_lvalue(ptype t, bool b, bool v) {
   return create(type_category_t::lvalue_ref_t, t, 0, b, v);
 }
-ptype type::create_rvalue(ptype t, bool b, bool v) {
+[[nodiscard]] ptype type::create_rvalue(ptype t, bool b, bool v) {
   return create(type_category_t::rvalue_ref_t, t, 0, b, v);
 }
 
-ptype type::create_array(ptype t, size_t n, bool b, bool v) {
+[[nodiscard]] ptype type::create_array(ptype t, size_t n, bool b, bool v) {
   return create(type_category_t::array_t, t, n, b, v);
 }
 
-ptype type::create_string(size_t n, bool b, bool v) {
+[[nodiscard]] ptype type::create_string(size_t n, bool b, bool v) {
   auto under = create_fundamental(type_category_t::char_t, b, v);
   return create_array(under, n, b, v);
 }

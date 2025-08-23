@@ -1,6 +1,6 @@
 #pragma once
 
-#include <libassert/assert-macros.hpp>
+
 #include <utility>
 
 #include "types.hpp"

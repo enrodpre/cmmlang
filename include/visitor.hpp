@@ -1,7 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <cpptrace/utils.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
@@ -40,7 +39,7 @@ struct node : revisited::Visitable<node>, public displayable {
   virtual void set_parent(node* parent_) const { m_parent = parent_; }
   virtual std::optional<cmm::location> location() const = 0;
   operator node*() { return static_cast<node*>(this); }
-  std::string string() const override { return cpptrace::demangle(typeid(this).name()); }
+  std::string string() const override { return demangle(typeid(this).name()); }
 
 private:
   mutable node* m_parent = nullptr;
@@ -74,10 +73,13 @@ struct composite : visitable<composite, node> {
                                         std::plus<cmm::location>{})
         .value();
   }
-  vector<node*> m_data;
+
+  friend class check_visitor;
+  friend class generic_node_visitor;
 
 protected:
   template <typename... Nodes>
+    requires(std::is_assignable_v<Nodes, node*>, ...)
   void add_all(Nodes... ns) {
     (add(ns), ...);
   }
@@ -93,6 +95,9 @@ protected:
       m_data.push_back(n);
     }
   }
+
+protected:
+  std::vector<node*> m_data;
 };
 
 struct identifier;

@@ -37,81 +37,81 @@
 #define IS_EMPTY_HELPER_       0,
 
 // Check if there are more arguments
-#define HAS_MORE(...) \
+#define HAS_MORE(...)          \
   HAS_MORE_HELPER(__VA_ARGS__, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
-                  1, \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
+                  1,           \
                   0)
-#define HAS_MORE_HELPER(a1, \
-                        a2, \
-                        a3, \
-                        a4, \
-                        a5, \
-                        a6, \
-                        a7, \
-                        a8, \
-                        a9, \
+#define HAS_MORE_HELPER(a1,  \
+                        a2,  \
+                        a3,  \
+                        a4,  \
+                        a5,  \
+                        a6,  \
+                        a7,  \
+                        a8,  \
+                        a9,  \
                         a10, \
                         a11, \
                         a12, \
@@ -166,7 +166,7 @@
                         a61, \
                         a62, \
                         a63, \
-                        N, \
+                        N,   \
                         ...) \
   N
 
@@ -181,72 +181,72 @@
 
 // --- Reference manipulation ---
 #define ADD_REF_TO_SINGLE(type) type&
-#define ADD_REF_IMPL(type, ...) \
-  ADD_REF_TO_SINGLE(type) \
+#define ADD_REF_IMPL(type, ...)                                  \
+  ADD_REF_TO_SINGLE(type)                                        \
   IF(HAS_MORE(__VA_ARGS__), DEFER(ADD_REF_COMMA)(__VA_ARGS__), )
 #define ADD_REF_COMMA(...)  , DEFER(ADD_REF_IMPL)(__VA_ARGS__)
 #define ADD_REFERENCES(...) EVAL(ADD_REF_IMPL(__VA_ARGS__))
 
 // --- Const manipulation ---
 #define ADD_CONST_TO_SINGLE(type) const type
-#define ADD_CONST_IMPL(type, ...) \
-  ADD_CONST_TO_SINGLE(type) \
+#define ADD_CONST_IMPL(type, ...)                                  \
+  ADD_CONST_TO_SINGLE(type)                                        \
   IF(HAS_MORE(__VA_ARGS__), DEFER(ADD_CONST_COMMA)(__VA_ARGS__), )
 #define ADD_CONST_COMMA(...) , DEFER(ADD_CONST_IMPL)(__VA_ARGS__)
 #define ADD_CONST(...)       EVAL(ADD_CONST_IMPL(__VA_ARGS__))
 
 // --- Pointer manipulation ---
 #define ADD_PTR_TO_SINGLE(type) type*
-#define ADD_PTR_IMPL(type, ...) \
-  ADD_PTR_TO_SINGLE(type) \
+#define ADD_PTR_IMPL(type, ...)                                  \
+  ADD_PTR_TO_SINGLE(type)                                        \
   IF(HAS_MORE(__VA_ARGS__), DEFER(ADD_PTR_COMMA)(__VA_ARGS__), )
 #define ADD_PTR_COMMA(...) , DEFER(ADD_PTR_IMPL)(__VA_ARGS__)
 #define ADD_POINTERS(...)  EVAL(ADD_PTR_IMPL(__VA_ARGS__))
 
 // --- Const reference manipulation ---
 #define ADD_CONST_REF_TO_SINGLE(type) const type&
-#define ADD_CONST_REF_IMPL(type, ...) \
-  ADD_CONST_REF_TO_SINGLE(type) \
+#define ADD_CONST_REF_IMPL(type, ...)                                  \
+  ADD_CONST_REF_TO_SINGLE(type)                                        \
   IF(HAS_MORE(__VA_ARGS__), DEFER(ADD_CONST_REF_COMMA)(__VA_ARGS__), )
 #define ADD_CONST_REF_COMMA(...)  , DEFER(ADD_CONST_REF_IMPL)(__VA_ARGS__)
 #define ADD_CONST_REFERENCES(...) EVAL(ADD_CONST_REF_IMPL(__VA_ARGS__))
 
 // --- Rvalue reference manipulation ---
 #define ADD_RREF_TO_SINGLE(type) type&&
-#define ADD_RREF_IMPL(type, ...) \
-  ADD_RREF_TO_SINGLE(type) \
+#define ADD_RREF_IMPL(type, ...)                                  \
+  ADD_RREF_TO_SINGLE(type)                                        \
   IF(HAS_MORE(__VA_ARGS__), DEFER(ADD_RREF_COMMA)(__VA_ARGS__), )
 #define ADD_RREF_COMMA(...)        , DEFER(ADD_RREF_IMPL)(__VA_ARGS__)
 #define ADD_RVALUE_REFERENCES(...) EVAL(ADD_RREF_IMPL(__VA_ARGS__))
 
 // --- Const pointer manipulation ---
 #define ADD_CONST_PTR_TO_SINGLE(type) const type*
-#define ADD_CONST_PTR_IMPL(type, ...) \
-  ADD_CONST_PTR_TO_SINGLE(type) \
+#define ADD_CONST_PTR_IMPL(type, ...)                                  \
+  ADD_CONST_PTR_TO_SINGLE(type)                                        \
   IF(HAS_MORE(__VA_ARGS__), DEFER(ADD_CONST_PTR_COMMA)(__VA_ARGS__), )
 #define ADD_CONST_PTR_COMMA(...) , DEFER(ADD_CONST_PTR_IMPL)(__VA_ARGS__)
 #define ADD_CONST_POINTERS(...)  EVAL(ADD_CONST_PTR_IMPL(__VA_ARGS__))
 
 // --- Volatile manipulation ---
 #define ADD_VOLATILE_TO_SINGLE(type) volatile type
-#define ADD_VOLATILE_IMPL(type, ...) \
-  ADD_VOLATILE_TO_SINGLE(type) \
+#define ADD_VOLATILE_IMPL(type, ...)                                  \
+  ADD_VOLATILE_TO_SINGLE(type)                                        \
   IF(HAS_MORE(__VA_ARGS__), DEFER(ADD_VOLATILE_COMMA)(__VA_ARGS__), )
 #define ADD_VOLATILE_COMMA(...) , DEFER(ADD_VOLATILE_IMPL)(__VA_ARGS__)
 #define ADD_VOLATILE(...)       EVAL(ADD_VOLATILE_IMPL(__VA_ARGS__))
 
 // --- Const volatile manipulation ---
 #define ADD_CONST_VOLATILE_TO_SINGLE(type) const volatile type
-#define ADD_CONST_VOLATILE_IMPL(type, ...) \
-  ADD_CONST_VOLATILE_TO_SINGLE(type) \
+#define ADD_CONST_VOLATILE_IMPL(type, ...)                                  \
+  ADD_CONST_VOLATILE_TO_SINGLE(type)                                        \
   IF(HAS_MORE(__VA_ARGS__), DEFER(ADD_CONST_VOLATILE_COMMA)(__VA_ARGS__), )
 #define ADD_CONST_VOLATILE_COMMA(...) , DEFER(ADD_CONST_VOLATILE_IMPL)(__VA_ARGS__)
 #define ADD_CONST_VOLATILE(...)       EVAL(ADD_CONST_VOLATILE_IMPL(__VA_ARGS__))
 
 // --- Pointer to pointer manipulation ---
 #define ADD_PTR_PTR_TO_SINGLE(type) type**
-#define ADD_PTR_PTR_IMPL(type, ...) \
-  ADD_PTR_PTR_TO_SINGLE(type) \
+#define ADD_PTR_PTR_IMPL(type, ...)                                  \
+  ADD_PTR_PTR_TO_SINGLE(type)                                        \
   IF(HAS_MORE(__VA_ARGS__), DEFER(ADD_PTR_PTR_COMMA)(__VA_ARGS__), )
 #define ADD_PTR_PTR_COMMA(...)       , DEFER(ADD_PTR_PTR_IMPL)(__VA_ARGS__)
 #define ADD_POINTER_TO_POINTERS(...) EVAL(ADD_PTR_PTR_IMPL(__VA_ARGS__))
@@ -280,18 +280,15 @@ struct function_traits;
 template <typename... Args>
 struct param_count;
 
-// Specialization to count parameters
 template <typename First, typename... Rest>
 struct param_count<First, Rest...> {
   static const std::size_t value = 1 + param_count<Rest...>::value; // Count the first and recurse
 };
-// Base case for zero parameters
 template <>
 struct param_count<> {
   static const std::size_t value = 0;
   ; // No parameters
 };
-// Base template for function parameter count
 template <typename T>
 struct function_traits;
 
@@ -347,7 +344,6 @@ concept DerivedFromTemplate = std::is_base_of_v<BaseTemplate<typename T::value_t
 template <typename Variant, template <typename> class Trait>
 struct check_variant_compliance;
 
-// Primary template: Assume T is not hashable
 template <typename T, typename = void>
 struct is_hashable : std::false_type {};
 
@@ -366,13 +362,8 @@ concept Hashable = requires(T t) {
 
 template <typename T>
 concept IsSmartOrRawPointer = requires(T ptr) {
-  // Raw pointer check
   { std::is_pointer_v<T> } -> std::convertible_to<bool>;
 
-  // // Unique pointer check
-  // requires std::is_same_v<T, std::unique_ptr<typename T::element_type>>;
-
-  // Shared pointer check
   requires std::is_same_v<T, std::shared_ptr<typename T::element_type>>;
 };
 
@@ -433,47 +424,11 @@ struct polymorphic_traits {
 
 template <typename T>
 concept should_use_arrow = std::is_pointer_v<std::remove_cvref_t<T>>;
-#define CONDITIONAL_CALL(OBJ, FUNC) \
-  if constexpr (requires { OBJ.operator->(); }) { \
-    OBJ->FUNC \
+#define CONDITIONAL_CALL(OBJ, FUNC)                       \
+  if constexpr (requires { OBJ.operator->(); }) {         \
+    OBJ->FUNC                                             \
   } else if constexpr (should_use_arrow<decltype(OBJ)>) { \
-    OBJ->FUNC \
-  } else { \
-    OBJ.FUNC \
+    OBJ->FUNC                                             \
+  } else {                                                \
+    OBJ.FUNC                                              \
   }
-
-// // Primary template
-// template <typename T>
-// struct function_traits;
-//
-// // For function pointer
-// template <typename R, typename... Args>
-// struct function_traits<R (*)(Args...)> {
-//   using return_type             = R;
-//   using args_tuple              = std::tuple<Args...>;
-//   static constexpr size_t arity = sizeof...(Args);
-// };
-//
-// // For std::function
-// template <typename R, typename... Args>
-// struct function_traits<std::function<R(Args...)>> : function_traits<R (*)(Args...)> {};
-//
-// // For member function pointer
-// template <typename C, typename R, typename... Args>
-// struct function_traits<R (C::*)(Args...)> : function_traits<R (*)(Args...)> {};
-//
-// // For const member function pointer
-// template <typename C, typename R, typename... Args>
-// struct function_traits<R (C::*)(Args...) const> : function_traits<R (*)(Args...)> {};
-//
-// // For functors / lambdas (operator())
-// template <typename F>
-// struct function_traits {
-// private:
-//   using call_type = function_traits<decltype(&F::operator())>;
-//
-// public:
-//   using return_type             = typename call_type::return_type;
-//   using args_tuple              = typename call_type::args_tuple;
-//   static constexpr size_t arity = call_type::arity;
-// };

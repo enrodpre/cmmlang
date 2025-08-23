@@ -1,13 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <exception>
-#include <format>
-#include <libassert/assert.hpp>
-#include <string>
-#include <string_view>
 #include <type_traits>
-#include <utility>
 #include <vector>
 
 #include "allocator.hpp"
@@ -26,26 +20,6 @@ struct unary_operator;
 } // namespace cmm::ast::expr
 
 namespace cmm::parser {
-class parser_exception : public std::exception {
-protected:
-  std::string message;
-
-public:
-  static constexpr std::string_view TEMPLATE = "parser Exception.\n{}. {}";
-  parser_exception(const std::string& data)
-      : message(std::format(TEMPLATE, data, libassert::stacktrace())) {}
-  [[nodiscard]] const char* what() const noexcept override { return message.c_str(); }
-};
-
-class no_token_matched_exception : public parser_exception {
-  std::vector<ast::statement*> statements;
-
-public:
-  no_token_matched_exception(const token& token, decltype(statements) stmts)
-
-      : parser_exception(std::format("No token has been matched.\n Current token: {}\n", token)),
-        statements(std::move(stmts)) {}
-};
 
 class parser {
 

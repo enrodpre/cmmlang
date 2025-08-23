@@ -51,7 +51,7 @@ struct Allocator : default_singleton<Allocator> {
     m_offset = static_cast<std::byte*>(aligned_address) + element_size;
     // REGISTER_INFO("Allocated {} for {} type in {}",
     //               element_size,
-    //               cpptrace::demangle(typeid(T).name()),
+    //               demangle(typeid(T).name()),
     //               aligned_address);
     return static_cast<T*>(aligned_address);
   }

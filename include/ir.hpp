@@ -1,8 +1,9 @@
 #pragma once
 
+#include "compiler.hpp"
 #include <cstddef>
 #include <cstdint>
-#include <libassert/assert.hpp>
+
 #include <optional>
 #include <string>
 #include <type_traits>

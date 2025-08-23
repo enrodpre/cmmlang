@@ -22,21 +22,18 @@ struct semantic_data {
   bool is_constant_evaluable{};
   ptype original_type;
   ptype casted_type;
-  // const ir::function* fn;
 };
 
-struct expression : public statement {
+struct expression : visitable<expression, statement> {
   expression()           = default;
   ~expression() override = default;
-  using statement::statement;
+  using visitable<expression, statement>::statement;
 
   semantic_data* semantics() const;
   virtual ptype type() const {
     const auto* sem = semantics();
     return sem->casted_type ? sem->casted_type : sem->original_type;
   }
-
-  AST_LEAF
 
 private:
   mutable expr::semantic_data m_semantics;
@@ -48,8 +45,6 @@ struct identifier : visitable<identifier, expression> {
   identifier(ast::identifier&& id);
   const std::string& value() const { return m_term.value(); }
   operator ast::identifier() const { return m_term; }
-
-  AST_LEAF
 
 private:
   ast::identifier m_term;
@@ -63,11 +58,10 @@ enum class literal_t : uint8_t { CHAR, STRING, SINT, UINT, FALSE, TRUE, FLOAT };
 struct literal : visitable<literal, expression> {
   literal_t category;
   literal(const token&, literal_t);
-  literal(std::string, literal_t);
+  literal(cmm::location, std::string, literal_t);
 
   const std::string& value() const { return m_term.value(); }
   operator ast::literal() const { return m_term; }
-  AST_LEAF
 
 protected:
   ast::literal m_term;
@@ -98,7 +92,7 @@ struct binary_operator : visitable<binary_operator, expression> {
   expression& left;
   expression& right;
   ast::operator_ operator_;
-  binary_operator(expression* left, expression* right, ast::operator_&& op);
+  binary_operator(expression* left, ast::operator_&& op, expression* right);
 };
 
 using conversion_function = std::function<expression&(expression&)>;

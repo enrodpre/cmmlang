@@ -1,7 +1,7 @@
 #pragma once
 
 #include <format>
-#include <libassert/assert.hpp>
+
 #include <magic_enum/magic_enum.hpp>
 #include <tuple>
 #include <utility>

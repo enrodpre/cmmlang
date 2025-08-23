@@ -3,16 +3,14 @@
 #include "common.hpp"
 #include "lang.hpp"
 #include "macros.hpp"
-#include "revisited/visitor.h"
 #include "token.hpp"
 #include "traits.hpp"
 #include "types.hpp"
 #include "visitor.hpp"
 #include <algorithm>
 #include <bits/ranges_algo.h>
-#include <cpptrace/utils.hpp>
 #include <initializer_list>
-#include <libassert/assert.hpp>
+
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_format.hpp>
 #include <string>
@@ -273,9 +271,7 @@ struct siblings : public vector<T>, public visitable<siblings<T>, composite> {
                                         std::plus<cmm::location>{});
   }
 
-  [[nodiscard]] std::string string() const override {
-    return cpptrace::demangle(typeid(this).name());
-  }
+  [[nodiscard]] std::string string() const override { return demangle(typeid(this).name()); }
 };
 
 namespace expr {
@@ -332,6 +328,9 @@ struct specifiers : visitable<specifiers, composite> {
     add_all(&type, &linkage, &storage);
   }
 };
+
+static_assert(std::is_base_of_v<leaf, ast::operator_>);
+static_assert(std::is_assignable_v<leaf*, ast::operator_*>);
 
 struct rank : visitable<rank, composite> {
   ast::operator_ open;
@@ -566,6 +565,7 @@ struct translation_unit : visitable<translation_unit, scope> {
   bool in_main() const noexcept;
   void set_context(ir::compilation_unit*);
 
+  std::vector<const ast::decl::function::definition*> stackframe();
   siblings<declaration*> stmts;
 
   friend ir::compilation_unit;
@@ -578,10 +578,8 @@ private:
 
 using namespace_ = translation_unit;
 
-#define TRACE_VISITOR(OBJ)                                \
-  REGISTER_TRACE("{} visited {}",                         \
-                 cpptrace::demangle(typeid(this).name()), \
-                 cpptrace::demangle(typeid(OBJ).name()))
+#define TRACE_VISITOR(OBJ)                                                                     \
+  REGISTER_TRACE("{} visited {}", demangle(typeid(this).name()), demangle(typeid(OBJ).name()))
 
 #define TERM_TYPES \
   ast::literal, ast::identifier, ast::keyword, ast::operator_, ast::storage, ast::linkage, ast::type
@@ -690,8 +688,7 @@ struct check_visitor : generic_node_visitor {
   void check(const node& n) override {
     if (const auto* compo = dynamic_cast<const composite*>(&n)) {
       if (compo->m_data.empty()) {
-        res.push_back(
-            std::format("Object {} has no children", cpptrace::demangle(typeid(compo).name())));
+        res.push_back(std::format("Object {} has no children", demangle(typeid(compo).name())));
       }
     }
   }

@@ -242,9 +242,8 @@ constexpr operand* set_operand(compilation_unit& v, arg_t side, operand* l, oper
     case arg_t::AUX1:
       return v.regs.parameter_at(0);
     case arg_t::AUX2:
-      return v.regs.parameter_at(1);
     default:
-      NOT_IMPLEMENTED
+      return v.regs.parameter_at(1);
   }
 }
 } // namespace
@@ -256,7 +255,7 @@ operand* compilation_unit::call_builtin_operator(const operator_& op,
   auto params        = regs.parameters();
   auto load_argument = [this, &params](expr::expression* e) {
     semantics::load_node_semantics(*e);
-    return runner.generate_expr(*e, e->type(), params.next());
+    return runner.generate_expr(*e, params.next());
   };
   auto* impls = get_callable<operator_builtin_data>(op, args.data());
   auto ops    = args | TRANSFORM(load_argument) | TO_VEC;
@@ -279,7 +278,6 @@ operand* compilation_unit::call_builtin_operator(const operator_& op,
       r = set_operand(*this, exec_unit.arg2, l, r);
       instruction(ins, l, r);
     } else {
-      NOT_IMPLEMENTED
     }
 
     switch (data.where) {
@@ -327,7 +325,7 @@ std::vector<bound_argument> compilation_unit::bind_parameters(
 std::vector<operand*> compilation_unit::load_arguments(const std::vector<bound_argument>& bound) {
   auto registers = regs.parameters();
   return bound | std::views::transform([this, &registers](auto& b) {
-           auto* reg = runner.generate_expr(*b.init, b.type, registers.next());
+           auto* reg = runner.generate_expr(*b.init, registers.next());
            return ast->active_frame()->declare_parameter(*b.decl, reg);
          }) |
          std::ranges::to<std::vector>();

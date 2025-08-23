@@ -88,15 +88,9 @@ include(cmake/CPM.cmake)
 
 file(GLOB_RECURSE sources CONFIGURE_DEPENDS
      "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
-CPMAddPackage(
-  NAME Revisited
-  GIT_REPOSITORY https://github.com/TheLartians/Visitor.git
-  VERSION 2.0
-)
 find_package(magic_enum REQUIRED)
-find_package(cpptrace REQUIRED)
-find_package(libassert REQUIRED)
 find_package(Revisited REQUIRED)
+
 
 set(FLAGS
   -std=c++26
@@ -121,8 +115,8 @@ add_library(${LIBNAME} ${sources})
 target_compile_options(${LIBNAME} PRIVATE ${FLAGS})
 target_compile_features(${LIBNAME} PUBLIC cxx_std_26)
 target_link_libraries(
-   ${LIBNAME} PRIVATE magic_enum::magic_enum cpptrace::cpptrace
-                          libassert::assert Revisited)
+   ${LIBNAME} PRIVATE magic_enum::magic_enum
+                           Revisited)
 target_include_directories(
   ${LIBNAME}
   PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
@@ -132,7 +126,7 @@ target_include_directories(
 add_executable(${APPNAME} main.cpp)
 find_package(cxxopts REQUIRED)
 target_compile_options(${APPNAME} PRIVATE ${FLAGS})
-target_link_libraries(${APPNAME} PRIVATE ${LIBNAME} cxxopts::cxxopts)
+target_link_libraries(${APPNAME} PRIVATE ${LIBNAME} cxxopts::cxxopts Revisited)
 
 if(BUILD_TESTS)
   enable_testing()
@@ -142,10 +136,4 @@ endif()
 set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE
 "include-what-you-use;-w;-Xiwyu;--verbose=7")
 
-# include(CPack)
-# string(TOLOWER ${PROJECT_NAME}/version.h VERSION_HEADER_LOCATION)
-#
-# set(CPACK_PACKAGE_NAME ${})
-# set(CPACK_PACKAGE_VENDOR "enrodpre")
-# set(CPACK_PACKAGE_VERSION "1.0.0")
 add_iwyu_to_target(CmmLang)

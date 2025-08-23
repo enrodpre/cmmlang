@@ -2,9 +2,8 @@
 
 #include "asm.hpp"
 
-#include <cpptrace/exceptions.hpp>
 #include <format>
-#include <libassert/assert-macros.hpp>
+
 #include <magic_enum/magic_enum.hpp>
 #include <optional>
 #include <string>
@@ -54,9 +53,8 @@ constexpr std::string registers::to_realname(register_t r) {
     case SCRATCH_3:
       return "r9";
     case SCRATCH_4:
-      return "r10";
     default:
-      UNREACHABLE("not register ok");
+      return "r10";
   }
 }
 

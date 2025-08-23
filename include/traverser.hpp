@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <sys/types.h>
 #include <tuple>
 
 #include "allocator.hpp"
@@ -11,7 +12,6 @@
 #include "expr.h"
 #include "lang.hpp"
 #include "macros.hpp"
-#include "types.hpp"
 #include "visitor.hpp"
 
 namespace cmm::ir {
@@ -57,12 +57,7 @@ public:
   void generate_program(translation_unit&);
   void generate_statements(decl::block&);
   void generate_statement(ast::statement*);
-  assembly::operand* generate_expr(ast::expr::expression&,
-                                   ir::intents::intent_t,
-                                   assembly::operand*);
-  assembly::operand* generate_expr(expr::expression&, ir::intents::intent_t);
-  assembly::operand* generate_expr(expr::expression&);
-  assembly::operand* generate_expr(expr::expression&, crptype, assembly::operand*);
+  assembly::operand* generate_expr(ast::expr::expression&, assembly::operand* = nullptr);
 
 private:
   compilation_unit& m_context;
@@ -76,9 +71,6 @@ private:
   void generate_condition(expr::expression&);
   void begin_scope(decl::block&);
   void end_scope();
-  // std::optional<assembly::operand*> call_function(const identifier&,
-  //                                                 const std::vector<ptype>&,
-  //                                                 const expr::arguments&);
   std::optional<assembly::operand*> call_function(const decl::function*, const expr::arguments&);
   std::optional<assembly::operand*> call_function(const identifier&, const expr::arguments&);
   [[nodiscard]] std::optional<std::tuple<std::string, std::string>> get_label_interation_scope()
@@ -100,8 +92,7 @@ struct expression_visitor : public visitor<EXPRESSION_TYPES> {
   ast_traverser* gen;
   assembly::operand* in;
   assembly::operand* out;
-  ir::intents::intent_t intent;
-  expression_visitor(ast_traverser*, assembly::operand*, ir::intents::intent_t);
+  expression_visitor(ast_traverser*, assembly::operand*);
 
   void visit(ast::expr::call&) override;
   void visit(ast::expr::binary_operator&) override;
@@ -115,8 +106,6 @@ struct statement_visitor : public visitor<expr::expression, STATEMENT_TYPES, GLO
   ast_traverser* gen;
   statement_visitor(ast_traverser*);
 
-  // void visit(const ast::scope::namespace_& scope) override;
-  //
   void visit(expr::expression&) override;
   void visit(ast::decl::block&) override;
   void visit(ast::decl::variable&) override;

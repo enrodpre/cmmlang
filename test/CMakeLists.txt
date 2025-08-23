@@ -57,7 +57,7 @@ function(create_symlink file)
   )
 endfunction()
 
-# create_symlink(conftest.py)
+create_symlink(conftest.py)
 create_symlink(e2e.py)
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/../examples

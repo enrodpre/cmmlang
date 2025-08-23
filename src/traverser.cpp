@@ -1,7 +1,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <format>
-#include <libassert/assert-macros.hpp>
+
 #include <traverser.hpp>
 #include <type_traits>
 
@@ -25,7 +25,6 @@ namespace {
 
 using namespace ast;
 using namespace assembly;
-using intents::intent_t;
 
 translation_unit& ast_completer::complete(translation_unit& t) {
   semantics::load_program_semantics(&t);
@@ -88,31 +87,14 @@ void ast_traverser::generate_program(translation_unit& p) {
   }
 }
 
-operand* ast_traverser::generate_expr(expr::expression& expr,
-                                      intents::intent_t intent_,
-                                      operand* reg_) {
+operand* ast_traverser::generate_expr(expr::expression& expr, operand* reg_) {
+  if (reg_ == nullptr) {
+    reg_ = m_context.regs.get(register_t::ACCUMULATOR);
+  }
 
-  auto visitor = expression_visitor{this, reg_, intent_};
+  auto visitor = expression_visitor{this, reg_};
   expr.accept(visitor);
   return visitor.out;
-}
-
-operand* ast_traverser::generate_expr(expr::expression& expr, ir::intents::intent_t intent) {
-  return generate_expr(expr, intent, m_context.regs.get(register_t::ACCUMULATOR));
-};
-
-operand* ast_traverser::generate_expr(expr::expression& expr) {
-  return generate_expr(
-      expr, intent_t::LOAD_VARIABLE_VALUE, m_context.regs.get(register_t::ACCUMULATOR));
-}
-
-assembly::operand* ast_traverser::generate_expr(expr::expression& expr,
-                                                crptype t,
-                                                assembly::operand* o) {
-  return generate_expr(expr,
-                       matchers::is_ref(t) ? intents::intent_t::LOAD_VARIABLE_ADDRESS
-                                           : intents::intent_t::LOAD_VARIABLE_VALUE,
-                       o);
 }
 
 void ast_traverser::generate_statement(statement* stmt) {
@@ -154,7 +136,7 @@ void ast_traverser::end_scope() {
   size_t ditched = ast->active_frame()->destroy_scope();
 
   if (ditched > 0) {
-    NOT_IMPLEMENTED;
+    ;
     // m_context.move_rsp(ditched);
   }
 }
@@ -260,11 +242,10 @@ void global_visitor::visit(decl::function& func) {
   }
 }
 
-expression_visitor::expression_visitor(ast_traverser* t, operand* o, intent_t l)
+expression_visitor::expression_visitor(ast_traverser* t, operand* o)
     : gen(t),
       in(o),
-      out(o),
-      intent(l) {}
+      out(o) {}
 
 #define gen_op(IN) value_or(generate<operand*>(in))
 
@@ -272,7 +253,7 @@ void expression_visitor::visit(expr::call& expr_call) {
   out = gen->m_context.call_function(expr_call.ident, expr_call.args).gen_op(in);
 }
 
-void expression_visitor::visit(ast::expr::implicit_type_conversion&) { NOT_IMPLEMENTED }
+void expression_visitor::visit(ast::expr::implicit_type_conversion&) {}
 
 void expression_visitor::visit(expr::binary_operator& binop) {
   auto op = binop.operator_.value();
@@ -310,33 +291,9 @@ void expression_visitor::visit(ast ::expr ::literal& c) {
 }
 
 void expression_visitor::visit(expr::identifier& ident) {
-  auto* addr = gen->ast->get_variable_address(ident);
-  ASSERT(addr != nullptr);
-  switch (intent) {
-    case intent_t::LOAD_VARIABLE_VALUE:
-      {
-        auto b =
-            gen->m_context.asmgen.begin_comment_block("loading value of var {}", ident.value());
-        out = gen->m_context.move(out, addr);
-      }
-      break;
-
-    case intent_t::LOAD_VARIABLE_ADDRESS:
-      {
-        auto b = gen->m_context.asmgen.begin_comment_block("loading address of {}", ident.value());
-        out    = gen->m_context.lea(out, addr);
-      }
-      break;
-    case intent_t::SAVE_VARIABLE_VALUE:
-      {
-        auto b = gen->m_context.asmgen.begin_comment_block("saving value of {}", ident.value());
-        out    = gen->m_context.move(addr, in);
-      }
-      break;
-    case intent_t::MOVE_CONTENT:
-    default:
-      throw_error<compilation_error_t::GENERIC>("intent not allowed");
-  }
+  const auto& [var, addr] = gen->ast->get_variable(ident);
+  auto b = gen->m_context.asmgen.begin_comment_block("loading address of {}", ident.value());
+  out    = gen->m_context.lea(out, addr);
 }
 
 statement_visitor::statement_visitor(ast_traverser* gen_)
@@ -376,7 +333,7 @@ void statement_visitor::visit(decl::label& label_) {
   }
 }
 
-void statement_visitor::visit(decl::function&) { UNREACHABLE("not implemented"); }
+void statement_visitor::visit(decl::function&) {} // UNREACHABLE("not implemented"); }
 
 void statement_visitor::visit(iteration::for_& for_) {
   if (for_.start != nullptr) {

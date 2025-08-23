@@ -4,6 +4,7 @@ import sys
 from io import StringIO
 
 # ANSI color codes
+ERROR = "\033[1;38;2;205;92;92m"
 GREEN = "\033[92m"
 RED = "\033[91m"
 YELLOW = "\033[93m"

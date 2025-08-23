@@ -4,8 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <libassert/assert-macros.hpp>
-#include <libassert/assert.hpp>
+
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_containers.hpp>
 #include <memory>
@@ -16,8 +15,6 @@
 
 #include "common.hpp"
 #include "macros.hpp"
-
-#define NOT_IMPLEMENTED UNREACHABLE("Not implemented method");
 
 namespace cmm {
 
@@ -129,14 +126,14 @@ struct type : public type_specifier {
   type clone() const { return {category, underlying, rank, c, v}; }
   [[nodiscard]] std::string string() const override;
   template <typename... Args>
-  static ptype create(type_category_t, Args&&...);
-  static ptype create_void();
-  static ptype create_fundamental(type_category_t, bool = false, bool = false);
-  static ptype create_pointer(ptype, bool = false, bool = false);
-  static ptype create_lvalue(ptype, bool = false, bool = false);
-  static ptype create_rvalue(ptype, bool = false, bool = false);
-  static ptype create_array(ptype, size_t, bool = false, bool = false);
-  static ptype create_string(size_t, bool = false, bool = false);
+  [[nodiscard]] static ptype create(type_category_t, Args&&...);
+  [[nodiscard]] static ptype create_void();
+  [[nodiscard]] static ptype create_fundamental(type_category_t, bool = false, bool = false);
+  [[nodiscard]] static ptype create_pointer(ptype, bool = false, bool = false);
+  [[nodiscard]] static ptype create_lvalue(ptype, bool = false, bool = false);
+  [[nodiscard]] static ptype create_rvalue(ptype, bool = false, bool = false);
+  [[nodiscard]] static ptype create_array(ptype, size_t, bool = false, bool = false);
+  [[nodiscard]] static ptype create_string(size_t, bool = false, bool = false);
 };
 
 #define LVALUE_STATIC_TYPE(NAME, TYPE, CONST_, VOLATILE_, ...)                   \
@@ -207,19 +204,19 @@ using match_t   = std::function<bool(crtype)>;
 using compare_t = std::function<bool(crtype, crtype)>;
 
 struct type_matcher : public type_specifier {
-  ~type_matcher() { REGISTER_WARN("Destroyed matcher {}", *this); }
+  ~type_matcher() { registers[m_desc].second++; }
   using value_type = std::function<bool(crptype)>;
   type_matcher(std::string desc, value_type v)
       : type_specifier(type_category_t::generic_t),
         m_matcher(std::move(v)),
         m_desc(std::move(desc)) {
-    REGISTER_INFO("Created matcher {}", *this);
+    registers[m_desc].first++;
   }
   type_matcher(std::string desc, const type_matcher& v)
       : type_specifier(type_category_t::generic_t),
         m_matcher(std::move(v)),
         m_desc(std::move(desc)) {
-    REGISTER_INFO("Created matcher {}", *this);
+    registers[m_desc].first++;
   }
   COPYABLE_CLS(type_matcher);
   NOT_MOVABLE_CLS(type_matcher);
@@ -232,6 +229,7 @@ struct type_matcher : public type_specifier {
   friend bool operator==(const type_matcher& lhs, const type_matcher& rhs) {
     return lhs.string() == rhs.string();
   }
+  inline static std::unordered_map<std::string, std::pair<size_t, size_t>> registers{};
 
 private:
   value_type m_matcher;

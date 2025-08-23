@@ -1,6 +1,5 @@
 #include "parser.hpp"
 
-#include <libassert/assert-macros.hpp>
 #include <magic_enum/magic_enum.hpp>
 #include <optional>
 #include <ranges>
@@ -32,10 +31,6 @@ ast::translation_unit parser::parser::parse_program() {
     auto* decl = parse_declaration();
     res.push_back(decl);
   }
-  // static_assert(std::is_move_constructible_v<ast::translation_unit>,
-  // "Element type must be move constructible");
-  // check_visitor visitor;
-  // res.accept(visitor);
   return {res};
 }
 
@@ -139,7 +134,6 @@ statement* parser::parse_statement() {
         m_tokens.advance();
 
         auto label = m_tokens.next();
-        DEBUG_ASSERT(!label.value.empty());
         want_semicolon();
         return create_node<jump::goto_>(label);
       }
@@ -150,7 +144,6 @@ statement* parser::parse_statement() {
   }
 
   REGISTER_WARN("No token matched {}", next);
-  NOT_IMPLEMENTED;
   return nullptr;
 }
 
@@ -192,7 +185,6 @@ ast::expr::expression* parser::parse_lhs_expr() {
       case token_t::char_lit:
         return create_node<expr::literal>(token, expr::literal_t::CHAR);
       default:
-        NOT_IMPLEMENTED;
         break;
     }
   }
@@ -226,8 +218,6 @@ ast::expr::expression* parser::parse_lhs_expr() {
       op = operator_t::pre_inc;
     } else if (token_data(next.type).is_castable<operator_t>()) {
       op = token_data(next.type).cast<operator_t>();
-    } else {
-      NOT_IMPLEMENTED;
     }
     operator_ t(token, op);
     auto* operand = parse_lhs_expr();
@@ -253,8 +243,6 @@ expr::expression* parser::parse_expr(uint8_t min_prec) {
         op_t = operator_t::post_inc;
       } else if (op.type == token_t::dec) {
         op_t = operator_t::post_dec;
-      } else {
-        NOT_IMPLEMENTED;
       }
       operator_ t(op, op_t);
       lhs = create_node<expr::unary_operator>(lhs, std::move(t));
@@ -276,7 +264,7 @@ expr::expression* parser::parse_expr(uint8_t min_prec) {
     }
 
     expr::expression* rhs = parse_expr(prec);
-    lhs                   = create_node<expr::binary_operator>(lhs, rhs, std::move(curr_op));
+    lhs                   = create_node<expr::binary_operator>(lhs, std::move(curr_op), rhs);
   }
 
   return lhs;
@@ -293,9 +281,7 @@ expr::expression* parser::parse_call(identifier&& ident) {
 
 identifier parser::parse_identifier() {
   if (m_tokens.next_is(token_t::ident)) {
-    auto&& next = m_tokens.next();
-    DEBUG_ASSERT(!next.value.empty(), std::format("Identifier must have a value. token: {}", next));
-    return {next};
+    return {m_tokens.next()};
   }
 
   throw_error<compilation_error_t::UNEXPECTED_TOKEN>(m_tokens.peek());
@@ -366,7 +352,7 @@ ptype parse_type(const std::vector<token>& ts) {
              }) |
              std::ranges::to<std::vector>();
 
-    // throw_error<error_t::REQUIRED_TYPE>(t);
+    THROW(REQUIRED_TYPE, )
   }
   return cmm::type::create_fundamental(
       parse_enum_type(type_.value(), unsigned_), const_, volatile_);
@@ -408,8 +394,7 @@ ast::decl::specifiers parser::parse_specifiers() {
     specs.push_back(m_tokens.next());
   }
 
-  ast::decl::specifiers&& res = {parse_type(specs), parse_linkage(specs), parse_storage(specs)};
-  return res;
+  return {parse_type(specs), parse_linkage(specs), parse_storage(specs)};
 }
 
 template <typename T, typename... Args>
@@ -533,11 +518,11 @@ statement* parser::parser::parse_if() {
 
 void parser::parser::want(const token& token, const cmm::token_t& type, bool needed_value) {
   if (token.type != type) {
-    throw parser_exception(std::format("Wrong type. Wanted {}\n{}", type, token));
+    THROW(UNEXPECTED_TOKEN, token);
   }
 
   if (needed_value && !token.value.empty()) {
-    throw parser_exception(std::format("Does not have value: {}", token));
+    THROW(UNEXPECTED_TOKEN, token);
   }
 }
 

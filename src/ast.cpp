@@ -10,7 +10,6 @@
 #include <ranges>
 #include <type_traits>
 #include <utility>
-#include <utils.hpp>
 
 namespace cmm::ast {
 
@@ -68,7 +67,6 @@ function::function(decltype(specs)&& s,
 
 assembly::operand* decl::conversion_function::operator()(assembly::operand* reg) const noexcept {
   crptype from = reg->content_type();
-  ASSERT(is_convertible(from));
   crptype to_t = to(from);
 
   // TODO
@@ -226,7 +224,6 @@ assembly::operand* function::definition::declare_parameter(const ast::decl::vari
 }
 
 size_t translation_unit::pop_frame() {
-  DEBUG_ASSERT(!is_global_scope());
   size_t ditched = 0;
   for (size_t i = 0; i < active_frame()->local_scopes.size(); ++i) {
     ditched += m_stackframe.top()->destroy_scope();
@@ -241,7 +238,6 @@ void decl::function::definition::create_scope(ast::block& comp) noexcept {
 
 size_t decl::function::definition::destroy_scope() noexcept {
   size_t ditched = local_scopes.top()->variables.size();
-  DEBUG_ASSERT(!local_scopes.empty());
   local_scopes.pop();
   REGISTER_TRACE("Cleared local scope: ditched {} elements", ditched);
   return ditched;
@@ -256,10 +252,6 @@ void translation_unit::clear() noexcept {
 bool translation_unit::is_entry_point_defined() const noexcept {
   builtin_signature_data a = builtin_signature_t::MAIN;
   return m_functions.contains(a.signature());
-  // std::string translation_unit::format() const {
-  // return "";
-  // m_global_scope.variables.join(", ");
-  //}
 }
 
 const decl::label* translation_unit::get_label(const ast::identifier& id) const {
@@ -270,13 +262,10 @@ void block::declare_label(const ast::decl::label* l) { labels.emplace(l->ident.v
 
 assembly::operand* scope::declare_variable(ast::decl::variable* decl) {
   variables.insert(decl, nullptr);
-  NOT_IMPLEMENTED;
+  return nullptr;
 }
 
-void translation_unit::create_frame(decl::function::definition* fn) {
-  m_stackframe.push(fn);
-  // m_stackframe.top()->create_scope(*fn);
-}
+void translation_unit::create_frame(decl::function::definition* fn) { m_stackframe.push(fn); }
 
 const variable_store::value_type& translation_unit::get_variable(const ast::identifier& id) const {
   if (variables.contains(id.value())) {
@@ -382,6 +371,14 @@ bool translation_unit::is_declared(const ast::identifier& id) const noexcept {
   }
 }
 
+std::vector<const ast::decl::function::definition*> translation_unit::stackframe() {
+  std::vector<const ast::decl::function::definition*> res;
+  while (!m_stackframe.empty()) {
+    res.push_back(std::move(m_stackframe.top()));
+    m_stackframe.pop();
+  }
+  return res;
+}
 void translation_unit::set_context(ir::compilation_unit* ctx) { m_context = ctx; }
 
 template bool translation_unit::is_declared<decl::label>(const ast::identifier&) const noexcept;
