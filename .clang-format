@@ -1,4 +1,5 @@
 ---
+BasedOnStyle: LLVM
 AlignAfterOpenBracket: Align
 AlignArrayOfStructures: Left
 AlignConsecutiveAssignments: AcrossEmptyLines
@@ -6,12 +7,11 @@ AlignConsecutiveMacros:
   Enabled: true
   AcrossEmptyLines: false
   AcrossComments: false
-AlignEscapedNewlines: DontAlign
+AlignEscapedNewlines: LeftWithLastLine
 AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortBlocksOnASingleLine: Empty
 AllowShortFunctionsOnASingleLine: All
-AlwaysBreakTemplateDeclarations: Yes
-BasedOnStyle: LLVM
+BreakTemplateDeclarations: Yes
 BinPackArguments: false
 BinPackParameters: false
 BreakBeforeBraces: Custom
@@ -20,12 +20,11 @@ BraceWrapping:
   SplitEmptyFunction: false
   SplitEmptyRecord: false
 BreakConstructorInitializers: BeforeColon
-BreakTemplateDeclarations: Leave
 ColumnLimit: 100
 IndentCaseBlocks: true
 IndentCaseLabels: true
-IndentPPDirectives: BeforeHash
-IndentRequiresClause:  true
+IndentPPDirectives: AfterHash
+IndentRequiresClause: true
 IndentWidth: 2
 NamespaceIndentation: None
 PackConstructorInitializers: Never
@@ -35,5 +34,7 @@ PointerAlignment: Left
 ReferenceAlignment: Left
 RequiresClausePosition: OwnLine
 SpaceBeforeParens: ControlStatements
+SeparateDefinitionBlocks: Leave
+SortIncludes: true
 Standard: Latest
 # WhitespaceSensitiveMacros: [PASTE,PASTE2, ENUM_INNER_TYPE]

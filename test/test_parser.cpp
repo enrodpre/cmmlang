@@ -1,8 +1,8 @@
 
 #include "ast.hpp"
 #include "expr.h"
-#include "lang.hpp"
 #include "parser.hpp"
+#include "test_base.hpp"
 #include "types.hpp"
 #include <cpptrace/from_current.hpp>
 #include <cpptrace/utils.hpp>
@@ -19,6 +19,7 @@ class ParserTest : public ::testing::Test {
     --i;
     return {i, i};
   }
+
   static token create_token(cmm::token_t type, std::string value = "") {
     location loc = create_location();
     return {type, std::move(loc), std::move(value)};
@@ -67,10 +68,10 @@ protected:
     return to;
   }
 
-#define CAST(FROM, TO_T, TO) \
-  auto* TO = dynamic_cast<TO_T>(FROM); \
-  EXPECT_TRUE(TO != nullptr) << std::format("Type {} assumed to be {}", \
-                                            cpptrace::demangle(typeid(FROM).name()), \
+#define CAST(FROM, TO_T, TO)                                                          \
+  auto* TO = dynamic_cast<TO_T>(FROM);                                                \
+  EXPECT_TRUE(TO != nullptr) << std::format("Type {} assumed to be {}",               \
+                                            cpptrace::demangle(typeid(FROM).name()),  \
                                             cpptrace::demangle(typeid(TO_T).name()));
 
   static void check_literal(const expr::expression& expr, const std::string& value) {
@@ -78,6 +79,7 @@ protected:
     EXPECT_FALSE(lit == nullptr);
     EXPECT_EQ(value, lit->value());
   }
+
   static void require_identifier(const expr::expression& expr, const std::string& value) {
     const auto* lit = dynamic_cast<const expr::identifier*>(&expr);
     EXPECT_FALSE(lit == nullptr);
@@ -120,16 +122,8 @@ TEST_F(ParserTest, Vardecl) {
   EXPECT_EQ(vardecl->ident.value(), "var");
   auto* expr = cast<expr::literal*>(vardecl->init);
   EXPECT_EQ("5", expr->value());
-  EXPECT_EQ(type_category_t::sint_t, expr->type().category);
+  EXPECT_EQ(type_category_t::sint_t, expr->type()->category);
 }
-
-#define PRINT(x) \
-  do { \
-    testing::internal::CaptureStdout(); \
-    std::cout << x << '\n'; \
-    std::string output = testing::internal::GetCapturedStdout(); \
-    std::cout << output; \
-  } while (0);
 
 TEST_F(ParserTest, binop_expression) {
   // TODO terminar

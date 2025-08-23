@@ -3,7 +3,6 @@
 #include <magic_enum/magic_enum.hpp>
 #include <string>
 
-#define TYPE_INDEX(cls) std::type_index(typeid(cls))
 namespace cmm {
 
 self_allocated::self_allocated(cmm::location&& loc)
@@ -11,11 +10,11 @@ self_allocated::self_allocated(cmm::location&& loc)
 self_allocated::self_allocated(const cmm::location& loc)
     : m_location(loc) {}
 
-[[nodiscard]] std::string location::format() const { return std::format("({}, {})", start, end); }
+[[nodiscard]] std::string location::string() const { return std::format("({}, {})", start, end); }
 
 source_code::source_code(const fs::ifile& input)
-    : m_filename(input.filename()),
-      m_code(input.content()) {}
+    : m_code(input.content()),
+      m_filename(input.filename()) {}
 
 [[nodiscard]] const std::string& source_code::get_code() const { return m_code; }
 

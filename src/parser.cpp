@@ -2,11 +2,11 @@
 
 #include <libassert/assert-macros.hpp>
 #include <magic_enum/magic_enum.hpp>
-#include <type_traits>
-#include <utility>
 #include <optional>
 #include <ranges>
 #include <stdexcept>
+#include <type_traits>
+#include <utility>
 
 #include "ast.hpp"
 #include "common.hpp"
@@ -14,14 +14,12 @@
 #include "lang.hpp"
 #include "token.hpp"
 #include "types.hpp"
-#include "static_type_info/type_id.h"
 #include "visitor.hpp"
 
 namespace cmm::parser {
 
 using namespace ast;
 using namespace decl;
-// using namespace messaging;
 
 parser::parser(tokens tokens)
     : m_tokens(std::move(tokens)) {}
@@ -62,7 +60,7 @@ T* parser::parse_block() {
   }
 
   auto tok = m_tokens.peek();
-  throw_error<compilation_error_t::UNEXPECTED_TOKEN>(tok);
+  THROW(UNEXPECTED_TOKEN, tok);
 }
 
 statement* parser::parse_statement() {
@@ -199,7 +197,6 @@ ast::expr::expression* parser::parse_lhs_expr() {
     }
   }
 
-  expr::expression* expr = nullptr;
   if (peek_data().is(token_t::ident)) {
     auto ident = parse_identifier();
     if (m_tokens.next_is(token_t::o_paren)) {
@@ -221,14 +218,14 @@ ast::expr::expression* parser::parse_lhs_expr() {
   }
 
   if (peek_data().is_operator()) {
-    auto token = m_tokens.next();
+    auto next = m_tokens.next();
     operator_t op{};
-    if (token.type == token_t::dec) {
+    if (next.type == token_t::dec) {
       op = operator_t::pre_dec;
-    } else if (token.type == token_t::inc) {
+    } else if (next.type == token_t::inc) {
       op = operator_t::pre_inc;
-    } else if (token_data(token.type).is_castable<operator_t>()) {
-      op = peek_data().cast<operator_t>();
+    } else if (token_data(next.type).is_castable<operator_t>()) {
+      op = token_data(next.type).cast<operator_t>();
     } else {
       NOT_IMPLEMENTED;
     }
@@ -237,7 +234,7 @@ ast::expr::expression* parser::parse_lhs_expr() {
     return create_node<expr::unary_operator>(operand, std::move(t));
   }
 
-  throw_error<compilation_error_t::UNEXPECTED_TOKEN>(token);
+  THROW(UNEXPECTED_TOKEN, token);
 }
 
 expr::expression* parser::parse_expr(uint8_t min_prec) {
@@ -265,7 +262,8 @@ expr::expression* parser::parse_expr(uint8_t min_prec) {
     }
 
     operator_ curr_op{op};
-    auto prec = curr_op.data().precedence;
+    operator_data data(curr_op.value());
+    auto prec = data.precedence;
 
     if (prec >= min_prec) {
       break;
@@ -273,7 +271,7 @@ expr::expression* parser::parse_expr(uint8_t min_prec) {
 
     m_tokens.advance();
 
-    if (curr_op.data().assoc == cmm::associativity_t::L2R) {
+    if (data.assoc == cmm::associativity_t::L2R) {
       prec++;
     }
 
@@ -285,9 +283,8 @@ expr::expression* parser::parse_expr(uint8_t min_prec) {
 }
 
 expr::expression* parser::parse_call(identifier&& ident) {
-  auto p = [this]() { return this->parse_expr(); };
-  expr::arguments args =
-      parse_varargs<expr::expression*>(p, token_t::o_paren, token_t::comma, token_t::c_paren);
+  auto p               = [this]() { return this->parse_expr(); };
+  expr::arguments args = parse_varargs(p, token_t::o_paren, token_t::comma, token_t::c_paren);
 
   // No more parameters
   // but dont capture semicolon just jet
@@ -316,76 +313,76 @@ decl::variable* parser::parse_variable(ast::decl::specifiers&& mods, ast::identi
 }
 
 namespace {
-  linkage parse_linkage(const std::vector<token>& ts) {
-    auto res =
-        std::ranges::find_if(ts, [](const auto& spec) { return spec.type == token_t::static_; });
-    if (res != ts.cend()) {
-      return {*res, linkage_t::internal};
-    }
+linkage parse_linkage(const std::vector<token>& ts) {
+  auto res =
+      std::ranges::find_if(ts, [](const auto& spec) { return spec.type == token_t::static_; });
+  if (res != ts.cend()) {
+    return {*res, linkage_t::internal};
+  }
+  return {};
+}
+
+ast::storage parse_storage(const std::vector<token>& ts) {
+  auto storages =
+      ts | std::views::filter([](const auto& spec) { return token_data(spec.type).is_storage(); }) |
+      std::ranges::to<std::vector>();
+  if (storages.size() == 0) {
     return {};
   }
-
-  ast::storage parse_storage(const std::vector<token>& ts) {
-    auto storages =
-        ts |
-        std::views::filter([](const auto& spec) { return token_data(spec.type).is_storage(); }) |
-        std::ranges::to<std::vector>();
-    if (storages.size() == 0) {
-      return {};
-    }
-    if (storages.size() == 1) {
-      return {storages[0], storage_t::static_};
-    }
-
-    throw_error<compilation_error_t::INCOMPATIBLE_TOKEN>(storages[1]);
-  }
-  constexpr type_category_t parse_enum_type(const token_data& token_type, bool unsigned_) {
-    if (token_type == token_t::int_t) {
-      return unsigned_ ? type_category_t::uint_t : type_category_t::sint_t;
-    } // namespace cmm::ast
-    return token_type.cast<type_category_t>();
-  }
-  crtype parse_type(const std::vector<token>& ts) {
-    bool const_    = false;
-    bool volatile_ = false;
-    bool unsigned_ = false;
-    std::optional<token_t> type_;
-    for (const auto& t : ts) {
-      if (t.type == token_t::const_) {
-        const_ = true;
-      } else if (t.type == token_t::volatile_) {
-        volatile_ = true;
-      } else if (token_data(t.type).is_type()) {
-        type_.emplace(t.type);
-      } else if (t.type == token_t::unsigned_) {
-        unsigned_ = true;
-      }
-    }
-
-    if (!type_.has_value()) {
-      auto r = ts | std::views::transform([](const auto& spec) -> std::optional<cmm::location> {
-                 return spec.location();
-               }) |
-               std::ranges::to<std::vector>();
-
-      // throw_error<error_t::REQUIRED_TYPE>(t);
-    }
-    return cmm::type::create_fundamental(
-        parse_enum_type(type_.value(), unsigned_), const_, volatile_);
+  if (storages.size() == 1) {
+    return {storages[0], storage_t::static_};
   }
 
-  void set_parent_node() {}
-  template <is_node Parent, is_node Node, is_node... Nodes>
-  void set_parent_node(Parent* parent, Node&& node, Nodes&&... args) {
-    if constexpr (requires { node.operator->(); }) {
-      node->set_parent(parent);
-    } else if constexpr (std::is_pointer_v<Node>) {
-      node->set_parent(parent);
-    } else {
-      node.set_parent(parent);
+  throw_error<compilation_error_t::INCOMPATIBLE_TOKEN>(storages[1]);
+}
+
+constexpr type_category_t parse_enum_type(const token_data& token_type, bool unsigned_) {
+  if (token_type == token_t::int_t) {
+    return unsigned_ ? type_category_t::uint_t : type_category_t::sint_t;
+  } // namespace cmm::ast
+  return token_type.cast<type_category_t>();
+}
+
+ptype parse_type(const std::vector<token>& ts) {
+  bool const_    = false;
+  bool volatile_ = false;
+  bool unsigned_ = false;
+  std::optional<token_t> type_;
+  for (const auto& t : ts) {
+    if (t.type == token_t::const_) {
+      const_ = true;
+    } else if (t.type == token_t::volatile_) {
+      volatile_ = true;
+    } else if (token_data(t.type).is_type()) {
+      type_.emplace(t.type);
+    } else if (t.type == token_t::unsigned_) {
+      unsigned_ = true;
     }
-    set_parent_node(parent, std::forward<Nodes>(args)...);
   }
+
+  if (!type_.has_value()) {
+    auto r = ts | std::views::transform([](const auto& spec) -> std::optional<cmm::location> {
+               return spec.location();
+             }) |
+             std::ranges::to<std::vector>();
+
+    // throw_error<error_t::REQUIRED_TYPE>(t);
+  }
+  return cmm::type::create_fundamental(
+      parse_enum_type(type_.value(), unsigned_), const_, volatile_);
+}
+
+template <is_node Parent, is_node Node, is_node... Nodes>
+void set_parent_node(Parent* parent, Node&& node, Nodes&&... args) {
+  if constexpr (requires { node.operator->(); }) {
+    node->set_parent(parent);
+  } else if constexpr (std::is_pointer_v<Node>) {
+    node->set_parent(parent);
+  } else {
+    node.set_parent(parent);
+  }
+  set_parent_node(parent, std::forward<Nodes>(args)...);
+}
 } // namespace
 
 ast::decl::rank* parser::parse_rank() {
@@ -404,6 +401,7 @@ ast::decl::rank* parser::parse_rank() {
   }
   return res;
 }
+
 ast::decl::specifiers parser::parse_specifiers() {
   std::vector<token> specs;
   while (peek_data().is_specifier()) {
@@ -422,7 +420,7 @@ T* parser::create_node(Args&&... args) {
   return obj;
 }
 
-template <typename T, typename Func>
+template <typename Func, typename T>
 siblings<T> parser::parse_varargs(Func&& inner,
                                   const token_t& opener,
                                   const token_t& delim,
@@ -448,8 +446,8 @@ siblings<T> parser::parse_varargs(Func&& inner,
   return res;
 }
 
-decl::function* parser::parse_function(decl::specifiers&& mods, identifier&& id) {
-  auto p = [this]() -> decl::function::parameter {
+decl::function* parser::parse_function(decl::specifiers&& mods, identifier&& ident) {
+  auto p = [this]() -> variable {
     decl::specifiers specs = parse_specifiers();
 
     auto id                = parse_identifier();
@@ -459,11 +457,10 @@ decl::function* parser::parse_function(decl::specifiers&& mods, identifier&& id)
       e = parse_expr();
     }
 
-    return create_node<ast::decl::variable>(std::move(specs), rank, std::move(id), e);
+    return *create_node<variable>(std::move(specs), rank, id, e);
   };
 
-  auto params = parse_varargs<decl::function::parameter>(
-      p, token_t::o_paren, token_t::comma, token_t::c_paren);
+  auto params = parse_varargs(p, token_t::o_paren, token_t::comma, token_t::c_paren);
 
   // No more var decls
   // Block parsing
@@ -473,7 +470,7 @@ decl::function* parser::parse_function(decl::specifiers&& mods, identifier&& id)
   }
 
   auto* func =
-      create_node<decl::function>(std::move(mods), std::move(id), std::move(params), compound_);
+      create_node<decl::function>(std::move(mods), std::move(ident), std::move(params), compound_);
   return func;
 }
 
@@ -545,7 +542,9 @@ void parser::parser::want(const token& token, const cmm::token_t& type, bool nee
 }
 
 [[nodiscard]] token_data parser::peek_data() const { return {m_tokens.peek().type}; }
+
 [[nodiscard]] bool parser::next_is(token_t t) const { return m_tokens.next_is(t); }
+
 token parser::parser::want(const cmm::token_t& type, bool needed_value) {
   const auto& tok = m_tokens.next();
   want(tok, type, needed_value);

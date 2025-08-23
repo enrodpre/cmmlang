@@ -15,7 +15,7 @@ struct AstTest : public ::testing::Test {
   tokens* every_token;
   // ~AstTest() override { delete every_token; }
   static token create_token(cmm::token_t type, std::string value = "") {
-    return {type, {}, std::move(value)};
+    return {type, cmm::location(1, 2), std::move(value)};
   }
   token class_     = create_token(token_t::class_t);
   token constexpr_ = create_token(token_t::constexpr_);

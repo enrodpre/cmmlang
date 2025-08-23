@@ -18,8 +18,8 @@ tokens::tokens()
       m_pointer() {}
 
 tokens::tokens(const std::vector<token>& toks)
-    : m_tokens(toks),
-      formattable_range(&m_tokens),
+    : formattable_range(&m_tokens),
+      m_tokens(toks),
       m_pointer(0) {}
 
 tokens::tokens(std::initializer_list<token> list)

@@ -1,23 +1,21 @@
 #pragma once
 
-#include <stdint.h>
-#include <libassert/assert.hpp>
-#include <format>
-#include <utility>
+#include <cstdint>
 #include <exception>
+#include <format>
+#include <libassert/assert.hpp>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "allocator.hpp"
 #include "ast.hpp"
-#include "token.hpp"
 #include "macros.hpp"
+#include "token.hpp"
 
-namespace cmm {
-namespace ast {
-namespace expr {
+namespace cmm::ast::expr {
 enum class literal_t : uint8_t;
 struct binary_operator;
 struct call;
@@ -25,9 +23,7 @@ struct expression;
 struct identifier;
 struct literal;
 struct unary_operator;
-}  // namespace expr
-}  // namespace ast
-}  // namespace cmm
+} // namespace cmm::ast::expr
 
 namespace cmm::parser {
 class parser_exception : public std::exception {
@@ -91,7 +87,7 @@ private:
   std::vector<ast::declaration*> m_global;
 
   // Helpers
-  template <typename T, typename Func>
+  template <typename Func, typename T = std::invoke_result_t<Func>>
   ast::siblings<T> parse_varargs(Func&&, const token_t&, const token_t&, const token_t&);
   ast::decl::variable* parse_variable(ast::decl::specifiers&&, ast::identifier&&);
   ast::decl::function* parse_function(ast::decl::specifiers&&, ast::identifier&&);

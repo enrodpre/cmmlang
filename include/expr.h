@@ -2,55 +2,55 @@
 
 #include "ast.hpp"
 #include "common.hpp"
-#include "lang.hpp"
 #include "token.hpp"
 #include "types.hpp"
 #include "visitor.hpp"
 #include <cstdint>
 #include <type_traits>
+#include <utility>
 
 namespace cmm::ast {
 
 class statement;
-namespace expr {
-enum class value_category_t : uint8_t {
-  NOT_PROCESSED = 0,
-  GLVALUE,
-  PRVALUE,
-  XVALUE,
-  LVALUE,
-  RVALUE
-};
 
-struct semantics {
-  bool loaded;
-  value_category_t value_category;
-  ptr_type original_type;
-  bool is_constant_evaluable;
-  ptr_type contextually_castable;
+namespace expr {
+
+struct semantic_data {
+  semantic_data() = default;
+  bool loaded     = false;
+  std::optional<value_category_t> value_category;
+  bool is_constant_evaluable{};
+  ptype original_type;
+  ptype casted_type;
   // const ir::function* fn;
 };
 
 struct expression : public statement {
-  expression();
+  expression()           = default;
   ~expression() override = default;
   using statement::statement;
-  value_category_t category() const { return semantics.value_category; }
-  bool is_category(value_category_t) const;
-  bool are_semantics_loaded() const { return semantics.loaded; }
-  void load_semantics(ptr_type, value_category_t) const;
-  virtual cr_type type() const { return *semantics.original_type; }
-  mutable expr::semantics semantics{};
+
+  semantic_data* semantics() const;
+  virtual ptype type() const {
+    const auto* sem = semantics();
+    return sem->casted_type ? sem->casted_type : sem->original_type;
+  }
+
   AST_LEAF
+
+private:
+  mutable expr::semantic_data m_semantics;
 };
 
 static_assert(std::is_base_of_v<statement, expression>);
 
 struct identifier : visitable<identifier, expression> {
   identifier(ast::identifier&& id);
-  // cr_type type() const override;
+
   const std::string& value() const { return m_term.value(); }
+
   operator ast::identifier() const { return m_term; }
+
   AST_LEAF
 
 private:
@@ -62,31 +62,15 @@ DERIVE_OK(statement, expression);
 DERIVE_OK(expression, identifier);
 
 enum class literal_t : uint8_t { CHAR, STRING, SINT, UINT, FALSE, TRUE, FLOAT };
+
 struct literal : visitable<literal, expression> {
   literal_t category;
   literal(const token&, literal_t);
   literal(cmm::location, std::string, literal_t);
+
   const std::string& value() const { return m_term.value(); }
+
   operator ast::literal() const { return m_term; }
-  cr_type type() const override {
-    switch (category) {
-      case literal_t::CHAR:
-        return cmm::type::create_fundamental(type_category_t::char_t);
-      case literal_t::STRING:
-        return cmm::type::create_string(m_term.value().size());
-      case literal_t::SINT:
-        return cmm::type::create_fundamental(type_category_t::sint_t);
-      case literal_t::UINT:
-        return cmm::type::create_fundamental(type_category_t::uint_t);
-      case literal_t::FALSE:
-      case literal_t::TRUE:
-        return cmm::type::create_fundamental(type_category_t::bool_t);
-      case literal_t::FLOAT:
-        return cmm::type::create_fundamental(type_category_t::float_t);
-        break;
-    }
-    __builtin_unreachable();
-  }
 
   AST_LEAF
 
@@ -95,19 +79,19 @@ protected:
 };
 
 using arguments = siblings<expr::expression*>;
+
 struct call : visitable<call, expression> {
   ast::identifier ident;
   arguments args;
 
   call(decltype(ident)&& ident_, decltype(args)&& args);
-  cmm::location location() const override;
-  // cr_type type() const override;
-  [[nodiscard]] std::vector<ptr_type> types() const {
-    return args |
-           std::views::transform([](const expr::expression* expr) { return &expr->type(); }) |
+
+  [[nodiscard]] std::vector<ptype> types() const {
+    return args | std::views::transform([](const expr::expression* expr) -> ptype {
+             return expr->type();
+           }) |
            std::ranges::to<std::vector>();
   }
-  // FORMAT_DECL_IMPL();
 };
 
 struct unary_operator : visitable<unary_operator, expression> {
@@ -115,8 +99,6 @@ struct unary_operator : visitable<unary_operator, expression> {
   ast::operator_ operator_;
 
   unary_operator(expression* expression, ast::operator_&& op);
-  cmm::location location() const override;
-  signature sig() const { return {operator_, {&expr.type()}}; }
 };
 
 struct binary_operator : visitable<binary_operator, expression> {
@@ -125,23 +107,19 @@ struct binary_operator : visitable<binary_operator, expression> {
   ast::operator_ operator_;
 
   binary_operator(expression* left, expression* right, ast::operator_&& op);
-  cmm::location location() const override;
-  signature sig() const {
-    return {
-        operator_, {&left.type(), &right.type()}
-    };
-  }
 };
 
 using conversion_function = std::function<expression&(expression&)>;
 
 struct type_conversion : visitable<type_conversion, expression> {
   expression& expr;
-  const conversions::type_converter func;
-  type_conversion(expression& exp, const conversions::type_converter& fn)
+  const type_converter func;
+
+  type_conversion(expression& exp, type_converter fn)
       : expr(exp),
-        func(fn) {}
+        func(std::move(fn)) {}
 };
+
 struct implicit_type_conversion : visitable<implicit_type_conversion, type_conversion> {
   using visitable<implicit_type_conversion, type_conversion>::visitable;
 };

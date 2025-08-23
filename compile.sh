@@ -26,7 +26,6 @@ while getopts "ad:ptr" opt; do
     esac
     ;;
   p)
-    # Profiling flags with gprof
     flags+=(-pg)
     ;;
   r)
@@ -53,11 +52,8 @@ export CMAKE_CUSTOM_FLAGS=$(
   echo "${flags[*]}"
 )
 
-# echo $CMAKE_CUSTOM_FLAGS
-
 shift $((OPTIND - 1))
 
-# echo "---- BUILDING $TARGET"
 BUILD_DIR="build"
 
 cmake -B "$BUILD_DIR" -DBUILD_TESTS="$TESTS"

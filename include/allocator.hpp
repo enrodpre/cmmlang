@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <initializer_list> // for begin, end
 #include <memory>
 #include <new>
 #include <string> // for basic_string, string
@@ -25,7 +24,7 @@ struct register_;
 
 struct Allocator : default_singleton<Allocator> {
   Allocator() = default;
-  Allocator(size_t m_capacity, std::byte* m_buffer, std::byte* m_offset);
+  Allocator(size_t, std::byte*, std::byte*);
   ~Allocator() { delete[] m_buffer; }
 
   [[nodiscard]] size_t used() const { return static_cast<size_t>(m_offset - m_buffer); }

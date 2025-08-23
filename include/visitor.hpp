@@ -1,19 +1,17 @@
 #pragma once
 
-#include <cpptrace/utils.hpp>
-#include <revisited/visitor.h>
 #include <algorithm>
-#include <type_traits>
-#include <format>
+#include <cpptrace/utils.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
+#include <revisited/visitor.h>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "common.hpp"
 #include "macros.hpp"
-#include "static_type_info/type_id.h"
 
 namespace cmm::ast {
 
@@ -40,9 +38,9 @@ struct node : revisited::Visitable<node>, public displayable {
   }
   virtual void set_parent(node* parent_) { m_parent = parent_; }
   virtual void set_parent(node* parent_) const { m_parent = parent_; }
-  virtual cmm::location location() const = 0;
-  // virtual std::vector<node*> children() const = 0;
+  virtual std::optional<cmm::location> location() const = 0;
   operator node*() { return static_cast<node*>(this); }
+  std::string string() const override { return cpptrace::demangle(typeid(this).name()); }
 
 private:
   mutable node* m_parent = nullptr;
@@ -59,19 +57,16 @@ struct composite : revisited::DerivedVisitable<composite, node> {
   composite() = default;
   composite(std::vector<node*>&& v)
       : m_data(std::move(v)) {}
-  template <is_node... Args>
-  composite(Args&&...);
-  // MOVABLE_CLS(composite) NOT_COPYABLE_CLS(composite)
 
   void set_parent(node* n) const override {
     for (const node* a : m_data) {
       a->set_parent(n);
     }
   }
-  [[nodiscard]] cmm::location location() const override {
-    return std::ranges::fold_left_first(
-               m_data | std::views::transform([](const node* n) { return n->location(); }),
-               std::plus<cmm::location>{})
+  [[nodiscard]] std::optional<cmm::location> location() const override {
+    return std::ranges::fold_left_first(m_data | TRANSFORM(to_location) | FILTER(opt_has_value) |
+                                            TRANSFORM(opt_to_value),
+                                        std::plus<cmm::location>{})
         .value();
   }
   vector<node*> m_data;

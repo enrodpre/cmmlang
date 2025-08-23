@@ -19,8 +19,8 @@ if(PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
 endif()
 
 find_program(IWYU_PATH NAMES include-what-you-use iwyu)
-set (ENABLE_IWYU ON)
-set (IWYU_AUTOFIX ON)
+# set (ENABLE_IWYU ON)
+# set (IWYU_AUTOFIX ON)
 option(ENABLE_IWYU "Enable include-what-you-use analysis" OFF)
 option(IWYU_AUTOFIX "Automatically apply IWYU suggestions" OFF)
 
@@ -92,14 +92,27 @@ find_package(magic_enum REQUIRED)
 find_package(cpptrace REQUIRED)
 find_package(libassert REQUIRED)
 find_package(Revisited REQUIRED)
-# find_package(frozen REQUIRED)
 
-add_library(${LIBNAME} ${sources})
-target_compile_options(${LIBNAME} PRIVATE
+set(FLAGS
   -std=c++26
   -fdiagnostics-color=always
-   -O0 -g -fno-inline
+  -O0
+  -g
+  -fno-inline
+  # -Weffc++
+  # -MD
+  # -Wall
+  # -Wextra
+  # -Wpedantic
+  # -Wno-variadic-macros
+  # -Wno-gnu-zero-variadic-macro-arguments
+  # -Wno-switch
+  # -Wshadow
+  # -fsanitize=undefined,address
 )
+
+add_library(${LIBNAME} ${sources})
+target_compile_options(${LIBNAME} PRIVATE ${FLAGS})
 target_compile_features(${LIBNAME} PUBLIC cxx_std_26)
 target_link_libraries(
    ${LIBNAME} PRIVATE magic_enum::magic_enum cpptrace::cpptrace
@@ -112,11 +125,7 @@ target_include_directories(
 
 add_executable(${APPNAME} main.cpp)
 find_package(cxxopts REQUIRED)
-target_compile_options(${APPNAME} PRIVATE
-  -std=c++26
-  -fdiagnostics-color=always
-   -O0 -g -fno-inline
-)
+target_compile_options(${APPNAME} PRIVATE ${FLAGS})
 target_link_libraries(${APPNAME} PRIVATE ${LIBNAME} cxxopts::cxxopts)
 
 if(BUILD_TESTS)

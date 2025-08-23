@@ -18,10 +18,10 @@ enum class instruction_t : uint8_t;
 namespace cmm::assembly {
 
 std::string operand::format() const { return value(); }
+
 [[nodiscard]] std::optional<operand::symbol_container> operand::content() const { return m_symbol; }
-[[nodiscard]] crtype operand::content_type() const {
-  return content().value().content->specs.type;
-};
+
+[[nodiscard]] ptype operand::content_type() const { return content().value().content->specs.type; };
 
 [[nodiscard]] operand::content_t operand::variable() const { return m_symbol.value().content; }
 
@@ -31,16 +31,19 @@ operand::symbol_container::symbol_container(content_t cont, symbol_attr attr)
       m_disposable(false) {}
 
 bool operand::symbol_container::is_address() const { return attribute == symbol_attr::ADDRESS; }
+
 operand* operand::hold_value(content_t obj) {
   m_symbol.emplace(obj, symbol_container::symbol_attr::VALUE);
   return this;
 }
+
 operand* operand::hold_address(content_t obj) {
   m_symbol.emplace(obj, symbol_container::symbol_attr::ADDRESS);
   return this;
 }
 
 void operand::release() { m_symbol.reset(); }
+
 bool operand::is_writtable() const {
   return !m_symbol.has_value() || m_symbol.value().is_disposable();
 }
@@ -97,6 +100,7 @@ immediate::immediate(stored_t value, immediate_t type)
       return get_var<int64_t>(m_value);
   }
 }
+
 reg_memory::reg_memory(std::string base, int64_t offset)
     : reg(std::move(base)),
       m_offset(offset) {}
@@ -143,11 +147,15 @@ label::label(std::string name)
 [[nodiscard]] std::string label_literal::label_length() const {
   return std::format("{}_len", value());
 }
+
 stack_memory* operand_factory::create_stack_memory(uint64_t i) { return create<stack_memory>(i); }
+
 label* operand_factory::create_label(const std::string& s) { return create<label>(s); }
+
 label_memory* operand_factory::create_label_memory(std::string&& s) {
   return create<label_memory>(std::move(s));
 }
+
 label_literal* operand_factory::create_label_literal(std::string&& s) {
   return create<label_literal>(std::move(s));
 }
@@ -231,6 +239,7 @@ std::string asmgen::end() {
 }
 
 void asmgen::add_data(cstring name, cstring value) { m_sections.data.emplace_back(name, value); }
+
 void asmgen::add_bss(cstring ident, cstring type, cstring size) {
   m_sections.bss.emplace_back(std::format("{} {} {}", ident, type, size));
 }
@@ -242,6 +251,7 @@ void asmgen::register_labeled_code_block(cstring name, std::string&& asm_code) {
 void asmgen::create_delay() { m_text.create(); }
 
 [[nodiscard]] std::string asmgen::dump_delayed() { return m_text.dump(); }
+
 void asmgen::stop_delay() {
   m_text.save();
   m_text.create();
@@ -257,6 +267,7 @@ void asmgen::write_comment(cstring comment) noexcept { m_text.write(";; {}\n", c
   return std::ranges::any_of(procedures_snippets,
                              [name](const auto& pair) { return pair.first == name; });
 }
+
 void asmgen::register_snippet(cstring name) {
   for (const auto& pair : procedures_snippets) {
     if (pair.first == name) {
@@ -264,6 +275,7 @@ void asmgen::register_snippet(cstring name) {
     }
   }
 }
+
 comment_block::comment_block(asmgen& gen, std::string name)
     : m_asmgen(gen),
       m_name(std::move(name)) {}

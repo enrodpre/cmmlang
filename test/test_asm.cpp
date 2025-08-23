@@ -14,7 +14,8 @@ class ParametersTest : public ::testing::Test {
 protected:
   void SetUp() override {
     regs = std::make_unique<assembly::registers>();
-    var  = std::make_unique<decl::variable>(cmm::type::create(type_category_t::bool_t), "a");
+    var  = std::make_unique<decl::variable>(
+        cmm::type::create(type_category_t::bool_t), identifier("a"), nullptr);
   }
   void TearDown() override {
     regs.reset();
@@ -76,8 +77,8 @@ TEST_F(ParametersTest, SingleTransactionBasicAllocation) {
   EXPECT_TRUE(reg2->is_writtable());
 }
 
-#define RETRIEVE_AND_FILL(PARAMS, INT, STRING) \
-  auto CONCAT(param, INT) = PARAMS.next(); \
+#define RETRIEVE_AND_FILL(PARAMS, INT, STRING)     \
+  auto CONCAT(param, INT) = PARAMS.next();         \
   EXPECT_EQ(STRING, CONCAT(param, INT)->format()); \
   CONCAT(param, INT)->hold_address(var.get())
 

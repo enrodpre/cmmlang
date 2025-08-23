@@ -8,13 +8,9 @@
 
 namespace cmm::fs {
 
-path executable() {
-  return std::filesystem::canonical("/proc/self/exe");
-}
+path executable() { return std::filesystem::canonical("/proc/self/exe"); }
 
-path executable_dir() {
-  return executable().parent_path();
-}
+path executable_dir() { return executable().parent_path(); }
 
 ifile::ifile(const fs::path& p)
     : file<ifile>(p),
@@ -37,9 +33,9 @@ ofile::ofile(fs::path&& p)
     : file<ofile>(std::move(p)) {}
 
 void ofile::write(cstring src) const {
-  std::ofstream file(m_path, std::ios_base::out | std::ios_base::trunc);
-  file.write(src.data(), static_cast<long>(src.size()));
-  file.close();
+  std::ofstream f(m_path, std::ios_base::out | std::ios_base::trunc);
+  f.write(src.data(), static_cast<long>(src.size()));
+  f.close();
 }
 
 }; // namespace cmm::fs

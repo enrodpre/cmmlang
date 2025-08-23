@@ -16,11 +16,12 @@ namespace cmm::ast {
 
 using namespace decl;
 
-leaf::leaf(cmm::location loc)
+leaf::leaf(std::optional<cmm::location> loc)
     : m_location(std::move(loc)) {}
 
 leaf::leaf(const token& t)
     : m_location(t.location()) {}
+
 label::label(const token& label_)
     : visitable<label, declaration>(label_) {
   add(ident);
@@ -39,77 +40,50 @@ decl::rank::rank(const token& l, decltype(number) e, const token& r)
       close(r) {
   add_all(&open, number, &close);
 }
+
 decl::rank::rank(const token& l, const token& r)
     : rank(r, nullptr, l) {}
 
-variable::variable(specifiers&& spec, decltype(rank) r, identifier&& id, decltype(init) i)
-    : specs(std::move(spec)),
+variable::variable(specifiers&& spec, decltype(rank) r, identifier id, decltype(init) i)
+    : visitable<variable, declaration>(std::move(id)),
+      specs(std::move(spec)),
       rank(r),
-      visitable<variable, declaration>(std::move(id)),
       init(i) {
   add_all(&specs, &ident, init);
 }
-variable::variable(crtype t, decltype(ident)&& id, decltype(init) init)
-    : variable(specifiers(t), nullptr, std::move(id), init) {}
-variable::variable(crtype t, std::string s)
-    : variable(t, identifier(std::move(s)), nullptr) {}
+
+variable::variable(ptype t, decltype(ident) id, decltype(init) init)
+    : variable(specifiers(std::move(t)), nullptr, std::move(id), init) {}
 
 function::function(decltype(specs)&& s,
                    decltype(ident)&& ident_,
                    decltype(params)&& args,
                    decltype(body) body_)
-    : specs(std::move(s)),
-      visitable<function, declaration>(std::move(ident_)),
+    : visitable<function, declaration>(std::move(ident_)),
+      specs(std::move(s)),
       params(std::move(args)),
       body(body_) {
   add_all(&specs, &ident, &params, body);
-  // a specs.set_parent(this);
-  // ident.set_parent(this);
-  // params.set_parent(this);
-  // if (body != nullptr) {
-  //   body->set_parent(this);
-  // }
 }
 
 assembly::operand* decl::conversion_function::operator()(assembly::operand* reg) const noexcept {
-  crtype from = reg->content_type();
+  crptype from = reg->content_type();
   ASSERT(is_convertible(from));
-  crtype to_t = to(from);
+  crptype to_t = to(from);
 
   // TODO
   return {};
   // return run(compilation_unidecl::t::instance());
 }
 
-void function::parameters::load_arguments(const siblings<expr::expression*>& args) {
-  for (int i = 0; i < vector<parameter>::size(); ++i) {
-    auto& param              = vector<parameter>::at(i);
-    expr::expression* n_expr = param->init;
-    if (i < args.size()) {
-      n_expr = args.at(i);
-    }
-    if (n_expr != nullptr) {
-      throw_error<compilation_error_t::BAD_FUNCTION_CALL>(*param);
-    }
-    param->init = n_expr;
-  }
-}
-
-selection::if_::if_(const token& t,
-                    decltype(condition) condition,
-                    decltype(block) block_,
-                    decltype(else_) else_)
+selection::if_::if_(const token& t, decltype(condition) c, decltype(block) b, decltype(else_) e)
     : keyword(t),
-      condition(condition),
-      block(block_),
-      else_(else_) {
+      condition(c),
+      block(b),
+      else_(e) {
   add_all(&keyword, &condition, block, else_);
 }
 
-namespace {
-std::string condition_label() { return std::format("cond_{}", "it"); }
-std::string exit_label() { return std::format("exit_{}", "it"); }
-} // namespace
 iteration::while_::while_(const token& t, expr::expression& condition_, block* block)
     : keyword(t),
       condition(condition_),
@@ -139,10 +113,12 @@ jump::break_::break_(const token& token)
     : keyword(token) {
   add(&keyword);
 }
+
 jump::continue_::continue_(const token& token)
     : keyword(token) {
   add(&keyword);
 }
+
 jump::return_::return_(ast::keyword&& k, expr::expression* expr_)
     : keyword(std::move(k)),
       expr(expr_) {
@@ -177,7 +153,13 @@ jump::return_::return_(ast::keyword&& k, expr::expression* expr_)
 //   return glob_range;
 // }
 
-signature ast::decl::function::sig() const { return {ident, params.types()}; }
+callable_contract ast::decl::function::contract() const {
+  return {specs.type.value(),
+          ident.value(),
+          params | std::views::transform([](const auto& param) -> ptype {
+            return param.specs.type.value();
+          }) | std::ranges::to<std::vector>()};
+}
 
 void decl::function::definition::clear() noexcept {
   while (!local_scopes.empty()) {
@@ -186,82 +168,67 @@ void decl::function::definition::clear() noexcept {
   local_scopes.clear();
 }
 
-[[nodiscard]] bool decl::function::definition::is_declared(const ast::identifier& ident) const {
-  return variables.contains(ident) ||
-         std::ranges::any_of(local_scopes, [&ident](const scope* scope) {
-           return scope->is_declared(ident.value());
+[[nodiscard]] bool decl::function::definition::is_declared(const ast::identifier& id) const {
+  return variables.contains(id) || std::ranges::any_of(local_scopes, [id](const scope* s) {
+           return s->variables.contains(id.value());
          });
 }
-std::vector<function_store::value_type> function_store::get_by_name(cstring name) const {
+
+std::vector<function_store::value_type> function_store::get_by_name(const std::string& name) const {
   return data() | std::views::filter([name](const auto& pair) -> bool {
            const auto& [k, v] = pair;
            return k == name;
          }) |
-         std::views::transform([name](const auto& pair) { return pair.second; }) |
+         std::views::transform([](const auto& pair) { return pair.second; }) |
          std::ranges::to<std::vector>();
 }
 
-void function_store::insert(function* v) { hashmap::insert(v->sig(), v); }
+void function_store::insert(function* v) { hashmap::insert(v->signature(), v); }
 
 [[nodiscard]] bool scope::is_declared(const ast::identifier& id) const {
   return variables.contains(id);
 }
 
-[[nodiscard]] variable* scope::get_variable(const ast::identifier& ident) {
-  return variables.at(ident);
-}
-[[nodiscard]] const variable* scope::get_variable(const ast::identifier& ident) const {
-  return variables.at(ident);
-}
-
-void variable_store::put(decl::variable* var) { insert(var->string(), var); }
-
-[[nodiscard]] variable* decl::function::definition::get_variable(const ast::identifier& ident) {
-  if (!is_declared(ident)) {
-    throw_error<compilation_error_t::UNDECLARED_SYMBOL>(ident);
-  }
-
-  if (variables.contains(ident)) {
-    return variables.at(ident);
-  }
-
-  for (const auto& scope : local_scopes) {
-    if (scope->variables.contains(ident.value())) {
-      return scope->variables.at(ident.value());
-    }
-  }
-
-  UNREACHABLE("Unrecheable");
-}
-[[nodiscard]] const variable* decl::function::definition::get_variable(
+[[nodiscard]] const variable_store::value_type& scope::get_variable(
     const ast::identifier& ident) const {
-  if (!is_declared(ident)) {
-    throw_error<compilation_error_t::UNDECLARED_SYMBOL>(ident);
-  }
+  return variables.at(ident);
+}
+[[nodiscard]] const variable* scope::get_variable_declaration(const ast::identifier& id) const {
+  return get_variable(id).first;
+}
+[[nodiscard]] assembly::operand* scope::get_variable_address(const ast::identifier& id) const {
+  return get_variable(id).second;
+}
 
+void variable_store::insert(const decl::variable* var, assembly::operand* op) {
+  hashmap::insert(var->string(), std::make_pair(var, op));
+}
+
+[[nodiscard]] const variable_store::value_type& decl::function::definition::get_variable(
+    const ast::identifier& ident) const {
   if (variables.contains(ident)) {
     return variables.at(ident);
   }
 
-  for (const auto& scope : local_scopes) {
-    if (scope->variables.contains(ident.value())) {
-      return scope->variables.at(ident.value());
+  for (const auto& s : local_scopes) {
+    if (s->variables.contains(ident.value())) {
+      return s->variables.at(ident.value());
     }
   }
 
-  UNREACHABLE("Unrecheable");
+  THROW(UNDECLARED_SYMBOL, ident);
 }
 
-assembly::operand* function::definition::declare_parameter(ast::decl::variable* var,
+assembly::operand* function::definition::declare_parameter(const ast::decl::variable& var,
                                                            assembly::operand* op) {
-  var->address = op;
-  variables.put(var);
-  return op->hold_value(var);
+  variables.insert(&var, op);
+  return op->hold_value(&var);
 }
+
 size_t translation_unit::pop_frame() {
   DEBUG_ASSERT(!is_global_scope());
   size_t ditched = 0;
-  for (int i = 0; i < active_frame()->local_scopes.size(); ++i) {
+  for (size_t i = 0; i < active_frame()->local_scopes.size(); ++i) {
     ditched += m_stackframe.top()->destroy_scope();
   }
   m_stackframe.pop();
@@ -295,92 +262,49 @@ bool translation_unit::is_entry_point_defined() const noexcept {
   //}
 }
 
-const decl::label* translation_unit::get_label(const ast::identifier& ident) const {
-  return active_frame()->labels.at(ident.value());
+const decl::label* translation_unit::get_label(const ast::identifier& id) const {
+  return active_frame()->labels.at(id.value());
 }
 
 void block::declare_label(const ast::decl::label* l) { labels.emplace(l->ident.value(), l); }
 
-void scope::declare_variable(ast::decl::variable* decl) {
-  variables.insert(decl->ident.value(), decl);
+assembly::operand* scope::declare_variable(ast::decl::variable* decl) {
+  variables.insert(decl, nullptr);
+  NOT_IMPLEMENTED;
 }
 
 void translation_unit::create_frame(decl::function::definition* fn) {
   m_stackframe.push(fn);
-  m_stackframe.top()->create_scope(*fn);
+  // m_stackframe.top()->create_scope(*fn);
 }
 
-variable* translation_unit::get_variable(const ast::identifier& ident) {
-  if (variables.contains(ident.value())) {
-    return variables.at(ident.value());
+const variable_store::value_type& translation_unit::get_variable(const ast::identifier& id) const {
+  if (variables.contains(id.value())) {
+    return variables.at(id.value());
   }
 
-  return active_frame()->get_variable(ident);
+  return active_frame()->get_variable(id);
 }
 
-const variable* translation_unit::get_variable(const ast::identifier& ident) const {
-  if (variables.contains(ident.value())) {
-    return variables.at(ident.value());
-  }
-
-  return active_frame()->get_variable(ident);
-}
-void translation_unit::declare_variable(ast::decl::variable* var) {
+assembly::operand* translation_unit::declare_variable(ast::decl::variable* var) {
+  assembly::operand* addr = nullptr;
   if (m_stackframe.empty()) {
-    auto* op     = assembly::operand_factory::create_label(var->string());
-    var->address = op;
-    variables.put(var);
-    op->hold_address(var);
+    addr = assembly::operand_factory::create_label(var->string());
+    variables.insert(var, addr);
+    addr->hold_address(var);
     m_context->reserve_static_var(var->string());
   } else {
-    auto offset  = active_frame()->local_stack.size() + 1;
-    auto* addr   = assembly::operand_factory::create_stack_memory(offset);
-    var->address = addr;
-    active_frame()->declare_variable(var);
+    auto offset = active_frame()->local_stack.size() + 1;
+    addr        = assembly::operand_factory::create_stack_memory(offset);
+    active_frame()->variables.insert(var, addr);
     addr->hold_value(var);
   }
+  return addr;
 }
 
-function* translation_unit::get_function(const signature& sig) {
-  const auto& [name, args_types] = sig;
-  if (m_functions.contains(sig)) {
-    return m_functions.at(sig);
-  }
-  std::vector<function*> candidates = m_functions.get_by_name(name.value());
-  if (!candidates.empty()) {
-    auto opt = m_context->progressive_prefix_match(
-        args_types,
-        candidates | std::views::enumerate | std::views::transform([](const auto& pair) {
-          const auto& [i, fn] = pair;
-          return std::make_pair(i, fn->sig().types);
-        }) | std::ranges::to<std::vector>());
-
-    if (!opt.empty()) {
-      return candidates.at(opt.front());
-    }
-  }
-  throw_error<compilation_error_t::UNDECLARED_SYMBOL>(sig.name);
-}
-
-const function* translation_unit::get_function(const signature& sig) const {
-  const auto& [name, args_types] = sig;
-  if (m_functions.contains(sig)) {
-    return m_functions.at(sig);
-  }
-  std::vector<function*> candidates = m_functions.get_by_name(name.value());
-  if (!candidates.empty()) {
-    auto opt = m_context->progressive_prefix_match(
-        args_types,
-        candidates | std::views::enumerate | std::views::transform([](const auto& pair) {
-          const auto& [i, fn] = pair;
-          return std::make_pair(i, fn->sig().types);
-        }) | std::ranges::to<std::vector>());
-
-    if (!opt.empty()) {
-      return candidates.at(opt.front());
-    }
-  }
-  throw_error<compilation_error_t::UNDECLARED_SYMBOL>(sig.name);
+std::vector<const function*> translation_unit::user_defined_functions(
+    const ast::identifier& id) const {
+  return m_functions.get_by_name(id);
 }
 
 void translation_unit::declare_function(decl::function* func, bool) {
@@ -411,12 +335,14 @@ void translation_unit::link_entry_point(ast::decl::function* fn) {
   }
   return m_stackframe.top();
 }
+
 [[nodiscard]] const scope* translation_unit::active_scope() const noexcept {
   if (m_stackframe.empty()) {
     return this;
   }
   return m_stackframe.top();
 }
+
 bool translation_unit::is_global_scope() const noexcept { return m_stackframe.empty(); }
 
 bool translation_unit::in_main() const noexcept {
@@ -425,14 +351,14 @@ bool translation_unit::in_main() const noexcept {
 }
 
 template <typename T>
-bool translation_unit::is_declarable(const ast::identifier&) const noexcept {
+bool translation_unit::is_declarable(const ast::identifier& id) const noexcept {
   if constexpr (std::is_same_v<decl::variable, T>) {
     // Only check current scope
-    return !active_scope()->variables.contains(ident);
+    return !active_scope()->variables.contains(id);
   } else if constexpr (std::is_same_v<decl::function, T>) {
-    return m_functions.get_by_name(ident.value()).size() > 0;
+    return m_functions.get_by_name(id).size() > 0;
   } else {
-    return active_frame()->labels.contains(ident.value());
+    return active_frame()->labels.contains(id);
   }
 }
 
@@ -443,54 +369,57 @@ template bool translation_unit::is_declarable<decl::variable>(
 template bool translation_unit::is_declarable<decl::label>(const ast::identifier&) const noexcept;
 
 template <typename T>
-bool translation_unit::is_declared(const ast::identifier&) const noexcept {
+bool translation_unit::is_declared(const ast::identifier& id) const noexcept {
   if constexpr (std::is_same_v<decl::variable, T>) {
     // Only check current scope
 
-    return (!is_global_scope() && !m_stackframe.empty() && active_frame()->is_declared(ident)) ||
-           variables.contains(ident.value());
+    return (!is_global_scope() && !m_stackframe.empty() && active_frame()->is_declared(id)) ||
+           variables.contains(id);
   } else if constexpr (std::is_same_v<decl::function, T>) {
-    return m_functions.get_by_name(ident.value()).size() > 0;
+    return m_functions.get_by_name(id).size() > 0;
   } else {
-    return active_frame()->labels.contains(ident.value());
+    return active_frame()->labels.contains(id);
   }
 }
 
 void translation_unit::set_context(ir::compilation_unit* ctx) { m_context = ctx; }
+
 template bool translation_unit::is_declared<decl::label>(const ast::identifier&) const noexcept;
 
 void ast_visitor::visit(ast::literal& c) { TRACE_VISITOR(c); }
+
 void ast_visitor::visit(ast::keyword& c) { TRACE_VISITOR(c); }
+
 void ast_visitor::visit(ast::identifier& c) { TRACE_VISITOR(c); }
-void ast_visitor::visit(ast::decl::function::parameters& p) {
-  TRACE_VISITOR(p);
-  for (auto&& par : p) {
-    par->accept(*this);
-  }
-};
+
 void ast_visitor::visit(ast::decl::specifiers& c) {
   TRACE_VISITOR(c);
   c.storage.accept(*this);
   c.linkage.accept(*this);
   c.type.accept(*this);
 };
+
 void ast_visitor::visit(ast ::expr ::identifier& c) { TRACE_VISITOR(c); };
+
 void ast_visitor::visit(ast ::expr ::unary_operator& c) {
   TRACE_VISITOR(c);
   c.operator_.accept(*this);
   c.expr.accept(*this);
 };
+
 void ast_visitor::visit(ast ::expr ::binary_operator& c) {
   TRACE_VISITOR(c);
   c.operator_.accept(*this);
   c.left.accept(*this);
   c.right.accept(*this);
 };
+
 void ast_visitor::visit(ast ::expr ::call& c) {
   TRACE_VISITOR(c);
   c.ident.accept(*this);
   c.args.accept(*this);
 };
+
 void ast_visitor::visit(ast ::decl ::variable& c) {
   TRACE_VISITOR(c);
   c.ident.accept(*this);
@@ -499,19 +428,24 @@ void ast_visitor::visit(ast ::decl ::variable& c) {
     init->accept(*this);
   }
 };
+
 void ast_visitor::visit(ast ::decl ::function& c) {
   TRACE_VISITOR(c);
   c.specs.accept(*this);
   c.ident.accept(*this);
-  c.params.accept(*this);
+  for (auto& param : c.params) {
+    param.accept(*this);
+  }
   if (auto* body = c.body) {
     body->accept(*this);
   }
 };
+
 void ast_visitor::visit(ast ::decl ::label& c) {
   TRACE_VISITOR(c);
   c.ident.accept(*this);
 };
+
 void ast_visitor::visit(ast ::iteration ::while_& c) {
   TRACE_VISITOR(c);
   c.condition.accept(*this);
@@ -519,6 +453,7 @@ void ast_visitor::visit(ast ::iteration ::while_& c) {
     body->accept(*this);
   }
 };
+
 void ast_visitor::visit(ast ::iteration ::for_& c) {
   TRACE_VISITOR(c);
   c.start->accept(*this);
@@ -532,6 +467,7 @@ void ast_visitor::visit(ast ::iteration ::for_& c) {
     body->accept(*this);
   }
 };
+
 void ast_visitor::visit(ast ::selection ::if_& c) {
   TRACE_VISITOR(c);
   c.condition.accept(*this);
@@ -542,70 +478,89 @@ void ast_visitor::visit(ast ::selection ::if_& c) {
     else_->accept(*this);
   }
 };
+
 void ast_visitor::visit(ast ::jump ::goto_& c) {
   TRACE_VISITOR(c);
   c.term.accept(*this);
 };
+
 void ast_visitor::visit(ast ::jump ::return_& c) {
   TRACE_VISITOR(c);
   if (auto* expr = c.expr) {
     expr->accept(*this);
   }
 }
+
 void ast_visitor::visit(ast::jump::continue_& c) { TRACE_VISITOR(c); }
+
 void ast_visitor::visit(ast::expr::literal& c) { TRACE_VISITOR(c); }
+
 void ast_visitor::visit(ast::jump::break_& c) { TRACE_VISITOR(c); }
+
 void ast_visitor::visit(ast::operator_& c) { TRACE_VISITOR(c); }
+
 void ast_visitor::visit(ast::storage& c) { TRACE_VISITOR(c); }
+
 void ast_visitor::visit(ast::type& c) { TRACE_VISITOR(c); }
+
 void ast_visitor::visit(ast::linkage& c) { TRACE_VISITOR(c); }
+
 void ast_visitor::visit(siblings<expr::expression*>& c) { TRACE_VISITOR(c); }
+
 void ast_visitor::visit(ast ::expr ::implicit_type_conversion& c) { TRACE_VISITOR(c); }
+
 void ast_visitor::visit(ast::decl::function::definition& c) {
   TRACE_VISITOR(c);
   for (const auto& stmt : c.stmts) {
     stmt->accept(*this);
   }
 }
+
 void ast_visitor::visit(ast::decl::block& c) {
   TRACE_VISITOR(c);
   for (const auto& stmt : c.stmts) {
     stmt->accept(*this);
   }
 }
+
 void const_ast_visitor::visit(const ast::operator_& c) { TRACE_VISITOR(c); }
+
 void const_ast_visitor::visit(const ast::literal& c) { TRACE_VISITOR(c); }
+
 void const_ast_visitor::visit(const ast::keyword& c) { TRACE_VISITOR(c); }
+
 void const_ast_visitor::visit(const ast::identifier& c) { TRACE_VISITOR(c); }
+
 void const_ast_visitor::visit(const siblings<expr::expression*>& c) { TRACE_VISITOR(c); }
+
 void const_ast_visitor::visit(const ast ::expr ::implicit_type_conversion& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::decl::function::parameters& p) {
-  TRACE_VISITOR(p);
-  for (auto&& par : p) {
-    par->accept(*this);
-  }
-};
+
 void const_ast_visitor::visit(const ast::decl::specifiers& s) {
   TRACE_VISITOR(s);
   s.accept(*this);
 };
+
 void const_ast_visitor::visit(const ast ::expr ::identifier& c) { TRACE_VISITOR(c); };
+
 void const_ast_visitor::visit(const ast ::expr ::unary_operator& c) {
   TRACE_VISITOR(c);
   c.operator_.accept(*this);
   c.expr.accept(*this);
 };
+
 void const_ast_visitor::visit(const ast ::expr ::binary_operator& c) {
   TRACE_VISITOR(c);
   c.operator_.accept(*this);
   c.left.accept(*this);
   c.right.accept(*this);
 };
+
 void const_ast_visitor::visit(const ast ::expr ::call& c) {
   TRACE_VISITOR(c);
   c.ident.accept(*this);
   c.args.accept(*this);
 };
+
 void const_ast_visitor::visit(const ast ::decl ::variable& c) {
   TRACE_VISITOR(c);
   c.ident.accept(*this);
@@ -614,19 +569,24 @@ void const_ast_visitor::visit(const ast ::decl ::variable& c) {
     init->accept(*this);
   }
 };
+
 void const_ast_visitor::visit(const ast ::decl ::function& c) {
   TRACE_VISITOR(c);
   c.specs.accept(*this);
   c.ident.accept(*this);
-  c.params.accept(*this);
+  for (const auto& param : c.params) {
+    param.accept(*this);
+  }
   if (auto* body = c.body) {
     body->accept(*this);
   }
 };
+
 void const_ast_visitor::visit(const ast ::decl ::label& c) {
   TRACE_VISITOR(c);
   c.ident.accept(*this);
 };
+
 void const_ast_visitor::visit(const ast ::iteration ::while_& c) {
   TRACE_VISITOR(c);
   c.condition.accept(*this);
@@ -634,6 +594,7 @@ void const_ast_visitor::visit(const ast ::iteration ::while_& c) {
     body->accept(*this);
   }
 };
+
 void const_ast_visitor::visit(const ast ::iteration ::for_& c) {
   TRACE_VISITOR(c);
   c.start->accept(*this);
@@ -647,6 +608,7 @@ void const_ast_visitor::visit(const ast ::iteration ::for_& c) {
     body->accept(*this);
   }
 };
+
 void const_ast_visitor::visit(const ast ::selection ::if_& c) {
   TRACE_VISITOR(c);
   c.condition.accept(*this);
@@ -657,6 +619,7 @@ void const_ast_visitor::visit(const ast ::selection ::if_& c) {
     else_->accept(*this);
   }
 };
+
 void const_ast_visitor::visit(const ast ::jump ::goto_& c) {
   TRACE_VISITOR(c);
   c.term.accept(*this);
@@ -679,6 +642,7 @@ void const_ast_visitor::visit(const ast::decl::function::definition& c) {
     stmt->accept(*this);
   }
 }
+
 void const_ast_visitor::visit(const ast::decl::block& c) {
   TRACE_VISITOR(c);
   for (const auto& stmt : c.stmts) {

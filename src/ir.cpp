@@ -1,7 +1,9 @@
 #include "ir.hpp"
 
+#include <algorithm>
 #include <format>
 #include <ranges>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -10,6 +12,7 @@
 #include "common.hpp"
 #include "expr.h"
 #include "lang.hpp"
+#include "semantic.hpp"
 #include "types.hpp"
 
 namespace cmm::ir {
@@ -18,8 +21,8 @@ using namespace cmm::assembly;
 using namespace cmm::ast;
 
 compilation_unit::compilation_unit()
-    : runner(*this),
-      ast() {}
+    : ast(),
+      runner(*this) {}
 
 std::string compilation_unit::compile(ast::translation_unit& p, const source_code* src) {
   source = src;
@@ -86,6 +89,7 @@ assembly::label_literal* compilation_unit::reserve_constant(cstring value) {
 }
 
 void compilation_unit::jump(cstring label) { asmgen.write_instruction(instruction_t::jmp, label); }
+
 void compilation_unit::jump(const instruction_t& ins, cstring a) {
   asmgen.write_instruction(ins, a);
 }
@@ -95,6 +99,7 @@ void compilation_unit::cmp(cstring a, cstring b) {
 }
 
 void compilation_unit::ret() { asmgen.write_instruction(instruction_t::ret); }
+
 void compilation_unit::exit(operand* op) {
   move(regs.parameter_at(0), op);
   jump("exit");
@@ -106,67 +111,101 @@ void compilation_unit::exit_successfully() {
 }
 
 void compilation_unit::syscall() { asmgen.write_instruction(instruction_t::syscall); }
+
 void compilation_unit::syscall(cstring num_syscall) {
   move_immediate(regs.get(register_t::ACCUMULATOR), num_syscall);
   syscall();
 }
+
 void compilation_unit::label(cstring l) { asmgen.write_label(l); }
+
 void compilation_unit::comment(cstring l) { asmgen.write_comment(l); }
+
 void compilation_unit::start() {
   current_phase = Phase::GLOBAL;
   asmgen.start();
 }
+
 void compilation_unit::push(operand* r) {
   asmgen.write_instruction(instruction_t::push, r->value());
   ast->active_frame()->local_stack.push();
 }
+
 void compilation_unit::pop(operand* r) {
   asmgen.write_instruction(instruction_t::pop, r->value());
   ast->active_frame()->local_stack.pop();
 }
+
 std::string compilation_unit::end() {
   if (!ast->is_entry_point_defined()) {
-    // throw_error<compilation_error_t::MISSING_ENTRY_POINT>();
+    // THROW(MISSING_ENTRY_POINT, );
   }
 
   REGISTER_TRACE("Code generation finished");
   return asmgen.end();
 }
 
-std::vector<operand*> compilation_unit::load_arguments(const ast::decl::function* fn,
-                                                       const ast::expr::arguments& args) {
-  auto registers = regs.parameters();
-  return std::views::zip(fn->params, args) |
-         std::views::transform([this, &registers, &fn](const auto& pair) {
-           const auto& [param, arg] = pair;
-           auto* reg = runner.generate_expr(*arg, param->specs.type, registers.next());
-           return fn->body->declare_parameter(param, reg);
-         }) |
-         std::ranges::to<std::vector>();
+template <typename T, typename Id>
+const T* compilation_unit::get_callable(
+    Id id,
+    const std::vector<expr::expression*>& argument_expressions) const {
+
+  auto argument_types = argument_expressions | TRANSFORM(to_type) | TO_VEC;
+
+  std::vector<const T*> overloads;
+  std::vector<ptype> parameter_types;
+  if constexpr (std::is_same_v<T, operator_builtin_data>) {
+    overloads = get_builtin_operator(id);
+  } else if constexpr (std::is_same_v<T, decl::function>) {
+    overloads = ast->m_functions.get_by_name(id);
+  } else {
+    static_assert(false);
+  }
+  auto possible_exact_match =
+      overloads | std::views::filter([argument_types](const T* fn) {
+        return match_arguments(fn->parameters() | TRANSFORM([](const parameter& param) {
+                                 return param.type;
+                               }) | TO_VEC,
+                               argument_types);
+      }) |
+      TO_VEC;
+
+  if (possible_exact_match.size() == 1) {
+    return possible_exact_match.front();
+  }
+
+  // Overload resolution
+  auto resolved = resolve_overloads(id, overloads, argument_expressions);
+
+  if (resolved == nullptr) {
+    THROW(UNDECLARED_SYMBOL, id);
+  }
+  return resolved;
 }
-std::optional<assembly::operand*> compilation_unit::call_function(decl::signature sig,
+std::optional<assembly::operand*> compilation_unit::call_function(const identifier& id,
                                                                   const ast::expr::arguments& args,
                                                                   bool inlined_) {
-  if (asmgen::exists_snippet(sig.name.value())) {
-    asmgen.register_snippet(sig.name.value());
-    call(sig.name.value());
+  if (asmgen::exists_snippet(id)) {
+    asmgen.register_snippet(id);
+    call(id.value());
     return {};
   }
 
-  auto* fn = ast->get_function(sig);
+  const auto& fn = get_callable<decl::function>(id, args);
+
   if (nullptr == fn) {
-    throw_error<compilation_error_t::UNDECLARED_SYMBOL>(sig.name);
+    throw_error<compilation_error_t::UNDECLARED_SYMBOL>(id);
   }
   if (fn->body == nullptr) {
-    throw_error<compilation_error_t::UNDEFINED_FUNCTION>(sig.name);
+    throw_error<compilation_error_t::UNDEFINED_FUNCTION>(id);
   }
+  auto bounded = bind_parameters(fn->parameters(), args);
   ast->create_frame(fn->body);
-  auto* sc    = ast->active_scope();
   auto params = regs.parameters();
-  auto ps     = load_arguments(fn, args);
+  auto ps     = load_arguments(bounded);
   if (!inlined_) {
     ast->active_frame()->local_stack.push();
-    call(sig.name.string());
+    call(id);
     asmgen.create_delay();
   }
 
@@ -183,11 +222,12 @@ std::optional<assembly::operand*> compilation_unit::call_function(decl::signatur
     ast->active_frame()->local_stack.pop(ditched_vars + 1);
   }
 
-  if (&fn->specs.type.value() != VOID_T) {
+  if (fn->specs.type.value() != VOID_T) {
     return regs.get(register_t::ACCUMULATOR);
   }
   return {};
 }
+
 namespace {
 constexpr operand* set_operand(compilation_unit& v, arg_t side, operand* l, operand* r) {
   switch (side) {
@@ -209,64 +249,26 @@ constexpr operand* set_operand(compilation_unit& v, arg_t side, operand* l, oper
 }
 } // namespace
 
-std::vector<long> compilation_unit::progressive_prefix_match(
-    const std::vector<ptype>& argument_types,
-    const std::vector<std::pair<long, std::vector<ptype>>>& possible_fns) const {
-  return argument_types | std::views::enumerate |
-         std::views::transform([this, &possible_fns](const auto& pair) {
-           auto i                 = std::get<0>(pair);
-           ptype castable_type = std::get<1>(pair);
-
-           auto r                 = conversions::get_convertible_types(castable_type) |
-                    std::views::transform([this, i, &possible_fns](ptype casted_type) {
-                      auto p =
-                          possible_fns | std::views::filter([this, i, casted_type](const auto& fn) {
-                            const auto& [j, types] = fn;
-                            return types.at(i)->format() == casted_type->format();
-                          }) |
-                          std::views::transform([](const auto& pair) { return std::get<0>(pair); });
-                      return p;
-                    }) |
-                    std::views::join | std::ranges::to<std::vector>();
-           return r;
-         }) |
-         std::views::join | std::ranges::to<std::vector>();
-}
-operator_builtin_data compilation_unit::get_operator_implementation(
-    const operator_& op,
-    const std::vector<ptype>& types) const {
-  std::vector<operator_builtin_data> builtins({get_builtin_operator(op, types).value()});
-  if (builtins.size() == 1) {
-    return builtins.front();
-  }
-
-  auto args = builtins | std::views::enumerate | std::views::transform([](const auto& pair) {
-                const auto& [i, types] = pair;
-                return std::make_pair(i, std::vector<ptype>{types.arg1, types.arg2});
-              }) |
-              std::ranges::to<std::vector>();
-  auto result = progressive_prefix_match(types, args) | std::ranges::to<std::vector>();
-  if (result.empty()) {
-    throw_error<compilation_error_t::UNDECLARED_SYMBOL>(op);
-  }
-  if (result.size() > 1) {
-    REGISTER_WARN("Matched operator {} more than one", op);
-  }
-  return builtins.at(result.front());
-}
-
-operand* compilation_unit::builtin_operator(const operator_& op,
-                                            const std::vector<ptype>& types,
-                                            const std::vector<operand*>& ops) {
+operand* compilation_unit::call_builtin_operator(const operator_& op,
+                                                 const ast::expr::arguments& args) {
   REGISTER_INFO("Calling builtin operator {}", op);
-  operand* res   = nullptr;
-  auto operators = get_operator_implementation(op, types);
-  for (const auto& exec_unit : operators.ins) {
+  operand* res       = nullptr;
+  auto params        = regs.parameters();
+  auto load_argument = [this, &params](expr::expression* e) {
+    semantics::load_node_semantics(*e);
+    return runner.generate_expr(*e, e->type(), params.next());
+  };
+  auto* impls = get_callable<operator_builtin_data>(op, args.data());
+  auto ops    = args | TRANSFORM(load_argument) | TO_VEC;
+  operand* l;
+  operand* r;
+  for (const auto& exec_unit : impls->ins) {
     instruction_t ins = exec_unit.ins;
     instruction_data data(ins);
-    operand* l = ops.at(0);
-    operand* r = ops.at(1);
-
+    l = ops.at(0);
+    if (ops.size() > 1) {
+      r = ops.at(1);
+    }
     if (data.n_params == 0) {
       instruction(ins);
     } else if (data.n_params == 1) {
@@ -294,7 +296,158 @@ operand* compilation_unit::builtin_operator(const operator_& op,
         break;
     }
   }
+
   return res;
+}
+
+std::vector<bound_argument> compilation_unit::bind_parameters(
+    const std::vector<parameter>& parameters,
+    const std::vector<ast::expr::expression*>& args) const {
+  return std::views::zip(parameters, args) |
+         std::views::transform([](const auto& pair) -> bound_argument {
+           const auto& [param, arg] = pair;
+           auto param_type          = param.type;
+           auto real_param_type     = param_type;
+           // if (auto t = bind_argument(arg->semantics()->value_category, arg->type(),
+           // param_type))
+           // {
+           //   real_param_type = t.value();
+           // } else {
+           //   THROW(WRONG_FUNCTION_ARGUMENT, arg);
+           // }
+
+           ast::expr::expression* n_expr = param.init == nullptr ? arg : param.init;
+           if (n_expr == nullptr) {
+             THROW(BAD_FUNCTION_CALL, arg);
+           }
+           return {real_param_type, param.identifier, n_expr, param.decl};
+         }) |
+         std::ranges::to<std::vector>();
+}
+std::vector<operand*> compilation_unit::load_arguments(const std::vector<bound_argument>& bound) {
+  auto registers = regs.parameters();
+  return bound | std::views::transform([this, &registers](auto& b) {
+           auto* reg = runner.generate_expr(*b.init, b.type, registers.next());
+           return ast->active_frame()->declare_parameter(*b.decl, reg);
+         }) |
+         std::ranges::to<std::vector>();
+}
+
+template <typename T, typename Id>
+const T* compilation_unit::resolve_overloads(
+    Id id,
+    std::vector<const T*> candidates,
+    std::vector<expr::expression*> argument_expressions) const {
+  // Already have candidates
+  // Lets check number of parameters
+  auto check_param_number = [argument_expressions](const T* fn) {
+    auto parameters = fn->parameters();
+    auto n_params   = parameters.size();
+    auto n_args     = argument_expressions.size();
+    if (n_params > n_args) {
+      auto idx = n_params - (n_params - n_args);
+      for (; idx < n_params; ++idx) {
+        if (parameters.at(idx).init == nullptr) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    if (n_params < n_args) {
+      // Ellipsis is not yet implemented
+      return false;
+    }
+
+    // n_params == n_args
+    return true;
+  };
+  auto step1 = candidates | std::views::filter(check_param_number) | TO_VEC;
+  REGISTER_INFO("Tras step1 quedan {}", step1.size());
+  auto check_binding_rules = [argument_expressions](const T* fn) {
+    // Binding rules
+    auto parameters = fn->parameters();
+    return std::ranges::all_of(
+        std::views::zip(parameters, argument_expressions), [](const auto& pair) {
+          const auto& [parameter, expression] = pair;
+          // If the parameter is reference, it applies the binding rule
+          // Binding rules are supposed to be counted as  a implicit conversions
+          // But for now we'll just take into account the implicit conversion rule
+          // on those parameter types that are not reference (hence applies the binding rule)
+          if (matchers::is_ref(parameter.type)) {
+            // If is a lvalue argument with a non const lvalue ref parameter
+            bool rvaluearg_nonconstlvalue =
+                (matchers::is_lvalue && matchers::is_const)(parameter.type) &&
+                expression->semantics()->value_category == value_category_t::RVALUE;
+            // Or lvalue arg with rvalue reference parameter
+            bool lvaluearg_rvaluerefparam =
+                matchers::is_rvalue(parameter.type) &&
+                expression->semantics()->value_category == value_category_t::LVALUE;
+            // Is not viable function
+            return !rvaluearg_nonconstlvalue && !lvaluearg_rvaluerefparam;
+          } else {
+            return std::ranges::all_of(conversions::standard, [&expression](const auto& conv) {
+              auto* semantics = expression->semantics();
+              auto expr_t     = semantics->original_type;
+              return conv->is_convertible(expr_t);
+            });
+          }
+        });
+  };
+  auto step2 = step1 | std::views::filter(check_binding_rules) | TO_VEC;
+  REGISTER_INFO("Tras step2 quedan {}", step2.size());
+  if (step2.size() == 0) {
+    THROW(UNDECLARED_SYMBOL, id);
+  }
+  return step2.front();
+}
+
+template const operator_builtin_data* compilation_unit::resolve_overloads(
+    operator_,
+    std::vector<const operator_builtin_data*>,
+    std::vector<expr::expression*>) const;
+template const ast::decl::function* compilation_unit::resolve_overloads(
+    ast::identifier,
+    std::vector<const ast::decl::function*>,
+    std::vector<expr::expression*>) const;
+
+template <typename T>
+  requires(std::is_same_v<T, const ast::decl::function*> ||
+           std::is_same_v<T, const operator_builtin_data*>)
+[[nodiscard]] std::vector<T> compilation_unit::progressive_prefix_match(
+    const std::vector<ptype>& argument_types,
+    const std::vector<T>& possible_fns) const {
+  return argument_types | std::views::enumerate |
+         std::views::transform([&possible_fns](const auto& pair) {
+           auto i              = std::get<0>(pair);
+           ptype castable_type = std::get<1>(pair);
+
+           auto r              = get_convertible_types(castable_type) |
+                    std::views::transform([i, &possible_fns](const ptype& casted_type) {
+                      auto p = possible_fns | std::views::filter([i, casted_type](const T& fn) {
+                                 return fn->signature().argument_types.at(i)->string() ==
+                                        casted_type->string();
+                               });
+                      return p;
+                    }) |
+                    std::views::join | std::ranges::to<std::vector>();
+           return r;
+         }) |
+         std::views::join | std::ranges::to<std::vector>();
+}
+template std::vector<const operator_builtin_data*> compilation_unit::progressive_prefix_match(
+    const std::vector<ptype>&,
+    const std::vector<const operator_builtin_data*>&) const;
+template std::vector<const ast::decl::function*> compilation_unit::progressive_prefix_match(
+    const std::vector<ptype>&,
+    const std::vector<const ast::decl::function*>&) const;
+
+[[nodiscard]] bool compilation_unit::match_arguments(const std::vector<ptype>& builtin,
+                                                     const std::vector<ptype>& called) {
+  return std::ranges::all_of(std::views::zip(builtin, called), [](const auto& pair) {
+    const auto& [required, actual] = pair;
+    return required->match(actual);
+  });
 }
 static_assert(std::formattable<operand*, char>);
 

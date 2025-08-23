@@ -1,7 +1,6 @@
-#include <cxxopts.hpp>
 #include <cstdlib>
+#include <cxxopts.hpp>
 #include <iostream>
-#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -60,14 +59,12 @@ int main(int argc, char* argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  bool dump_tokens = GET_DUMP_OPT("dump-tokens");
-  bool dump_ast    = GET_DUMP_OPT("dump-ast");
-  bool dump_state  = GET_DUMP_OPT("dump-state");
-  bool dump_memory = GET_DUMP_OPT("dump-memory");
+  // bool dump_tokens = GET_DUMP_OPT("dump-tokens");
+  // bool dump_ast    = GET_DUMP_OPT("dump-ast");
+  // bool dump_state  = GET_DUMP_OPT("dump-state");
+  // bool dump_memory = GET_DUMP_OPT("dump-memory");
 
-  config conf{dump_tokens, dump_ast, dump_state, dump_memory};
-
-  compiler compiler_instance{conf, input_path, output_name};
+  compiler compiler_instance{input_path, output_name};
   compiler_instance.run();
 
   return EXIT_SUCCESS;

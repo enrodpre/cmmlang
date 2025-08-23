@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cpptrace/cpptrace.hpp>
-#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -13,7 +12,7 @@ namespace cmm {
 class compiler {
 
 public:
-  compiler(const config&, const fs::path&, const std::string&);
+  compiler(const fs::path&, const std::string&);
   compiler(compiler&&)                 = delete;
   compiler& operator=(compiler&&)      = delete;
   compiler(const compiler&)            = delete;
@@ -31,7 +30,6 @@ public:
 
 private:
   source_code m_source_code;
-  config m_config;
   cstring m_output_filename;
 };
 

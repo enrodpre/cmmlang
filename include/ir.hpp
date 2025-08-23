@@ -5,6 +5,7 @@
 #include <libassert/assert.hpp>
 #include <optional>
 #include <string>
+#include <type_traits>
 
 #include "asm.hpp"
 #include "ast.hpp"
@@ -15,10 +16,8 @@
 
 namespace cmm {
 enum class instruction_t : uint8_t;
+
 namespace ast {
-namespace decl {
-struct signature;
-} // namespace decl
 struct identifier;
 struct translation_unit;
 } // namespace ast
@@ -49,7 +48,7 @@ enum class Phase : uint8_t {
   EXITING
 };
 
-class compilation_unit : public default_singleton<compilation_unit> {
+struct compilation_unit : public default_singleton<compilation_unit> {
 public:
   /////////// OBJECTS //////////
 
@@ -57,11 +56,13 @@ public:
     std::optional<operator_t> operator_         = std::nullopt;
     const ::cmm::ast::identifier* pruning_label = nullptr;
   } last;
+
   struct {
     size_t whiles   = 0;
     size_t fors     = 0;
     size_t literals = 0;
   } counters;
+
   std::optional<instruction_t> next_jump;
   Phase current_phase       = Phase::STOPPED;
   const source_code* source = nullptr;
@@ -80,20 +81,12 @@ public:
   void reserve_static_var(cstring);
   void reserve_memory(cstring, cstring, cstring);
   assembly::label_literal* reserve_constant(cstring);
-  std::optional<operand*> call_function(decl::signature, const ast::expr::arguments&, bool = false);
-  [[nodiscard]]
-  std::vector<long> progressive_prefix_match(
-      const std::vector<ptype>& argument_types,
-      const std::vector<std::pair<long, std::vector<ptype>>>& possible_fns) const;
-
-  std::vector<operand*> load_arguments(const ast::decl::function*, const ast::expr::arguments&);
-  [[nodiscard]] operator_builtin_data get_operator_implementation(
-      const operator_&,
-      const std::vector<ptype>&) const;
-  const decl::function* get_function(const decl::signature&);
-  operand* builtin_operator(const operator_&,
-                            const std::vector<ptype>&,
-                            const std::vector<operand*>&);
+  std::optional<operand*> call_function(const identifier& id,
+                                        const ast::expr::arguments&,
+                                        bool = false);
+  template <typename T, typename Id = T::identifier_t>
+  const T* get_callable(Id id, const std::vector<expr::expression*>&) const;
+  operand* call_builtin_operator(const operator_&, const ast::expr::arguments&);
 
   template <assembly::Operand... Args>
   void instruction(const instruction_t&, Args&&...);
@@ -108,8 +101,8 @@ public:
   void jump(const instruction_t&, cstring);
   // void move_rsp(size_t);
   void cmp(cstring, cstring);
-  void call(cstring);
   void exit(operand*);
+  void call(cstring);
   void exit_successfully();
   void syscall();
   void syscall(cstring);
@@ -125,7 +118,24 @@ protected:
 private:
   void start();
   std::string end();
+
+  [[nodiscard]] std::vector<bound_argument> bind_parameters(
+      const std::vector<parameter>&,
+      const std::vector<ast::expr::expression*>&) const;
+  std::vector<operand*> load_arguments(const std::vector<bound_argument>&);
+
+  template <typename T, typename Id = typename T::identifier_t>
+  const T* resolve_overloads(Id,
+                             std::vector<const T*> candidates,
+                             std::vector<expr::expression*>) const;
+  [[nodiscard]] static bool match_arguments(const std::vector<ptype>&, const std::vector<ptype>&);
+  template <typename T>
+    requires(std::is_same_v<T, const ast::decl::function*> ||
+             std::is_same_v<T, const operator_builtin_data*>)
+  [[nodiscard]] std::vector<T> progressive_prefix_match(const std::vector<ptype>& argument_types,
+                                                        const std::vector<T>& possible_fns) const;
 };
 
 } // namespace cmm::ir
+
 #include "ir.inl"

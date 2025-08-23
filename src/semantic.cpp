@@ -11,19 +11,7 @@
 #include "types.hpp"
 
 namespace cmm {
-namespace {
-void load_operator_semantics(ir::compilation_unit& v,
-                             const ast::expr::expression& expr,
-                             const ast::operator_& name,
-                             const std::vector<ptype>& types) {
-  auto op          = v.get_operator_implementation(name, types);
-  const auto* type = op.ret;
-  auto cat         = is_reference_v::operator()(*type) ? ast::expr::value_category_t::LVALUE
-                                                       : ast::expr::value_category_t::RVALUE;
-  expr.load_semantics(type, cat);
-  // expr.semantics.fn = fn;
-}
-}; // namespace
+
 //
 void semantics::load_program_semantics(ast::translation_unit* program) {
   REGISTER_INFO("Loading semantics");
@@ -34,63 +22,103 @@ void semantics::load_program_semantics(ast::translation_unit* program) {
   REGISTER_INFO("Semantics loaded");
 }
 
-void semantics::load_expression_semantics(ast::expr::expression* expr) {
-  visitor visitor;
-  expr->accept(visitor);
+void semantics::load_semantics(ast::expr::expression* e) {
+  visitor vis;
+  e->accept(vis);
 }
-
 semantics::visitor::visitor()
     : v(ir::compilation_unit::instance()) {}
 
-void semantics::visitor::visit(ast::expr::identifier& c) {
-  TRACE_VISITOR(c);
-  const auto* var = v.ast->get_variable(c.string());
-  c.load_semantics(&var->specs.type.value(), ast::expr::value_category_t::LVALUE);
-  c.semantics.is_constant_evaluable = false;
-}
-void semantics::visitor::visit(ast::expr::unary_operator& c) {
-  if (c.are_semantics_loaded()) {
-    return;
+void semantics::visitor::visit(const ast::expr::literal& lit) {
+  switch (lit.category) {
+    case ast::expr::literal_t::CHAR:
+      lit.semantics()->original_type = cmm::type::create_fundamental(type_category_t::char_t);
+      break;
+    case ast::expr::literal_t::STRING:
+      lit.semantics()->original_type = cmm::type::create_string(lit.value().size());
+      break;
+    case ast::expr::literal_t::SINT:
+      lit.semantics()->original_type = cmm::type::create_fundamental(type_category_t::sint_t);
+      break;
+    case ast::expr::literal_t::UINT:
+      lit.semantics()->original_type = cmm::type::create_fundamental(type_category_t::uint_t);
+      break;
+    case ast::expr::literal_t::FALSE:
+    case ast::expr::literal_t::TRUE:
+      lit.semantics()->original_type = cmm::type::create_fundamental(type_category_t::bool_t);
+      break;
+    case ast::expr::literal_t::FLOAT:
+      lit.semantics()->original_type = cmm::type::create_fundamental(type_category_t::float_t);
+      break;
   }
+
+  switch (lit.category) {
+    case ast::expr::literal_t::CHAR:
+    case ast::expr::literal_t::SINT:
+    case ast::expr::literal_t::UINT:
+    case ast::expr::literal_t::FALSE:
+    case ast::expr::literal_t::TRUE:
+    case ast::expr::literal_t::FLOAT:
+      lit.semantics()->value_category = value_category_t::PRVALUE;
+      break;
+    case ast::expr::literal_t::STRING:
+      lit.semantics()->value_category = value_category_t::LVALUE;
+      break;
+  }
+}
+
+void semantics::visitor::visit(const ast::expr::identifier& c) {
+  TRACE_VISITOR(c);
+  const auto* var                      = v.ast->get_variable_declaration(c);
+  c.semantics()->original_type         = var->specs.type.value();
+  c.semantics()->value_category        = value_category_t::LVALUE;
+  c.semantics()->is_constant_evaluable = false;
+}
+
+void semantics::visitor::visit(const ast::expr::unary_operator& c) {
   TRACE_VISITOR(c);
   c.expr.accept(*this);
-  if (c.operator_.value() == operator_t::post_inc || c.operator_.value() == operator_t::post_dec) {
-    // load_operator_semantics(v, c, c.operator_, {c.expr.type(), SINT_T});
-  } else {
-    // load_operator_semantics(v, c, c.operator_, {c.expr.type()});
-  }
-  // load_operator_semantics(v, c, c.operator_, {c.expr.type()});
-  c.semantics.is_constant_evaluable = c.expr.semantics.is_constant_evaluable;
+  const operator_builtin_data* data = v.get_callable<operator_builtin_data>(c.operator_, {&c.expr});
+  // if (c.operator_.value() == operator_t::post_inc || c.operator_.value() == operator_t::post_dec)
+  // {
+  //   load_operator_semantics(v, c, c.operator_, {c.expr.type(), SINT_T});
+  // } else {
+  //   load_operator_semantics(v, c, c.operator_, {c.expr.type()});
+  // }
+  auto* semantics                  = c.semantics();
+  semantics->value_category        = get_value_category(data->ret);
+  semantics->original_type         = data->ret;
+  semantics->is_constant_evaluable = c.expr.semantics()->is_constant_evaluable;
 }
-void semantics::visitor::visit(ast::expr::binary_operator& c) {
-  if (c.are_semantics_loaded()) {
-    return;
-  }
+
+void semantics::visitor::visit(const ast::expr::binary_operator& c) {
   TRACE_VISITOR(c);
   c.left.accept(*this);
   c.right.accept(*this);
-  load_operator_semantics(v, c, c.operator_, {&c.right.type(), &c.left.type()});
-  c.semantics.is_constant_evaluable =
-      c.left.semantics.is_constant_evaluable && c.right.semantics.is_constant_evaluable;
-}
-void semantics::visitor::visit(ast::expr::call& c) {
-  if (c.are_semantics_loaded()) {
-    return;
-  }
-  TRACE_VISITOR(c);
-  c.args.accept(*this);
-  // load_operator_semantics(v, c, c.ident, c.types());
-  c.semantics.is_constant_evaluable = false;
+  const operator_builtin_data* data =
+      v.get_callable<operator_builtin_data>(c.operator_, {&c.left, &c.right});
+  auto* semantics           = c.semantics();
+  semantics->value_category = get_value_category(data->ret);
+  semantics->original_type  = data->ret;
+  c.semantics()->is_constant_evaluable =
+      c.left.semantics()->is_constant_evaluable && c.right.semantics()->is_constant_evaluable;
 }
 
-void semantics::visitor::visit(ast::expr::arguments& args) {
+void semantics::visitor::visit(const ast::expr::call& c) {
+  TRACE_VISITOR(c);
+  c.args.accept(*this);
+  const auto* func                     = v.get_callable<ast::decl::function>(c.ident, {c.args});
+  c.semantics()->original_type         = func->specs.type.value();
+  c.semantics()->value_category        = get_value_category(func->specs.type.value());
+  c.semantics()->is_constant_evaluable = false;
+}
+
+void semantics::visitor::visit(const ast::expr::arguments& args) {
   for (auto* arg : args) {
-    if (arg->are_semantics_loaded()) {
-      return;
-    }
     arg->accept(*this);
   }
 }
+
 // void semantics::visitor::visit(ast::jump::goto_& c) {}
 // void semantics::visitor::visit(ast::jump::return_& c) {}
 }; // namespace cmm

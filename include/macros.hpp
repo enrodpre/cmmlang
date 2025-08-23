@@ -8,7 +8,7 @@
 /// SPDX-License-Identifier: MIT
 #pragma once
 
-#include <print>
+#include <print> // NOLINT
 /// @brief Invoke the pre-processor stringizing operator but fully expanding any
 /// macro argument first!
 #define STRINGIZE(s)      STRINGIZE_IMPL(s)
@@ -28,7 +28,7 @@
 // as "2.3"
 #define VERSION_STRING1(major)        STRINGIZE(major)
 #define VERSION_STRING2(major, minor) STRINGIZE(major) "." STRINGIZE(minor)
-#define VERSION_STRING3(major, minor, patch) \
+#define VERSION_STRING3(major, minor, patch)          \
   STRINGIZE(major) "." STRINGIZE(minor) "." STRINGIZE(patch)
 
 /// @brief RUN(code); prints the line of code to the console and then executes
@@ -39,16 +39,16 @@
 #define RUN(...) OVERLOAD(RUN, __VA_ARGS__)
 
 // The one, two,and three argument versions of RUN
-#define RUN1(code) \
+#define RUN1(code)                           \
   std::cout << "[CODE]   " << #code << "\n"; \
   code
 
-#define RUN2(code, val) \
-  RUN1(code); \
+#define RUN2(code, val)                                   \
+  RUN1(code);                                             \
   std::cout << "[RESULT] " << #val << ": " << val << '\n'
 
-#define RUN3(code, val1, val2) \
-  RUN1(code); \
+#define RUN3(code, val1, val2)                                                                  \
+  RUN1(code);                                                                                   \
   std::cout << "[RESULT] " << #val1 << ": " << val1 << " and " << #val2 << ": " << val2 << '\n'
 
 /// @brief   Preprocessor trickery to allow for macros that can be overloaded by
@@ -73,55 +73,48 @@
 /// @note Could add more compilers from e.g.
 /// https://github.com/cpredef/predef/blob/master/Compilers.md)
 #if defined(__clang__)
-  #define COMPILER_NAME \
+#  define COMPILER_NAME                                                             \
     "clang " VERSION_STRING(__clang_major__, __clang_minor__, __clang_patchlevel__)
 #elif defined(__GNUC__)
-  #define COMPILER_NAME "gcc " VERSION_STRING(__GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__)
+#  define COMPILER_NAME "gcc " VERSION_STRING(__GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__)
 #else
-  #define COMPILER_NAME "Unidentified Compiler"
+#  define COMPILER_NAME "Unidentified Compiler"
 #endif
 
-#define MOVABLE_CLS(CLS) \
+#define MOVABLE_CLS(CLS)                    \
   CLS(CLS&&) noexcept            = default; \
   CLS& operator=(CLS&&) noexcept = default;
 
-#define COPYABLE_CLS(CLS) \
+#define COPYABLE_CLS(CLS)               \
   CLS(const CLS&)            = default; \
   CLS& operator=(const CLS&) = default;
 
 #define DEFAULT_CLASS(CLS) \
-  CLS()  = default; \
-  ~CLS() = default; \
-  COPYABLE_CLS(CLS) \
+  CLS()  = default;        \
+  ~CLS() = default;        \
+  COPYABLE_CLS(CLS)        \
   MOVABLE_CLS(CLS)
 
-#define NOT_MOVABLE_CLS(CLS) \
+#define NOT_MOVABLE_CLS(CLS)      \
   CLS(CLS&&)            = delete; \
   CLS& operator=(CLS&&) = delete;
 
-#define NOT_COPYABLE_CLS(CLS) \
+#define NOT_COPYABLE_CLS(CLS)          \
   CLS(const CLS&)            = delete; \
   CLS& operator=(const CLS&) = delete;
 
 #define STATIC_CLS(CLS) \
-  CLS()  = delete; \
-  ~CLS() = delete; \
+  CLS()  = delete;      \
+  ~CLS() = delete;      \
   NOT_COPYABLE_CLS(CLS) \
   NOT_MOVABLE_CLS(CLS)
 
-#define AST_SIBLINGS(...) \
+#define AST_SIBLINGS(...)                                                                 \
   std::string string() const override { return cpptrace::demangle(typeid(this).name()); }
-// std::vector<node*> children() const override { return
-// transform(CAST_TO_NODE); }
-#define AST_COMPOSITE(...) \
+#define AST_COMPOSITE(...)                                                                \
   std::string string() const override { return cpptrace::demangle(typeid(this).name()); }
-// std::vector<node*> children() const override { \
-  //   return std::vector<node*>{__VA_ARGS__} | \
-  //          std::views::transform([](auto&& elem) { return dynamic_cast<node*>(elem); }); \
-  // }
-#define AST_LEAF \
+#define AST_LEAF                                                                          \
   std::string string() const override { return cpptrace::demangle(typeid(this).name()); }
-// std::vector<node*> children() const override { return {}; }
 
 #define ENUM_PROPERTY(TYPE, NAME, N) TYPE NAME
 
@@ -147,29 +140,29 @@
 #define DECLARE_VARS_2(t1, n1) ENUM_PROPERTY(t1, n1, 0);
 
 #define DECLARE_VARS_4(t1, n1, t2, n2) \
-  ENUM_PROPERTY(t1, n1, 0); \
+  ENUM_PROPERTY(t1, n1, 0);            \
   ENUM_PROPERTY(t2, n2, 1);
 #define DECLARE_VARS_6(t1, n1, t2, n2, t3, n3) \
-  ENUM_PROPERTY(t1, n1, 0); \
-  ENUM_PROPERTY(t2, n2, 1); \
+  ENUM_PROPERTY(t1, n1, 0);                    \
+  ENUM_PROPERTY(t2, n2, 1);                    \
   ENUM_PROPERTY(t3, n3, 2);
 #define DECLARE_VARS_8(t1, n1, t2, n2, t3, n3, t4, n4) \
-  ENUM_PROPERTY(t1, n1, 0); \
-  ENUM_PROPERTY(t2, n2, 1); \
-  ENUM_PROPERTY(t3, n3, 2); \
+  ENUM_PROPERTY(t1, n1, 0);                            \
+  ENUM_PROPERTY(t2, n2, 1);                            \
+  ENUM_PROPERTY(t3, n3, 2);                            \
   ENUM_PROPERTY(t4, n4, 3);
 #define DECLARE_VARS_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
-  ENUM_PROPERTY(t1, n1, 0); \
-  ENUM_PROPERTY(t2, n2, 1); \
-  ENUM_PROPERTY(t3, n3, 2); \
-  ENUM_PROPERTY(t4, n4, 3); \
+  ENUM_PROPERTY(t1, n1, 0);                                     \
+  ENUM_PROPERTY(t2, n2, 1);                                     \
+  ENUM_PROPERTY(t3, n3, 2);                                     \
+  ENUM_PROPERTY(t4, n4, 3);                                     \
   ENUM_PROPERTY(t5, n5, 4);
 #define DECLARE_VARS_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
-  ENUM_PROPERTY(t1, n1, 0); \
-  ENUM_PROPERTY(t2, n2, 1); \
-  ENUM_PROPERTY(t3, n3, 2); \
-  ENUM_PROPERTY(t4, n4, 3); \
-  ENUM_PROPERTY(t5, n5, 4); \
+  ENUM_PROPERTY(t1, n1, 0);                                             \
+  ENUM_PROPERTY(t2, n2, 1);                                             \
+  ENUM_PROPERTY(t3, n3, 2);                                             \
+  ENUM_PROPERTY(t4, n4, 3);                                             \
+  ENUM_PROPERTY(t5, n5, 4);                                             \
   ENUM_PROPERTY(t6, n6, 5);
 
 #define CTOR_PARAMS_2(t1, n1)                         t1 _##n1
@@ -184,30 +177,30 @@
 #define GET_DATA_VALUE(N)                  std::get<N + 1>(element_type::properties_array().at(e))
 #define CTOR_ASSIGN_DATA_2(t1, n1)         n1(GET_DATA_VALUE(0))
 #define CTOR_ASSIGN_DATA_4(t1, n1, t2, n2) n1(GET_DATA_VALUE(0)), n2(GET_DATA_VALUE(1))
-#define CTOR_ASSIGN_DATA_6(t1, n1, t2, n2, t3, n3) \
+#define CTOR_ASSIGN_DATA_6(t1, n1, t2, n2, t3, n3)                    \
   n1(GET_DATA_VALUE(0)), n2(GET_DATA_VALUE(1)), n3(GET_DATA_VALUE(2))
-#define CTOR_ASSIGN_DATA_8(t1, n1, t2, n2, t3, n3, t4, n4) \
+#define CTOR_ASSIGN_DATA_8(t1, n1, t2, n2, t3, n3, t4, n4)                                   \
   n1(GET_DATA_VALUE(0)), n2(GET_DATA_VALUE(1)), n3(GET_DATA_VALUE(2)), n4(GET_DATA_VALUE(3))
-#define CTOR_ASSIGN_DATA_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5) \
+#define CTOR_ASSIGN_DATA_10(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5)                           \
   n1(GET_DATA_VALUE(0)), n2(GET_DATA_VALUE(1)), n3(GET_DATA_VALUE(2)), n4(GET_DATA_VALUE(3)), \
       n5(GET_DATA_VALUE(4))
-#define CTOR_ASSIGN_DATA_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6) \
+#define CTOR_ASSIGN_DATA_12(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6)                   \
   n1(GET_DATA_VALUE(0)), n2(GET_DATA_VALUE(1)), n3(GET_DATA_VALUE(2)), n4(GET_DATA_VALUE(3)), \
       n5(GET_DATA_VALUE(4)), n6(GET_DATA_VALUE(5))
 
 // Count arguments
-#define GET_ARG_COUNT(...) \
-  GET_ARG_COUNT_IMPL( \
+#define GET_ARG_COUNT(...)                                                                \
+  GET_ARG_COUNT_IMPL(                                                                     \
       __VA_ARGS__, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
-#define GET_ARG_COUNT_IMPL(_1, \
-                           _2, \
-                           _3, \
-                           _4, \
-                           _5, \
-                           _6, \
-                           _7, \
-                           _8, \
-                           _9, \
+#define GET_ARG_COUNT_IMPL(_1,  \
+                           _2,  \
+                           _3,  \
+                           _4,  \
+                           _5,  \
+                           _6,  \
+                           _7,  \
+                           _8,  \
+                           _9,  \
                            _10, \
                            _11, \
                            _12, \
@@ -219,7 +212,7 @@
                            _18, \
                            _19, \
                            _20, \
-                           N, \
+                           N,   \
                            ...) \
   N
 
@@ -246,23 +239,56 @@
 #define PAIR_COUNT_20          10
 #define PAIR_COUNT_22          11
 
-#define BUILD_ENUMERATION_DATA(TYPE, ...) \
-  using value_type   = CONCAT(TYPE, _t); \
-  using element_type = CONCAT(TYPE, _data); \
-  using enum value_type; \
-  const value_type self; \
-  DECLARE_VARS(__VA_ARGS__) \
-  using member_types   = std::tuple<value_type, GET_TYPES(__VA_ARGS__)>; \
-  using properties_map = magic_enum::containers::array<value_type, member_types>; \
+#define BUILD_ENUMERATION_DATA(TYPE, ...)                                               \
+  using value_type   = CONCAT(TYPE, _t);                                                \
+  using element_type = CONCAT(TYPE, _data);                                             \
+  using enum value_type;                                                                \
+  const value_type self;                                                                \
+  DECLARE_VARS(__VA_ARGS__)                                                             \
+  using member_types   = std::tuple<value_type, GET_TYPES(__VA_ARGS__)>;                \
+  using properties_map = magic_enum::containers::array<value_type, member_types>;       \
   [[nodiscard]] std::string string() const override { return std::format("{}", self); } \
-  static_assert(std::is_constant_evaluated()); \
-  [[nodiscard]] static constexpr const properties_map& properties_array(); \
-  constexpr CONCAT(TYPE, _data)(value_type e) \
-      : self(e), \
+  static_assert(std::is_constant_evaluated());                                          \
+  [[nodiscard]] static constexpr const properties_map& properties_array();              \
+  constexpr CONCAT(TYPE, _data)(value_type e)                                           \
+      : self(e),                                                                        \
         CTOR_ASSIGN_DATA(__VA_ARGS__) {}
 
+#define TO_VEC          std::ranges::to<std::vector>()
+#define TRANSFORM(FUNC) std::views::transform(FUNC)
+#define FILTER(FUNC)    std::views::filter(FUNC)
+
 #define BUILD_ENUMERATION_DATA_CLASS(TYPE, ...) \
-  struct CONCAT(TYPE, _data) \
-      : public displayable { \
-    BUILD_ENUMERATION_DATA(TYPE, __VA_ARGS__) \
+  struct CONCAT(TYPE, _data)                    \
+      : public displayable {                    \
+    BUILD_ENUMERATION_DATA(TYPE, __VA_ARGS__)   \
   };
+#define BUILDER_STEP_SETTER(fn_name, type, member, setter) \
+  builder& fn_name(const type& value) {                    \
+    m_obj.member = setter;                                 \
+    return *this;                                          \
+  }
+#define BUILDER_STEP(fn_name, type, member) \
+  builder& fn_name(const type& value) {     \
+    m_obj.member = value;                   \
+    return *this;                           \
+  }
+
+#define DECLARE_BUILDER(target_class)                      \
+  struct target_class::builder {                           \
+  protected:                                               \
+    using target_t = target_class;                         \
+                                                           \
+  public:                                                  \
+    explicit builder() = default;                          \
+                                                           \
+    std::shared_ptr<const target_t> build_shared() const { \
+      return std::shared_ptr<const target_t>(&m_obj);      \
+    }                                                      \
+    target_class build() const { return m_obj; }
+
+#define END_BUILDER() \
+private:              \
+  target_t m_obj;     \
+  }                   \
+  ;

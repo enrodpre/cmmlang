@@ -3,35 +3,35 @@
 #include "asm.hpp"
 #include <utility>
 
-#include "ast.hpp"
 #include "common.hpp"
 #include "types.hpp"
 
 namespace cmm {
 
-[[nodiscard]] ast::decl::signature builtin_signature_data::signature() const {
-  return {ast::identifier(std::string(function_name)), args};
+[[nodiscard]] callable_contract builtin_signature_data::contract() const {
+  return {VOID_T, std::string(function_name), args};
 }
 
-mangled_name mangled_name::function(cstring name, const std::vector<const type*>& t) {
+mangled_name mangled_name::function(cstring name, const std::vector<ptype>& t) {
+  if (t.size() == 0) {
+    return std::format("{}", name);
+  }
   return std::format("{}_{}", name, types(t));
 }
 
 std::string mangled_name::types(const std::vector<ptype>& types) {
-  return types | std::views::transform([](ptype t) { return t->string(); }) |
+  return types | std::views::transform([](const auto& t) { return t->string(); }) |
          std::views::join_with('_') | std::ranges::to<std::string>();
 }
 
-mangled_name mangled_name::direct_conversion_function(crtype f, crtype t) {
-  return function("conv_{}", std::vector<ptype>{&f, &t});
-}
-
 mangled_name mangled_name::label(cstring name) { return std::string(name); }
-mangled_name mangled_name::variable(cstring name, crtype) { return std::string(name); }
 
-signature::signature(operator_t op, std::vector<ptype_spec> types)
-    : name(std::format("operator{}", op)),
+mangled_name mangled_name::variable(cstring name, crptype) { return std::string(name); }
+
+callable_signature::callable_signature(cstring op, std::vector<ptype> types)
+    : name(op),
       argument_types(std::move(types)) {}
+
 mangled_name::operator std::string() const { return m_string; }
 
 namespace {
@@ -39,82 +39,130 @@ template <instruction_t Ins>
 instruction single_ins(arg_t l = arg_t::LEFT, arg_t r = arg_t::RIGHT) {
   return instruction{.ins = Ins, .arg1 = l, .arg2 = r};
 } // namespace
+
 template <instruction_t Ins>
 std::vector<instruction> create_ins(arg_t l = arg_t::LEFT, arg_t r = arg_t::RIGHT) {
   return {
       instruction{.ins = Ins, .arg1 = l, .arg2 = r}
   };
 }
-} // namespace
-const std::unordered_map<operator_t, operator_builtin_data> builtin_operators{
-    {operator_t::assign,
-     {&matchers::is_ref, &matchers::is_ref, &matchers::is_cref, create_ins<instruction_t::mov>()}    },
 
-    // Unary
-    {operator_t::pre_inc,  {SINTREF_T, SINTREF_T, VOID_T, create_ins<instruction_t::inc>()}          },
-    {operator_t::pre_dec,  {SINTREF_T, SINTREF_T, VOID_T, create_ins<instruction_t::dec>()}          },
-    {operator_t::post_inc, {SINT_T, SINTREF_T, SINT_T, create_ins<instruction_t::inc>()}             },
-    {operator_t::post_dec, {SINT_T, SINTREF_T, SINT_T, create_ins<instruction_t::dec>()}             },
-    // Comparisons
-    {operator_t::eq,       {BOOL_T, &matchers::any, &matchers::any, create_ins<instruction_t::mov>()}},
-    {operator_t::neq,      {BOOL_T, &matchers::any, &matchers::any, create_ins<instruction_t::mov>()}},
-    {operator_t::gt,
-     {BOOL_T, &matchers::is_integral, &matchers::is_integral, create_ins<instruction_t::mov>()}      },
-    {operator_t::ge,
-     {BOOL_T, &matchers::is_integral, &matchers::is_integral, create_ins<instruction_t::mov>()}      },
-    {operator_t::lt,
-     {BOOL_T, &matchers::is_integral, &matchers::is_integral, create_ins<instruction_t::mov>()}      },
-    {operator_t::le,
-     {BOOL_T, &matchers::is_integral, &matchers::is_integral, create_ins<instruction_t::mov>()}      },
-    // Arithmetic
-    {operator_t::plus,
-     {&matchers::is_integral,
-      &matchers::is_integral,
-      &matchers::is_integral,
-      create_ins<instruction_t::add>()}                                                              },
-    {operator_t::minus,
-     {&matchers::is_integral,
-      &matchers::is_integral,
-      &matchers::is_integral,
-      create_ins<instruction_t::sub>()}                                                              },
-    {operator_t::star,
-     {&matchers::is_integral,
-      &matchers::is_integral,
-      &matchers::is_integral,
-      {single_ins<instruction_t::mov>(arg_t::ACC, arg_t::LEFT),
-       single_ins<instruction_t::mul>(arg_t::RIGHT),
-       single_ins<instruction_t::mov>(arg_t::LEFT, arg_t::ACC)}}                                     },
-    {operator_t::fslash,
-     {&matchers::is_integral,
-      &matchers::is_integral,
-      &matchers::is_integral,
-      {single_ins<instruction_t::mov>(arg_t::ACC, arg_t::LEFT),
-       single_ins<instruction_t::div>(arg_t::RIGHT),
-       single_ins<instruction_t::mov>(arg_t::LEFT, arg_t::ACC)}}                                     },
-    {operator_t::xor_,
-     {&matchers::any, &matchers::any, &matchers::any, create_ins<instruction_t::xor_>()}             },
-    {operator_t::or_,
-     {&matchers::any, &matchers::any, &matchers::any, create_ins<instruction_t::or_>()}              },
-    {operator_t::and_,
-     {&matchers::any, &matchers::any, &matchers::any, create_ins<instruction_t::and_>()}             },
-    {operator_t::not_,
-     {&matchers::any, &matchers::any, VOID_T, create_ins<instruction_t::not_>()}                     }
-};
+template <instruction_t Ins>
+constexpr operator_builtin_data create_same_args(const ptype& args) {
+  return {args, args, args, create_ins<Ins>()};
+}
 
-namespace {
-constexpr bool try_match(ptype t, ptype p) {
-  if (const auto* matcher = dynamic_cast<const type_matcher*>(p)) {
-    return matcher->match(*t);
+template <instruction_t Ins>
+constexpr operator_builtin_data create_same_args(ptype ret, const ptype& args) {
+  return {std::move(ret), args, args, create_ins<Ins>()};
+}
+
+template <instruction_t Ins>
+constexpr std::vector<operator_builtin_data> create_overloaded_op(const std::vector<ptype>& args) {
+  std::vector<operator_builtin_data> res;
+  res.reserve(args.size());
+  for (const ptype& matcher : args) {
+    res.push_back(create_same_args<Ins>(matcher));
   }
-  return t == p;
+  return res;
+}
+
+template <instruction_t Ins>
+constexpr std::vector<operator_builtin_data> create_overloaded_op(const ptype& ret,
+                                                                  const std::vector<ptype>& args) {
+  std::vector<operator_builtin_data> res;
+  res.reserve(args.size());
+  for (const ptype& matcher : args) {
+    res.push_back(create_same_args<Ins>(ret, matcher));
+  }
+  return res;
+}
+
+constexpr std::vector<operator_builtin_data> create_overloaded_op(const std::vector<ptype>& args,
+                                                                  std::vector<instruction> ins) {
+  std::vector<operator_builtin_data> res;
+  res.reserve(args.size());
+  for (const ptype& matcher : args) {
+    res.emplace_back(matcher, matcher, matcher, std::move(ins));
+  }
+  return res;
 }
 } // namespace
-std::optional<operator_builtin_data> get_builtin_operator(operator_t op,
-                                                          const std::vector<ptype>& types) {
-  const auto& data = builtin_operators.at(op);
-  if (try_match(types.at(1), data.arg2) && try_match(types.at(0), data.arg1)) {
-    return data;
+
+const std::unordered_map<operator_t, std::vector<operator_builtin_data>> builtin_operators{
+    {operator_t::assign,
+     {{SINTREF_T, SINTREF_T, SINT_T, create_ins<instruction_t::mov>()},
+      {UINTREF_T, UINTREF_T, UINT_T, create_ins<instruction_t::mov>()},
+      {FLOATREF_T, FLOATREF_T, FLOAT_T, create_ins<instruction_t::mov>()}}},
+
+    // Unary
+    {operator_t::pre_inc, {{SINTREF_T, SINTREF_T, create_ins<instruction_t::inc>()}}},
+    {operator_t::pre_dec, {{SINTREF_T, SINTREF_T, create_ins<instruction_t::dec>()}}},
+    {operator_t::post_inc, {{SINT_T, SINTREF_T, SINT_T, create_ins<instruction_t::inc>()}}},
+    {operator_t::post_dec, {{SINT_T, SINTREF_T, SINT_T, create_ins<instruction_t::dec>()}}},
+    // Comparisons
+    {operator_t::eq,
+     create_overloaded_op<instruction_t::mov>(BOOL_T, {BOOL_T, SINT_T, UINT_T, FLOAT_T, CHAR_T})},
+    {operator_t::neq,
+     create_overloaded_op<instruction_t::mov>(BOOL_T, {BOOL_T, SINT_T, UINT_T, FLOAT_T, CHAR_T})},
+    {operator_t::gt,
+     create_overloaded_op<instruction_t::mov>(BOOL_T, {BOOL_T, SINT_T, UINT_T, FLOAT_T, CHAR_T})},
+    {operator_t::ge,
+     create_overloaded_op<instruction_t::mov>(BOOL_T, {BOOL_T, SINT_T, UINT_T, FLOAT_T, CHAR_T})},
+    {operator_t::lt,
+     create_overloaded_op<instruction_t::mov>(BOOL_T, {BOOL_T, SINT_T, UINT_T, FLOAT_T, CHAR_T})},
+    {operator_t::le,
+     create_overloaded_op<instruction_t::mov>(BOOL_T, {BOOL_T, SINT_T, UINT_T, FLOAT_T, CHAR_T})},
+    // Arithmetic
+    {operator_t::plus, create_overloaded_op<instruction_t::add>({BOOL_T, SINT_T, UINT_T, FLOAT_T})},
+    {operator_t::minus, create_overloaded_op<instruction_t::sub>({SINT_T, UINT_T, FLOAT_T})},
+    {operator_t::star,
+     create_overloaded_op({SINT_T, UINT_T, FLOAT_T},
+     {single_ins<instruction_t::mov>(arg_t::ACC, arg_t::LEFT),
+                           single_ins<instruction_t::mul>(arg_t::RIGHT),
+                           single_ins<instruction_t::mov>(arg_t::LEFT, arg_t::ACC)})},
+    {operator_t::fslash,
+     create_overloaded_op({SINT_T, UINT_T, FLOAT_T},
+     {single_ins<instruction_t::mov>(arg_t::ACC, arg_t::LEFT),
+                           single_ins<instruction_t::mul>(arg_t::RIGHT),
+                           single_ins<instruction_t::mov>(arg_t::LEFT, arg_t::ACC)})},
+    // {operator_t::or_, {{matchers::any, {}, {}, create_ins<instruction_t::or_>()}}},
+    // {operator_t::xor_, {{matchers::any, {}, {}, create_ins<instruction_t::xor_>()}}},
+    // {operator_t::and_, {{matchers::any, {}, {}, create_ins<instruction_t::and_>()}}},
+    // {operator_t::not_,     {matchers::any, {}, VOID_T,
+    // create_ins<instruction_t::not_>()}       }
+};
+
+std::vector<const operator_builtin_data*> get_builtin_operator(operator_t op) {
+  auto pointer_of = [](const operator_builtin_data& v) -> const operator_builtin_data* {
+    return &v;
+  };
+  return builtin_operators.at(op) | TRANSFORM(pointer_of) | TO_VEC;
+}
+
+value_category_t get_value_category(crptype t) {
+  if (matchers::is_lvalue(t)) {
+    return value_category_t::LVALUE;
   }
-  return {};
+  if (matchers::is_rvalue(t)) {
+    return value_category_t::XVALUE;
+  }
+  return value_category_t::PRVALUE;
+}
+std::vector<ptype> get_bindable_candidates(value_category_t cat, crptype arg) {
+  return binding_rules.at(cat) |
+         FILTER([arg](const binding_rule& rule) { return rule.matcher(arg); }) |
+         TRANSFORM([arg](const binding_rule& rule) { return rule.modifier(arg); }) | TO_VEC;
+}
+
+bool is_bindeable(value_category_t value_category, crptype arg, crptype param) {
+  return std::ranges::contains(get_bindable_candidates(value_category, arg), param);
+}
+
+ptype bind_argument(value_category_t cat, crptype arg, crptype param) {
+  if (!is_bindeable(cat, arg, param)) {
+    THROW(BAD_FUNCTION_CALL, arg);
+  }
+  return param;
 }
 } // namespace cmm

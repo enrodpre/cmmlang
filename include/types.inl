@@ -1,10 +1,8 @@
 #pragma once
 
 #include <libassert/assert-macros.hpp>
-#include <new>
 #include <utility>
 
-#include "allocator.hpp"
 #include "types.hpp"
 
 namespace cmm {
@@ -37,7 +35,7 @@ type_category_data::properties_array() {
         {scoped_enum_t, enum_t, {}},
         {unscoped_enum_t, enum_t, {}},
         {class_t, compound_t, {}},
-        {matcher_t, matcher_t, {}},
+        {generic_t, generic_t, {}},
         {dummy_t, dummy_t, {}}}
 
       }};
@@ -45,20 +43,7 @@ type_category_data::properties_array() {
 }
 
 template <typename... Args>
-const type& type::create(type_category_t t, Args&&... args) {
-  return *new (memory::Allocator::instance().allocate<type>()) type(t, std::forward<Args>(args)...);
+ptype type::create(type_category_t t, Args&&... args) {
+  return std::make_shared<const type>(t, std::forward<Args>(args)...);
 }
-
-constexpr bool is_const_v::operator()(const type& t) { return t.c; }
-constexpr bool is_indirect_v::operator()(crtype t) {
-  bool value = belongs_to(t.category, type_category_t::indirection_t);
-  if (value) {
-    ASSERT(t.underlying != nullptr);
-  }
-  return value;
-}
-constexpr bool is_reference_v::operator()(crtype t) {
-  return belongs_to(t.category, type_category_t::reference_t);
-}
-
 } // namespace cmm

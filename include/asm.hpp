@@ -26,6 +26,7 @@ namespace cmm::assembly {
 
 namespace bits {
 constexpr auto BIT_DATASIZE = DATASIZE * 8;
+
 namespace masks {
 constexpr auto TO_BOOL = 0x1;
 }
@@ -41,8 +42,10 @@ BUILD_ENUMERATION_DATA_CLASS(syscall, size_t, n_param, size_t, number)
 
 struct operand : public formattable {
   using content_t = const ast::decl::variable*;
+
   struct symbol_container {
     enum symbol_attr : uint8_t { VALUE, ADDRESS };
+
     content_t content;
     symbol_attr attribute;
 
@@ -50,12 +53,15 @@ struct operand : public formattable {
     symbol_container(const symbol_container&)            = default;
     symbol_container& operator=(const symbol_container&) = default;
     [[nodiscard]] bool is_address() const;
+
     [[nodiscard]] bool is_disposable() const noexcept { return m_disposable; }
+
     void set_disposable() noexcept { m_disposable = true; }
 
   private:
     bool m_disposable;
   };
+
   using container_t = std::optional<symbol_container>;
 
   enum class type_t : uint8_t { REGISTER, IMMEDIATE, MEMORY, LABEL };
@@ -73,7 +79,7 @@ struct operand : public formattable {
   [[nodiscard]] std::string format() const override;
 
   [[nodiscard]] std::optional<symbol_container> content() const;
-  [[nodiscard]] crtype content_type() const;
+  [[nodiscard]] ptype content_type() const;
   [[nodiscard]] content_t variable() const;
   operand* hold_value(content_t);
   operand* hold_address(content_t);
@@ -99,8 +105,11 @@ struct reg : public operand {
   reg(std::string);
   NOT_COPYABLE_CLS(reg);
   NOT_MOVABLE_CLS(reg);
+
   [[nodiscard]] type_t type() const override { return type_t::REGISTER; }
+
   [[nodiscard]] std::string name() const { return m_name; }
+
   [[nodiscard]] std::string value() const override;
 
 protected:
@@ -110,6 +119,7 @@ protected:
 struct register_placeholder : public reg {
   register_placeholder()
       : reg(std::format("placeholder_{}", i++)) {}
+
   template <register_t Reg>
   register_placeholder();
 
@@ -122,7 +132,9 @@ struct reg_memory : public reg {
   reg_memory(std::string, int64_t);
   using reg::hold_address;
   using reg::hold_value;
+
   [[nodiscard]] type_t type() const override { return type_t::MEMORY; }
+
   [[nodiscard]] std::string value() const override;
 
 protected:
@@ -141,7 +153,9 @@ struct immediate : public operand {
   immediate(stored_t, immediate_t);
 
   [[nodiscard]] type_t type() const override { return type_t::IMMEDIATE; }
+
   [[nodiscard]] immediate_t immediate_type() const { return m_immediate_type; }
+
   [[nodiscard]] std::string value() const override;
 
 protected:
@@ -151,13 +165,17 @@ protected:
 
 struct immediate_memory : public immediate {
   using immediate::immediate;
+
   [[nodiscard]] type_t type() const override { return type_t::MEMORY; }
+
   [[nodiscard]] std::string value() const override;
 };
 
 struct label : public virtual operand {
   label(std::string);
+
   [[nodiscard]] type_t type() const override { return type_t::LABEL; }
+
   [[nodiscard]] std::string value() const override;
 
 protected:
@@ -168,7 +186,9 @@ struct label_memory : public label {
   using label::hold_address;
   using label::hold_value;
   using label::label;
+
   [[nodiscard]] type_t type() const override { return type_t::MEMORY; }
+
   [[nodiscard]] std::string value() const override;
 };
 
@@ -198,17 +218,21 @@ struct registers {
 
   constexpr static std::string to_realname(register_t);
   [[nodiscard]] reg* get(register_t) const;
+
   [[nodiscard]] size_t available_parameters() const {
     return std::ranges::count_if(m_parameters,
                                  [this](register_t r) { return get(r)->is_writtable(); });
   }
+
   // reg* last_opfunction_result;
   const ast::decl::variable* find_var(const ast::identifier&);
 
   [[nodiscard]] constexpr reg* parameter_at(int i) const;
+
   struct parameters_transaction {
     parameters_transaction(registers* p)
         : params(p) {}
+
     ~parameters_transaction() { reset(); }
 
     reg* next();
@@ -245,6 +269,7 @@ static_assert(!std::is_abstract_v<immediate>);
 struct assembly_code : public displayable {};
 
 struct assembly_line : public displayable {};
+
 struct assembly_empty_line : public assembly_line {
   [[nodiscard]] std::string string() const override;
 };
@@ -268,6 +293,7 @@ struct assembly_code_line : public assembly_line {
 class comment_block;
 
 using constant_data_descriptor = std::pair<assembly::label*, assembly::label*>;
+
 class asmgen {
 public:
   enum class Section : uint8_t { TEXT = 0, DATA, BS };

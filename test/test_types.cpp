@@ -1,30 +1,90 @@
+#include "common.hpp"
+#include "lang.hpp"
+#include "test_base.hpp"
 #include "types.hpp"
 #include <gtest/gtest.h>
+#include <memory>
 
 using namespace cmm;
 
 struct types_test : public ::testing::Test {
-  static constexpr crtype create_type(type_category_t c) { return type::create(c); }
+  static constexpr ptype create_type(type_category_t c) { return std::make_shared<type>(c); }
 
 protected:
-  type_category_t boolean = type_category_t::bool_t;
+  type_category_t boolean_t = type_category_t::bool_t;
+  ptype boolean             = type::create_fundamental(type_category_t::bool_t);
+  ptype cboolean            = type::create_fundamental(type_category_t::bool_t, true);
 };
 
 TEST_F(types_test, tree) {
-  EXPECT_TRUE(belongs_to(boolean, type_category_t::any_t));
-  EXPECT_TRUE(belongs_to(boolean, type_category_t::fundamental_t));
-  EXPECT_TRUE(belongs_to(boolean, type_category_t::bool_t));
-  EXPECT_FALSE(belongs_to(boolean, type_category_t::compound_t));
+  EXPECT_TRUE(belongs_to(boolean_t, type_category_t::any_t));
+  EXPECT_TRUE(belongs_to(boolean_t, type_category_t::fundamental_t));
+  EXPECT_TRUE(belongs_to(boolean_t, type_category_t::bool_t));
+  EXPECT_FALSE(belongs_to(boolean_t, type_category_t::compound_t));
 }
 
 TEST_F(types_test, comparisons) {
-  const auto& t1 = type::create_fundamental(type_category_t::bool_t);
-  const auto& t2 = type::create_fundamental(type_category_t::bool_t);
+  EXPECT_TRUE(boolean->match(boolean));
+  EXPECT_FALSE(cboolean->match(type::create_fundamental(type_category_t::bool_t)));
+  EXPECT_FALSE(boolean->match(cboolean));
+  EXPECT_TRUE(boolean->match(type::create_fundamental(type_category_t::bool_t)));
+}
+struct binding_test : public ::testing::Test {
+  static inline const auto int_t    = type::create_fundamental(type_category_t::sint_t);
+  static inline const auto intref_t = type::create_lvalue(std::make_shared<const type>(*int_t));
+  static inline const auto intcref_t =
+      type::create_lvalue(std::make_shared<const type>(*int_t), true);
+  static inline const auto intrref_t = type::create_rvalue(std::make_shared<const type>(*int_t));
+};
 
-  EXPECT_EQ(t1, t1);
-  EXPECT_EQ(t1, t2);
+#define EXPECT_NOTHROW_AND_RETURN(CAT, ARG, PARAM)                    \
+  EXPECT_NO_THROW(bind_argument(value_category_t::CAT, ARG, PARAM));  \
+  EXPECT_EQ(PARAM, bind_argument(value_category_t::CAT, ARG, PARAM));
 
-  const auto& t3 = type::create_fundamental(type_category_t::bool_t, true);
+TEST_F(binding_test, LvalueToIntByValue) {
+  EXPECT_TRUE(is_bindeable(value_category_t::LVALUE, int_t, int_t));
+  EXPECT_NOTHROW_AND_RETURN(LVALUE, int_t, int_t);
+}
 
-  EXPECT_NE(t1, t2);
+TEST_F(binding_test, LvalueToLvalueRef) {
+  EXPECT_TRUE(is_bindeable(value_category_t::LVALUE, int_t, intref_t));
+  EXPECT_NOTHROW_AND_RETURN(LVALUE, int_t, intref_t);
+}
+
+TEST_F(binding_test, LvalueToRvalueRefNotAllowed) {
+  EXPECT_FALSE(is_bindeable(value_category_t::LVALUE, int_t, intrref_t));
+  EXPECT_THROW(bind_argument(value_category_t::LVALUE, int_t, intrref_t), compilation_error);
+}
+
+TEST_F(binding_test, PrvalueToValue) {
+  EXPECT_TRUE(is_bindeable(value_category_t::PRVALUE, int_t, int_t));
+  EXPECT_NOTHROW_AND_RETURN(PRVALUE, int_t, intref_t);
+}
+
+TEST_F(binding_test, PrvalueToRvalueRef) {
+  EXPECT_TRUE(is_bindeable(value_category_t::PRVALUE, int_t, intrref_t));
+  EXPECT_NOTHROW_AND_RETURN(LVALUE, int_t, intrref_t);
+}
+
+TEST_F(binding_test, PrvalueToLvalueRefNotAllowed) {
+  EXPECT_FALSE(is_bindeable(value_category_t::PRVALUE, int_t, intref_t));
+  EXPECT_THROW(bind_argument(value_category_t::PRVALUE, int_t, intref_t), compilation_error);
+}
+
+TEST_F(binding_test, PrvalueToConstLvalueRef) {
+  EXPECT_TRUE(is_bindeable(value_category_t::PRVALUE, int_t, intcref_t));
+  EXPECT_NOTHROW_AND_RETURN(PRVALUE, int_t, intcref_t);
+}
+
+TEST_F(binding_test, XvalueToRvalueRef) {
+  EXPECT_TRUE(is_bindeable(value_category_t::XVALUE, int_t, intrref_t));
+  EXPECT_NOTHROW_AND_RETURN(XVALUE, int_t, intrref_t);
+}
+
+TEST_F(binding_test, XvalueToLvalueRefNotAllowed) {
+  EXPECT_FALSE(is_bindeable(value_category_t::XVALUE, int_t, intref_t));
+}
+
+TEST_F(binding_test, XvalueToConstLvalueRef) {
+  EXPECT_TRUE(is_bindeable(value_category_t::XVALUE, int_t, intcref_t));
 }

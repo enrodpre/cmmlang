@@ -8,6 +8,7 @@
 #include <libassert/assert.hpp>
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_containers.hpp>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <typeinfo>
@@ -20,7 +21,8 @@
 
 namespace cmm {
 
-template <typename... Args> size_t hash_combine(const Args&... args) {
+template <typename... Args>
+size_t hash_combine(const Args&... args) {
   size_t seed = 0;
   ((seed ^= typeid(args).hash_code() + 0x9e3779b9 + (seed << 6) + (seed >> 2)), ...);
   return seed;
@@ -50,10 +52,8 @@ enum class type_category_t : uint8_t {
   scoped_enum_t,
   unscoped_enum_t,
   class_t,
-  matcher_t,
   dummy_t,
-  generic_t,
-  placeholder_t
+  generic_t
 };
 
 using children_t = std::array<type_category_t, 4>;
@@ -62,74 +62,63 @@ BUILD_ENUMERATION_DATA_CLASS(type_category, type_category_t, parent, children_t,
 
 static_assert(std::is_default_constructible_v<type_category_t>);
 
-#define GROUP_TYPES \
-  type_t::fundamental_t, type_t::void_t, type_t::arithmetic_t, type_t::integral_t, \
+#define GROUP_TYPES                                                                   \
+  type_t::fundamental_t, type_t::void_t, type_t::arithmetic_t, type_t::integral_t,    \
       type_t::compound_t, type_t::indirection_t, type_t::reference_t, type_t::enum_t,
 
-#define INSTANCIABLE_TYPES() \
-  type_t::nullptr_t, type_t::bool_t, type_t::char_t, type_t::uint_t, type_t::sint_t, \
+#define INSTANCIABLE_TYPES()                                                          \
+  type_t::nullptr_t, type_t::bool_t, type_t::char_t, type_t::uint_t, type_t::sint_t,  \
       type_t::float_t, type_t::lvalue_ref_t, type_t::rvalue_ref_t, type_t::pointer_t, \
-      type_t::arrayinstance_data_t, type_t::function_t, type_t::scoped_enum_t, \
+      type_t::arrayinstance_data_t, type_t::function_t, type_t::scoped_enum_t,        \
       type_t::unscoped_enum_t, type_t::class_t
 
-struct type_info {
-  size_t value;
-  type_info(size_t);
-};
+struct type;
+struct type_specifier;
+using crptype_spec = const std::shared_ptr<const type_specifier>&;
 
 struct type_specifier : displayable {
-  type_specifier(type_category_t);
-  [[nodiscard]] virtual bool match(const type_specifier&) const = 0;
-  friend bool operator==(const type_specifier& lhs, const type_specifier& rhs) {
-    return lhs.match(rhs);
-  }
+  type_specifier(type_category_t t)
+      : category(t) {}
+
+  ~type_specifier() override                           = default;
+  [[nodiscard]] virtual bool match(crptype_spec) const = 0;
 
   type_category_t category;
 };
 
-using ptype_spec = std::shared_ptr<type_specifier>;
+struct type;
+
+using ptype      = std::shared_ptr<const type>;
+using crptype    = const ptype&;
+using crtype     = const type&;
+using ptype_spec = std::shared_ptr<const type_specifier>;
 using ctype_spec = const type_specifier&;
 
-struct type : public type_specifier, cloneable<type> {
-  uint8_t rank                               = 0;
-  std::shared_ptr<type> underlying           = nullptr;
-  bool c                                     = false;
-  bool v                                     = false;
+struct type : public type_specifier {
+  std::shared_ptr<const type> underlying = nullptr;
+  uint8_t rank                           = 0;
+  bool c                                 = false;
+  bool v                                 = false;
 
-  constexpr ~type() override                 = default;
-  constexpr type(const type&)                = default;
-  constexpr type& operator=(const type&)     = default;
-  constexpr type(type&&) noexcept            = default;
-  constexpr type& operator=(type&&) noexcept = default;
+  MOVABLE_CLS(type);
+  COPYABLE_CLS(type);
 
-protected:
-  constexpr explicit type(type_category_t t)
-      : type_specifier(t) {}
-  constexpr type(type_category_t t, bool c, bool v)
-      : type_specifier(t),
-        c(c),
-        v(v) {}
-  constexpr type(type_category_t t, decltype(underlying) u)
-      : type_specifier(t),
-        underlying(std::move(u)) {}
-  constexpr type(type_category_t t, decltype(underlying) u, bool c, bool v)
-      : type_specifier(t),
-        underlying(std::move(u)),
-        c(c),
-        v(v) {}
-  constexpr type(type_category_t t, decltype(underlying) u, size_t n, bool c, bool v)
+  type(type_category_t t,
+       decltype(underlying) u = nullptr,
+       size_t n               = 0,
+       bool c_                = false,
+       bool v_                = false)
       : type_specifier(t),
         underlying(std::move(u)),
         rank(n),
-        c(c),
-        v(v) {}
+        c(c_),
+        v(v_) {}
 
-public:
-  [[nodiscard]] bool match(const type_specifier& other) const override {
-    if (const auto* t = dynamic_cast<const type*>(&other)) {
+  [[nodiscard]] bool match(crptype_spec other) const override {
+    if (const auto& t = std::dynamic_pointer_cast<const type>(other)) {
       return *this == *t; // type vs type
     }
-    return other.match(*this);
+    return typeid(this) == typeid(other);
   }
 
   friend bool operator==(const type& lhs, const type& rhs) {
@@ -137,41 +126,25 @@ public:
            lhs.underlying == rhs.underlying && lhs.c == rhs.c && lhs.v == rhs.v;
   }
 
-  [[nodiscard]] type clone() const override;
+  type clone() const { return {category, underlying, rank, c, v}; }
   [[nodiscard]] std::string string() const override;
   template <typename... Args>
-  static const type& create(type_category_t, Args&&...);
-  static const type& create_void();
-  static const type& create_fundamental(type_category_t, bool = false, bool = false);
-  static const type& create_pointer(const type*, bool, bool);
-  static const type& create_lvalue(const type*, bool = false, bool = false);
-  static const type& create_array(const type*, size_t, bool, bool);
-  static const type& create_string(size_t, bool = false, bool = false);
+  static ptype create(type_category_t, Args&&...);
+  static ptype create_void();
+  static ptype create_fundamental(type_category_t, bool = false, bool = false);
+  static ptype create_pointer(ptype, bool = false, bool = false);
+  static ptype create_lvalue(ptype, bool = false, bool = false);
+  static ptype create_rvalue(ptype, bool = false, bool = false);
+  static ptype create_array(ptype, size_t, bool = false, bool = false);
+  static ptype create_string(size_t, bool = false, bool = false);
 };
 
-using ptype  = std::shared_ptr<type>;
-using crtype = const type&;
+#define LVALUE_STATIC_TYPE(NAME, TYPE, CONST_, VOLATILE_, ...)                   \
+  static const ptype CONCAT(NAME, _T) = type::create_lvalue(TYPE, false, false);
 
-struct generic_type : public type_specifier {
-  generic_type()
-      : type_specifier(type_category_t::generic_t) {}
-
-  void resolve(ptype r) { resolved_type = std::move(r); };
-  operator ptype() const {
-    if (resolved_type != nullptr) {
-      throw error("Type not resolved");
-    }
-    return resolved_type;
-  }
-  ptype resolved_type = nullptr;
-};
-
-#define LVALUE_STATIC_TYPE(NAME, TYPE, CONST_, VOLATILE_, ...) \
-  static ptype const CONCAT(NAME, _T) = &type::create_lvalue(TYPE, false, false);
-
-#define STATIC_TYPE(NAME, CLS, CONST_, VOLATILE_) \
-  static ptype const CONCAT(NAME, _T) = \
-      &type::create_fundamental(type_category_t::CLS, CONST_, VOLATILE_);
+#define STATIC_TYPE(NAME, CLS, CONST_, VOLATILE_)                        \
+  static const ptype CONCAT(NAME, _T) =                                  \
+      type::create_fundamental(type_category_t::CLS, CONST_, VOLATILE_);
 
 STATIC_TYPE(VOID, void_t, false, false);
 STATIC_TYPE(NULLPTR, nullptr_t, false, false);
@@ -182,142 +155,187 @@ STATIC_TYPE(BOOL, bool_t, false, false);
 STATIC_TYPE(FLOAT, float_t, false, false);
 // INDIR_STATIC_TYPE(INTPTR, pointer_t, INT_T, false, false)
 LVALUE_STATIC_TYPE(SINTREF, SINT_T, false, false);
+LVALUE_STATIC_TYPE(UINTREF, UINT_T, false, false);
+LVALUE_STATIC_TYPE(FLOATREF, FLOAT_T, false, false);
 
 enum class mask_t : uint8_t {
   TYPE,
   REFERENCED_TYPE,
 };
 
-struct type_mask {
-  static bool category(type_category_t);
-};
-
-template <type_category_t C> struct is_void : traits::false_type {};
-template <> struct is_void<type_category_t::void_t> : traits::true_type {};
-
-struct is_const_v {
-  static constexpr bool operator()(crtype);
-};
-struct is_indirect_v {
-  static constexpr bool operator()(crtype);
-};
-struct is_reference_v {
-  static constexpr bool operator()(crtype);
-};
 bool belongs_to(const type_category_data&, type_category_t);
 
-struct type_converter;
-struct type_matcher : type_specifier {
-  using value_type = std::function<bool(ptype)>;
-  type_matcher(value_type&&);
-  type_matcher(const value_type&);
+struct type_modifier : displayable {
+  using modifier_t = std::function<ptype(crptype)>;
+  type_modifier(std::string desc, modifier_t mod)
+      : m_modifier(mod),
+        m_desc(desc) {}
+  std::string string() const override { return m_desc; }
+  ptype operator()(crptype) const;
+  type_modifier operator|(const type_modifier&) const;
+
+protected:
+  modifier_t m_modifier;
+  std::string m_desc;
+};
+
+#define create_mod(NAME, RET)                                                     \
+  inline static const type_modifier NAME(#NAME, [](crptype t) -> ptype { RET; });
+#define create_wrapper(NAME, CAT)                                                  \
+  inline static const type_modifier NAME{                                          \
+      #NAME, [](crptype t) -> ptype {                                              \
+        return type::create(type_category_t::CAT, t->underlying, 0, false, false); \
+      }};
+#define create_to_type(NAME, TYPE)                                             \
+  inline static const type_modifier NAME(#NAME, [](crptype) { return TYPE; });
+
+namespace modifiers {
+create_mod(identity, return t);
+create_mod(decay, return t);
+create_mod(get_underlying, return t->underlying);
+create_mod(
+    remove_reference,
+    if (belongs_to(t->category, type_category_t::reference_t)) { return t->underlying; } return t);
+create_mod(add_const, auto cloned = t->clone(); cloned.c = true;
+           return std::shared_ptr<const type>(&cloned));
+create_wrapper(add_rvalue_reference, rvalue_ref_t);
+create_wrapper(add_lvalue_reference, lvalue_ref_t);
+create_wrapper(add_pointer, pointer_t);
+}; // namespace modifiers
+
+using match_t   = std::function<bool(crtype)>;
+using compare_t = std::function<bool(crtype, crtype)>;
+
+struct type_matcher : public type_specifier {
+  using value_type = std::function<bool(crptype)>;
+  type_matcher(std::string desc, value_type v)
+      : type_specifier(type_category_t::generic_t),
+        m_matcher(std::move(v)),
+        m_desc(std::move(desc)) {}
+  type_matcher(std::string desc, const type_matcher& v)
+      : type_specifier(type_category_t::generic_t),
+        m_matcher(std::move(v)),
+        m_desc(std::move(desc)) {}
   COPYABLE_CLS(type_matcher);
-  bool match(const type_specifier&) const override;
-  bool operator()(const type_specifier&) const;
-  std::string string() const override;
-  operator value_type() const;
+  NOT_MOVABLE_CLS(type_matcher);
+  bool operator()(crptype) const;
+  [[nodiscard]] bool match(crptype_spec) const override;
+  [[nodiscard]] std::string string() const override;
   type_matcher operator&&(const type_matcher&) const;
   type_matcher operator||(const type_matcher&) const;
   type_matcher operator!() const;
-
-protected:
-  mutable ptype bound_type;
+  friend bool operator==(const type_matcher& lhs, const type_matcher& rhs) {
+    return lhs.string() == rhs.string();
+  }
 
 private:
   value_type m_matcher;
+  std::string m_desc;
 };
 
-struct type_modifier {
-  using modifier_t = std::function<> type_modifier operator|(const type_modifier&);
-};
+inline bool operator==(crptype_spec lhs, crptype_spec rhs) {
+  if (lhs == rhs) {
+    return true; // same pointer
+  }
+  if (!lhs || !rhs) {
+    return false; // null check
+  }
+  if (const auto& matcher = std::dynamic_pointer_cast<const type_matcher>(lhs)) {
+    return matcher->match(rhs);
+  }
+  return lhs->match(rhs); // virtual dispatch
+}
 
-struct type_generic : type_specifier {};
+#define make_belongs(NAME, CAT)                                                                    \
+  inline static const type_matcher NAME(                                                           \
+      #NAME, [](crptype t) -> bool { return t && belongs_to(t->category, type_category_t::CAT); })
 
-struct type_dependant_placeholder;
-struct type_placeholder : type_specifier {
-  type_placeholder()
-      : type_specifier(type_category_t::matcher_t),
-        m_matcher([](ptype) { return true; }) {}
-  type_placeholder(type_matcher);
-  virtual std::shared_ptr<type_dependant_placeholder> create_dependant(type_matcher);
-  bool match(const type_specifier&) const override;
-  void resolve(ptype);
-  std::string string() const override;
+#define make_is(NAME, CAT)                                                               \
+  inline static const type_matcher NAME(                                                 \
+      #NAME, [](crptype t) -> bool { return t && type_category_t::CAT == t->category; })
 
-protected:
-  type_matcher m_matcher;
-  ptype m_resolved_type{};
-  std::shared_ptr<type_dependant_placeholder> next_child;
-};
+#define make_matcher(NAME, COND)                                                           \
+  inline static const type_matcher NAME(#NAME, [](crptype lhs) -> bool { return (COND); })
 
-struct type_dependant_placeholder : type_placeholder {
-  type_dependant_placeholder(type_matcher);
-  std::shared_ptr<type_dependant_placeholder> create_dependant(type_matcher) override;
-};
+#define make_combined(NAME, COMBINED) inline static const type_matcher NAME(#NAME, COMBINED)
 
 namespace matchers {
-extern const type_matcher is_arithmetic;
-extern const type_matcher is_integral;
-extern const type_matcher is_ref;
-extern const type_matcher is_pointer;
-extern const type_matcher is_floating;
-extern const type_matcher is_unscoped;
-extern const type_matcher is_array;
-extern const type_matcher is_const;
-extern const type_matcher is_cref;
-extern const type_matcher is_volatile;
-extern const type_matcher any;
+inline static const type_matcher any("Any", [](crptype) { return true; });
+make_belongs(is_arithmetic, arithmetic_t);
+make_belongs(is_integral, integral_t);
+make_is(is_lvalue, lvalue_ref_t);
+make_is(is_rvalue, rvalue_ref_t);
+make_combined(is_ref, is_lvalue || is_rvalue);
+make_is(is_pointer, pointer_t);
+make_is(is_floating, float_t);
+make_is(is_unscoped, unscoped_enum_t);
+make_is(is_array, array_t);
+make_matcher(is_const, lhs->c);
+make_matcher(is_volatile, lhs->v);
+make_combined(is_const_lvalue, is_const&& is_lvalue);
+
 } // namespace matchers
 
-struct type_converter : type_modifier, displayable {
+struct type_converter : displayable {
   struct builder;
-  using type_converter_t = std::function<ptype(ptype)>;
 
   ptype operator()(ptype) const;
-  bool is_convertible(ptype) const;
+  [[nodiscard]] bool is_convertible(const ptype&) const;
+
   [[nodiscard]] std::string string() const override { return m_desc; }
 
   friend builder;
 
 private:
-  type_converter();
+  type_converter() = default;
 
-  std::unique_ptr<type_specifier> m_from;
-  type_converter_t m_converter;
+  ptype_spec m_from;
+  type_modifier m_converter = modifiers::identity;
   std::string m_desc;
 };
 
-struct type_converter::builder {
-  builder& name(std::string);
-  builder& from(const type_matcher&);
-  builder& from(ptype);
-  builder& to(ptype);
-  builder& with(type_converter::type_converter_t);
-  type_converter build();
+struct type_comparer {};
 
-private:
-  type_converter m_obj;
-};
+DECLARE_BUILDER(type_converter)
+BUILDER_STEP(name, std::string, m_desc)
+BUILDER_STEP_SETTER(from, type_matcher, m_from, std::make_shared<const type_matcher>(value))
+BUILDER_STEP(from, ptype, m_from)
+BUILDER_STEP_SETTER(to,
+                    ptype,
+                    m_converter,
+                    type_modifier(std::format("to {}", value), [value](crptype) { return value; }))
+BUILDER_STEP(with, type_modifier, m_converter)
+END_BUILDER()
+
+#define BINDING_CONVERSION(NAME, COND, WITH)                                                    \
+  inline const auto& NAME = type_converter::builder().name(#NAME).from(COND).with(WITH).build()
+#define NORMAL_CONVERSION(NAME, COND, TO)                                                   \
+  inline const auto& NAME = type_converter::builder().name(#NAME).from(COND).to(TO).build()
 
 namespace conversions {
 
-extern const type_converter identity;
-extern const type_converter nullptr_to_ptr;
-extern const type_converter to_bool;
-extern const type_converter bool_to_any;
-extern const type_converter array_to_pointer;
-extern const type_converter lvalue_to_rvalue;
-extern const type_converter const_lvalue;
+BINDING_CONVERSION(lvalue_to_rvalue,
+                   matchers::is_lvalue,
+                   modifiers::remove_reference | modifiers::add_rvalue_reference);
+// extern const type_converter nullptr_to_ptr;
+NORMAL_CONVERSION(any_to_bool,
+                  matchers::is_integral || matchers::is_pointer || matchers::is_unscoped ||
+                      matchers::is_floating,
+                  BOOL_T);
+// extern const type_converter bool_to_any;
+BINDING_CONVERSION(array_to_pointer, matchers::is_array, modifiers::decay);
 
-extern const std::array<const type_converter*, 6> standard;
+inline const std::array standard = {&any_to_bool, &lvalue_to_rvalue};
 
 }; // namespace conversions
 
-extern std::vector<ptype> get_convertible_types(ptype);
-extern bool is_convertible(ptype, ptype);
+extern std::vector<ptype> get_convertible_types(crptype);
+extern bool is_convertible(crptype, crptype);
 
 } // namespace cmm
-template <> struct std::hash<cmm::type> {
+
+template <>
+struct std::hash<cmm::type> {
   size_t operator()(const cmm::type& t) const noexcept {
     return cmm::hash_combine(t.category, t.rank, t.underlying, t.c, t.v);
   }

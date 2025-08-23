@@ -30,9 +30,11 @@ struct global_visitor;
 
 struct ast_completer {
   static translation_unit& complete(translation_unit&);
+
   struct conversions_visitor : public ast_visitor {
     conversions_visitor()
         : allocator(cmm::memory::Allocator::instance()) {}
+
     cmm::memory::Allocator& allocator;
     void visit(ast::expr::binary_operator&) override;
     void visit(ast::expr::unary_operator&) override;
@@ -44,6 +46,7 @@ struct ast_completer {
     expr::expression* bool_wrap_if(expr::expression*);
   };
 };
+
 class ast_traverser {
 public:
   ast_traverser() = delete;
@@ -59,7 +62,7 @@ public:
                                    assembly::operand*);
   assembly::operand* generate_expr(expr::expression&, ir::intents::intent_t);
   assembly::operand* generate_expr(expr::expression&);
-  assembly::operand* generate_expr(expr::expression&, crtype, assembly::operand*);
+  assembly::operand* generate_expr(expr::expression&, crptype, assembly::operand*);
 
 private:
   compilation_unit& m_context;

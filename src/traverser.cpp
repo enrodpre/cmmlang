@@ -19,8 +19,10 @@ namespace cmm::ir {
 
 namespace {
 [[nodiscard]] std::string condition_label() { return std::format("cond_loop"); }
+
 [[nodiscard]] std::string exit_label() { return std::format("exit_loop"); }
 } // namespace
+
 using namespace ast;
 using namespace assembly;
 using intents::intent_t;
@@ -36,30 +38,35 @@ translation_unit& ast_completer::complete(translation_unit& t) {
 
 void ast_completer::conversions_visitor::visit(ast::expr::binary_operator& bin) {
   REGISTER_INFO("visited{}", bin);
-  if (bin.semantics.original_type->category == type_category_t::bool_t) {
-    bin.left = *bool_wrap_if(&bin.left);
+  if (bin.semantics()->original_type->category == type_category_t::bool_t) {
+    // bin.left = *bool_wrap_if(&bin.left);
   }
-  if (bin.semantics.original_type->category == type_category_t::bool_t) {
-    bin.right = *bool_wrap_if(&bin.right);
+  if (bin.semantics()->original_type->category == type_category_t::bool_t) {
+    // bin.right = *bool_wrap_if(&bin.right);
   }
 }
+
 void ast_completer::conversions_visitor::visit(ast::expr::unary_operator& un) {
-  if (un.semantics.original_type->category == type_category_t::bool_t) {
-    un.expr = *bool_wrap_if(&un.expr);
+  if (un.semantics()->original_type->category == type_category_t::bool_t) {
+    // un.expr = *bool_wrap_if(&un.expr);
   }
 }
+
 void ast_completer::conversions_visitor::visit(ast::iteration::for_& f) {
   f.condition = bool_wrap_if(f.condition);
 }
-void ast_completer::conversions_visitor::visit(ast::iteration::while_& w) {
-  w.condition = *bool_wrap_if(&w.condition);
+
+void ast_completer::conversions_visitor::visit(ast::iteration::while_&) {
+  // w.condition = *bool_wrap_if(&w.condition);
 }
-void ast_completer::conversions_visitor::visit(ast::selection::if_& i) {
-  i.condition = *bool_wrap_if(&i.condition);
+
+void ast_completer::conversions_visitor::visit(ast::selection::if_&) {
+  // i.condition = *bool_wrap_if(&i.condition);
 }
+
 expr::expression* ast_completer::conversions_visitor::bool_wrap_if(expr::expression* e) {
-  if (e != nullptr && e->type().category != type_category_t::bool_t) {
-    return allocator.emplace<expr::implicit_type_conversion>(*e, conversions::to_bool);
+  if (e != nullptr && e->type()->category != type_category_t::bool_t) {
+    return allocator.emplace<expr::implicit_type_conversion>(*e, conversions::any_to_bool);
   }
   return e;
 }
@@ -100,15 +107,15 @@ operand* ast_traverser::generate_expr(expr::expression& expr) {
 }
 
 assembly::operand* ast_traverser::generate_expr(expr::expression& expr,
-                                                crtype t,
+                                                crptype t,
                                                 assembly::operand* o) {
   return generate_expr(expr,
-                       is_indirect_v::operator()(t) ? intents::intent_t::LOAD_VARIABLE_ADDRESS
-                                                    : intents::intent_t::LOAD_VARIABLE_VALUE,
+                       matchers::is_ref(t) ? intents::intent_t::LOAD_VARIABLE_ADDRESS
+                                           : intents::intent_t::LOAD_VARIABLE_VALUE,
                        o);
 }
+
 void ast_traverser::generate_statement(statement* stmt) {
-  // m_context.src_location = stmt->location();
   statement_visitor visitor(this);
   stmt->accept(visitor);
 }
@@ -133,7 +140,7 @@ void ast_traverser::generate_statements(decl::block& elems) {
 }
 
 void ast_traverser::generate_condition(expr::expression& cond) {
-  auto* r                     = generate_expr(cond);
+  generate_expr(cond);
   operator_data last_op       = m_context.last.operator_.value();
   comparison_data comp        = last_op.comparison.value();
   comparison_data inverted    = comp.inverse;
@@ -166,12 +173,12 @@ std::optional<std::tuple<std::string, std::string>> ast_traverser::get_label_int
     const {
   for (const auto& scope : ast->active_frame()->local_scopes) {
     const auto* parent = scope->get_parent();
-    if (const auto* it = dynamic_cast<const iteration::while_*>(parent)) {
+    if (dynamic_cast<const iteration::while_*>(parent)) {
       return {
           {condition_label(), exit_label()}
       };
     }
-    if (const auto* it = dynamic_cast<const iteration::for_*>(parent)) {
+    if (dynamic_cast<const iteration::for_*>(parent)) {
       return {
           {condition_label(), exit_label()}
       };
@@ -190,13 +197,13 @@ void ast_traverser::generate_continue_break(const Jump& node) {
   if constexpr (std::is_same_v<jump::continue_, Jump>) {
 
     if (!res.has_value()) {
-      throw_error<compilation_error_t::INVALID_CONTINUE>(node);
+      THROW(INVALID_CONTINUE, node);
     }
     const auto& [cond, exit] = res.value();
     label                    = cond;
   } else {
     if (!res.has_value()) {
-      throw_error<compilation_error_t::INVALID_BREAK>(node);
+      THROW(INVALID_BREAK, node);
     }
     const auto& [cond, exit] = res.value();
     label                    = exit;
@@ -214,10 +221,9 @@ void ast_traverser::generate_variable_decl(decl::variable* vardecl) {
   if (!ast->is_declarable<ast::decl::variable>(vardecl->ident)) {
     throw_error<compilation_error_t::ALREADY_DECLARED_SYMBOL>(vardecl->ident);
   }
-  auto b = m_context.asmgen.begin_comment_block("init variable {}", vardecl->ident.value());
-  const auto& ident = vardecl->ident;
+  auto b        = m_context.asmgen.begin_comment_block("init variable {}", vardecl->ident.value());
 
-  operand* reg_     = nullptr;
+  operand* reg_ = nullptr;
   if (auto* defined = vardecl->init) {
     reg_ = generate_expr(*defined);
   } else {
@@ -225,13 +231,14 @@ void ast_traverser::generate_variable_decl(decl::variable* vardecl) {
   }
 
   if constexpr (IsGlobal) {
-    ast->declare_variable(vardecl);
-    m_context.move(vardecl->address, reg_);
+    auto* addr = ast->declare_variable(vardecl);
+    m_context.move(addr, reg_);
   } else {
     ast->declare_variable(vardecl);
     m_context.push(reg_);
   }
 }
+
 void global_visitor::visit(decl::variable& vardecl) { gen->generate_variable_decl<true>(&vardecl); }
 
 void global_visitor::visit(decl::function& func) {
@@ -243,8 +250,7 @@ void global_visitor::visit(decl::function& func) {
     }
     gen->ast->link_entry_point(&func);
     gen->m_context.current_phase = Phase::EXECUTING;
-    builtin_signature_data sig   = builtin_signature_t::MAIN;
-    gen->m_context.call_function(sig.signature(), {}, true);
+    gen->m_context.call_function(func.ident, {}, true);
     if (gen->m_context.current_phase != Phase::EXITING) {
       gen->m_context.exit_successfully();
       gen->m_context.current_phase = Phase::EXITING;
@@ -253,6 +259,7 @@ void global_visitor::visit(decl::function& func) {
     gen->ast->declare_function(&func);
   }
 }
+
 expression_visitor::expression_visitor(ast_traverser* t, operand* o, intent_t l)
     : gen(t),
       in(o),
@@ -260,32 +267,25 @@ expression_visitor::expression_visitor(ast_traverser* t, operand* o, intent_t l)
       intent(l) {}
 
 #define gen_op(IN) value_or(generate<operand*>(in))
+
 void expression_visitor::visit(expr::call& expr_call) {
-  decl::signature sig{expr_call.ident, expr_call.types()};
-  out = gen->m_context.call_function(sig, expr_call.args).gen_op(in);
+  out = gen->m_context.call_function(expr_call.ident, expr_call.args).gen_op(in);
 }
 
 void expression_visitor::visit(ast::expr::implicit_type_conversion&) { NOT_IMPLEMENTED }
-void expression_visitor::visit(expr::binary_operator& binop) {
-  auto op        = binop.operator_.value();
-  auto params    = gen->m_context.regs.parameters();
-  auto* left_op  = gen->generate_expr(binop.left, intent_t::LOAD_VARIABLE_VALUE, params.next());
-  auto* right_op = gen->generate_expr(binop.right, intent_t::LOAD_VARIABLE_VALUE, params.next());
 
-  out            = gen->m_context.builtin_operator(
-      binop.operator_, {&binop.left.type(), &binop.right.type()}, {left_op, right_op});
+void expression_visitor::visit(expr::binary_operator& binop) {
+  auto op = binop.operator_.value();
+  out     = gen->m_context.call_builtin_operator(binop.operator_, {&binop.left, &binop.right});
   gen->m_context.last.operator_.emplace(op);
-  // Implicit call to ~params()
 }
 
 void expression_visitor::visit(expr::unary_operator& unary) {
-  auto op       = unary.operator_.value();
-  auto params   = gen->m_context.regs.parameters();
-  auto* expr_op = gen->generate_expr(unary.expr, intent_t::LOAD_VARIABLE_VALUE, params.next());
-  out           = gen->m_context.builtin_operator(unary.operator_, {&unary.expr.type()}, {expr_op});
+  auto op = unary.operator_.value();
+  out     = gen->m_context.call_builtin_operator(unary.operator_, {&unary.expr});
   gen->m_context.last.operator_.emplace(op);
-  // Implicit call to ~params()
 }
+
 void expression_visitor::visit(ast ::expr ::literal& c) {
   switch (c.category) {
     case ast::expr::literal_t::STRING:
@@ -310,8 +310,7 @@ void expression_visitor::visit(ast ::expr ::literal& c) {
 }
 
 void expression_visitor::visit(expr::identifier& ident) {
-  const auto* var = gen->ast->get_variable(ident);
-  auto* addr      = var->address;
+  auto* addr = gen->ast->get_variable_address(ident);
   ASSERT(addr != nullptr);
   switch (intent) {
     case intent_t::LOAD_VARIABLE_VALUE:
@@ -333,6 +332,7 @@ void expression_visitor::visit(expr::identifier& ident) {
         auto b = gen->m_context.asmgen.begin_comment_block("saving value of {}", ident.value());
         out    = gen->m_context.move(addr, in);
       }
+      break;
     case intent_t::MOVE_CONTENT:
     default:
       throw_error<compilation_error_t::GENERIC>("intent not allowed");
@@ -357,13 +357,14 @@ void statement_visitor::visit(ast::decl::block& scope) {
 }
 
 void statement_visitor::visit(expr::expression& expr) { gen->generate_expr(expr); }
+
 void statement_visitor::visit(decl::variable& vardecl) {
   gen->generate_variable_decl<false>(&vardecl);
 }
 
 void statement_visitor::visit(decl::label& label_) {
   if (gen->ast->is_declarable<decl::label>(label_.ident)) {
-    throw_error<compilation_error_t::ALREADY_DECLARED_SYMBOL>(label_);
+    THROW(ALREADY_DECLARED_SYMBOL, label_);
   }
 
   gen->ast->active_frame()->declare_label(&label_);
@@ -417,10 +418,10 @@ void statement_visitor::visit(iteration::while_& while_) {
 
 void statement_visitor::visit(selection::if_& if_) {
   // Checking condition
-  auto block = gen->m_context.asmgen.begin_comment_block("if condition");
+  auto a = gen->m_context.asmgen.begin_comment_block("if condition");
   // TODO
   gen->generate_condition(if_.condition);
-  block.end();
+  a.end();
 
   cstring after_if_label = "after_if";
   if (auto* block = if_.block) {
@@ -434,9 +435,11 @@ void statement_visitor::visit(selection::if_& if_) {
     gen->generate_statement(else_);
   }
 }
+
 void statement_visitor::visit(jump::break_& break_) {
   gen->generate_continue_break<jump::break_>(break_);
 }
+
 void statement_visitor::visit(jump::continue_& continue_) {
   auto b = gen->m_context.asmgen.begin_comment_block("continue");
   gen->generate_continue_break<jump::continue_>(continue_);
@@ -452,13 +455,14 @@ void statement_visitor::visit(jump::goto_& goto_) {
 }
 
 void statement_visitor::visit(decl::function::definition& def) { gen->generate_statements(def); }
+
 void statement_visitor::visit(jump::return_& ret) {
   if (gen->m_context.current_phase == Phase::PRUNING_LABEL) {
     return;
   }
 
   if (gen->ast->is_global_scope()) {
-    throw_error<compilation_error_t::RETURN_IN_GLOBAL>(ret);
+    THROW(RETURN_IN_GLOBAL, ret);
   }
 
   operand* op = nullptr;

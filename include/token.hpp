@@ -1,16 +1,14 @@
 #pragma once
 
-#include <stddef.h>
-#include <magic_enum/magic_enum.hpp>
-#include <magic_enum/magic_enum_containers.hpp>
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <magic_enum/magic_enum.hpp>
+#include <magic_enum/magic_enum_containers.hpp>
 #include <ranges>
-#include <utility>
-#include <format>
 #include <string>
 #include <tuple>
-#include <variant>
+#include <utility>
 #include <vector>
 
 #include "common.hpp"
@@ -135,8 +133,8 @@ enum class token_t : uint8_t {
   debug_state,
   debug_tokens
 };
-#define IS_GROUP(FUNCNAME, NAME) \
-  [[nodiscard]] bool FUNCNAME() const { \
+#define IS_GROUP(FUNCNAME, NAME)                                           \
+  [[nodiscard]] bool FUNCNAME() const {                                    \
     return CONCAT(NAME, _begin) < m_value && m_value < CONCAT(NAME, _end); \
   }
 struct token_data : public cmm::enumeration<token_t> {
@@ -176,10 +174,10 @@ struct token : public formattable, public self_allocated {
   token(const token_t& t, cmm::location&& loc)
       : self_allocated(std::move(loc)),
         type(t) {}
-  token(const token_t& t, cmm::location&& loc, std::string value)
+  token(const token_t& t, cmm::location&& loc, std::string v)
       : self_allocated(std::move(loc)),
         type(t),
-        value(std::move(value)) {}
+        value(std::move(v)) {}
   bool operator==(const token& other) const { return value == other.value && type == other.type; }
   [[nodiscard]] std::string format() const override;
 };

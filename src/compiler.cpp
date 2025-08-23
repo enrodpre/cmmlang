@@ -1,9 +1,8 @@
 #include "compiler.hpp"
 
-#include <string>
 #include <format>
 #include <optional>
-#include <tuple>
+#include <string>
 
 #include "common.hpp"
 #include "ir.hpp"
@@ -16,9 +15,8 @@ namespace cmm {
 
 using namespace fs;
 
-compiler::compiler(const config& config_, const fs::path& input, const std::string& output)
-    : m_config(config_),
-      m_source_code(input),
+compiler::compiler(const fs::path& input, const std::string& output)
+    : m_source_code(input),
       m_output_filename(output) {}
 
 void compiler::preprocess(const std::string&) {
@@ -38,16 +36,9 @@ ofile compiler::compile(const source_code& src) {
   lexer lexer_instance(src.get_code());
   auto tokens = lexer_instance.tokenize();
 
-  if (m_config.dump_tokens) {
-    // std::print("{}", tokens);
-  }
-
   parser::parser parser(tokens);
-  auto compound = parser.parse();
+  auto compound               = parser.parse();
 
-  if (m_config.dump_ast) {
-    // std::print("{}\n", compound.join('\n'));
-  }
   ir::compilation_unit& cunit = ir::compilation_unit::instance();
 
   fs::ofile asm_file(m_output_filename);
@@ -70,9 +61,6 @@ ofile compiler::compile(const source_code& src) {
 ofile compiler::assemble(ofile& asm_file) {
   os::execute(std::format("nasm -felf64 -g {}", asm_file.path().string()));
 
-  if constexpr (!cmm::config::assembly) {
-    // asm_file.remove();
-  }
   return asm_file.replace_extension("o");
 }
 
@@ -96,9 +84,6 @@ fs::ofile compiler::run() {
   REGISTER_INFO(
       "Succesfully compiled {} into {}", m_source_code.get_filename(), binary.path().string());
 
-  if (m_config.dump_memory) {
-    // memory::Allocator::get().report_statistics();
-  }
   return binary;
 }
 
