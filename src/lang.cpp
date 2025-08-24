@@ -48,18 +48,18 @@ std::vector<instruction> create_ins(arg_t l = arg_t::LEFT, arg_t r = arg_t::RIGH
 }
 
 template <instruction_t Ins>
-constexpr operator_builtin_data create_same_args(const ptype& args) {
+constexpr builtin_operator_data create_same_args(const ptype& args) {
   return {args, args, args, create_ins<Ins>()};
 }
 
 template <instruction_t Ins>
-constexpr operator_builtin_data create_same_args(ptype ret, const ptype& args) {
+constexpr builtin_operator_data create_same_args(ptype ret, const ptype& args) {
   return {std::move(ret), args, args, create_ins<Ins>()};
 }
 
 template <instruction_t Ins>
-constexpr std::vector<operator_builtin_data> create_overloaded_op(const std::vector<ptype>& args) {
-  std::vector<operator_builtin_data> res;
+constexpr std::vector<builtin_operator_data> create_overloaded_op(const std::vector<ptype>& args) {
+  std::vector<builtin_operator_data> res;
   res.reserve(args.size());
   for (const ptype& matcher : args) {
     res.push_back(create_same_args<Ins>(matcher));
@@ -68,9 +68,9 @@ constexpr std::vector<operator_builtin_data> create_overloaded_op(const std::vec
 }
 
 template <instruction_t Ins>
-constexpr std::vector<operator_builtin_data> create_overloaded_op(const ptype& ret,
+constexpr std::vector<builtin_operator_data> create_overloaded_op(const ptype& ret,
                                                                   const std::vector<ptype>& args) {
-  std::vector<operator_builtin_data> res;
+  std::vector<builtin_operator_data> res;
   res.reserve(args.size());
   for (const ptype& matcher : args) {
     res.push_back(create_same_args<Ins>(ret, matcher));
@@ -78,9 +78,9 @@ constexpr std::vector<operator_builtin_data> create_overloaded_op(const ptype& r
   return res;
 }
 
-constexpr std::vector<operator_builtin_data> create_overloaded_op(const std::vector<ptype>& args,
+constexpr std::vector<builtin_operator_data> create_overloaded_op(const std::vector<ptype>& args,
                                                                   std::vector<instruction> ins) {
-  std::vector<operator_builtin_data> res;
+  std::vector<builtin_operator_data> res;
   res.reserve(args.size());
   for (const ptype& matcher : args) {
     res.emplace_back(matcher, matcher, matcher, std::move(ins));
@@ -89,7 +89,7 @@ constexpr std::vector<operator_builtin_data> create_overloaded_op(const std::vec
 }
 } // namespace
 
-const std::unordered_map<operator_t, std::vector<operator_builtin_data>> builtin_operators{
+const std::unordered_map<operator_t, std::vector<builtin_operator_data>> builtin_operators{
     {operator_t::assign,
      {{SINTREF_T, SINTREF_T, SINT_T, create_ins<instruction_t::mov>()},
       {UINTREF_T, UINTREF_T, UINT_T, create_ins<instruction_t::mov>()},
@@ -133,8 +133,8 @@ const std::unordered_map<operator_t, std::vector<operator_builtin_data>> builtin
     // create_ins<instruction_t::not_>()}       }
 };
 
-std::vector<const operator_builtin_data*> get_builtin_operator(operator_t op) {
-  auto pointer_of = [](const operator_builtin_data& v) -> const operator_builtin_data* {
+std::vector<const builtin_operator_data*> get_builtin_operator(operator_t op) {
+  auto pointer_of = [](const builtin_operator_data& v) -> const builtin_operator_data* {
     return &v;
   };
   return builtin_operators.at(op) | TRANSFORM(pointer_of) | TO_VEC;

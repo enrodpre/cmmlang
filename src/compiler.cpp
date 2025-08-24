@@ -107,11 +107,13 @@ ofile compiler::compile(const source_code& src) {
     if (e.loc.has_value()) {
       auto stackframe = cunit.ast->stackframe();
       auto lines      = m_source_code.build_compilation_error(stackframe, e.what(), e.loc.value());
-      WRITE_STDOUT("{}\n", lines | std::views::join_with('\n'));
+      for (const auto& line : lines) {
+        WRITE_STDOUT("{}\n", line);
+      }
     } else {
       REGISTER_ERROR("{}", e.what());
     }
-    os::error(e.status);
+    exit(1);
   }
 }
 
@@ -146,7 +148,7 @@ fs::ofile compiler::run() {
 
 void compiler::throw_linking_error(const std::string& err) {
   REGISTER_ERROR("{}\n", err);
-  cmm::os::error(os::status::LINKING_ERROR);
+  exit(1);
 }
 
 std::vector<std::string> source_code::build_compilation_error(
@@ -160,17 +162,18 @@ std::vector<std::string> source_code::build_compilation_error(
   auto [left, error, right] = get_line_chunked(loc);
   auto formatted_error      = log::apply(error, log::style_t::ERROR);
 
-  const size_t margin_left  = 6;
   auto left_size            = left.size();
   auto second_line          = std::format("{:6}{}{}", left, formatted_error, right);
-  auto third_line = std::format("{:}>{}{}", "^", left_size + margin_left, second_line.size());
+  auto third_line           = std::format("{}{}", std::string(left_size, ' '), "^");
 
+  const size_t margin_left  = 6;
   message.push_back(first_line);
-  message.push_back(second_line);
-  // #f38ba8
-  WRITE_STDOUT("{}\n", first_line);
-  WRITE_STDOUT("{}\n", second_line);
-  WRITE_STDOUT("{}\n", third_line);
+  message.push_back(std::format(
+      "{}{} |{}", std::string(margin_left - 2, ' '), to_coordinates(loc).first, second_line));
+  message.push_back(std::format("{}|{}",
+                                std::string(margin_left, ' '),
+                                log::apply(third_line, log::style_t::ERROR_UNDERLINE)));
+
   return message;
 }
 } // namespace cmm

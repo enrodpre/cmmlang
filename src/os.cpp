@@ -7,7 +7,7 @@ void execute(const std::string& command) {
   int status = system(command.data());
   if (status != 0) {
     REGISTER_ERROR("Error while executing {}. Exiting", command);
-    error(cmm::os::status::FAILED_EXTERN_COMMAND);
+    exit(status);
   }
 }
 

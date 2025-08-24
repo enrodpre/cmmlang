@@ -82,7 +82,7 @@ bool belongs_to(const type_category_data& child, type_category_t parent) {
   return belongs_to(child.parent, parent);
 }
 
-[[nodiscard]] bool type_matcher::match(crptype_spec spec) const {
+[[nodiscard]] bool type_matcher::match(crptype spec) const {
   if (const auto& type_ = std::dynamic_pointer_cast<const type>(spec)) {
     return m_matcher(type_);
   }

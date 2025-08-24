@@ -46,6 +46,8 @@ struct identifier : visitable<identifier, expression> {
   const std::string& value() const { return m_term.value(); }
   operator ast::identifier() const { return m_term; }
 
+  std::vector<node*> children() override { return {}; }
+
 private:
   ast::identifier m_term;
 };
@@ -62,6 +64,8 @@ struct literal : visitable<literal, expression> {
 
   const std::string& value() const { return m_term.value(); }
   operator ast::literal() const { return m_term; }
+
+  std::vector<node*> children() override { return {}; }
 
 protected:
   ast::literal m_term;
@@ -80,12 +84,19 @@ struct call : visitable<call, expression> {
            }) |
            std::ranges::to<std::vector>();
   }
+
+  std::vector<node*> children() override {
+    std::vector<node*> res = {&ident};
+    res.append_range(args);
+    return res;
+  };
 };
 
 struct unary_operator : visitable<unary_operator, expression> {
   expression& expr;
   ast::operator_ operator_;
   unary_operator(expression* expression, ast::operator_&& op);
+  std ::vector<node*> children() override { return std ::vector<node*>{expr, &operator_}; }
 };
 
 struct binary_operator : visitable<binary_operator, expression> {
@@ -93,6 +104,7 @@ struct binary_operator : visitable<binary_operator, expression> {
   expression& right;
   ast::operator_ operator_;
   binary_operator(expression* left, ast::operator_&& op, expression* right);
+  std ::vector<node*> children() override { return std ::vector<node*>{left, &operator_, right}; }
 };
 
 using conversion_function = std::function<expression&(expression&)>;
@@ -108,7 +120,7 @@ struct type_conversion : visitable<type_conversion, expression> {
 
 struct implicit_type_conversion : visitable<implicit_type_conversion, type_conversion> {
   using visitable<implicit_type_conversion, type_conversion>::visitable;
+  children_impl(&expr);
 };
-
 }; // namespace expr
 } // namespace cmm::ast

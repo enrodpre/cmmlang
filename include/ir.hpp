@@ -130,7 +130,7 @@ private:
   [[nodiscard]] static bool match_arguments(const std::vector<ptype>&, const std::vector<ptype>&);
   template <typename T>
     requires(std::is_same_v<T, const ast::decl::function*> ||
-             std::is_same_v<T, const operator_builtin_data*>)
+             std::is_same_v<T, const builtin_operator_data*>)
   [[nodiscard]] std::vector<T> progressive_prefix_match(const std::vector<ptype>& argument_types,
                                                         const std::vector<T>& possible_fns) const;
 };

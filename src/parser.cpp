@@ -1,5 +1,6 @@
 #include "parser.hpp"
 
+#include <algorithm>
 #include <magic_enum/magic_enum.hpp>
 #include <optional>
 #include <ranges>
@@ -49,7 +50,7 @@ T* parser::parse_block() {
 
     auto* stmt = parse_statement();
     // stmt->set_parent(&m_compound.top());
-    if (stmt != empty_statement) {
+    if (stmt != nullptr) {
       b.push_back(stmt);
     }
   }
@@ -62,8 +63,9 @@ statement* parser::parse_statement() {
   token next = m_tokens.peek();
   if (next.type == token_t::semicolon) {
     m_tokens.advance();
-    return empty_statement;
+    return nullptr;
   }
+  token* n = &next;
   if (next.type == token_t::debug_ast) {
     // REGISTER_DEBUG("{}", m_compound);
     // return emplace<debug::printobj>(next, debug::Component::ast);
@@ -124,10 +126,7 @@ statement* parser::parse_statement() {
         return create_node<jump::return_>(return_, return_value);
       }
     case token_t::label:
-      {
-        auto label_ = m_tokens.next();
-        return create_node<decl::label>(label_);
-      }
+      return create_node<decl::label>(m_tokens.next());
     case token_t::goto_:
       {
         // Consume goto token
@@ -295,7 +294,7 @@ decl::variable* parser::parse_variable(ast::decl::specifiers&& mods, ast::identi
     init = parse_expr();
   }
 
-  return create_node<decl::variable>(std::move(mods), rank, std::move(id), init);
+  return create_node<decl::variable>(std::move(mods), rank, id, init);
 }
 
 namespace {
@@ -352,7 +351,7 @@ ptype parse_type(const std::vector<token>& ts) {
              }) |
              std::ranges::to<std::vector>();
 
-    THROW(REQUIRED_TYPE, )
+    THROW(REQUIRED_TYPE, std::ranges::fold_left_first(r, std::plus{}).value());
   }
   return cmm::type::create_fundamental(
       parse_enum_type(type_.value(), unsigned_), const_, volatile_);
@@ -397,14 +396,6 @@ ast::decl::specifiers parser::parse_specifiers() {
   return {parse_type(specs), parse_linkage(specs), parse_storage(specs)};
 }
 
-template <typename T, typename... Args>
-  requires(std::is_constructible_v<T, Args...>)
-T* parser::create_node(Args&&... args) {
-  auto* obj = m_arena.emplace<T>(std::forward<Args>(args)...);
-  // set_parent_node(obj, std::forward<Args>(args)...);
-  return obj;
-}
-
 template <typename Func, typename T>
 siblings<T> parser::parse_varargs(Func&& inner,
                                   const token_t& opener,
@@ -432,9 +423,8 @@ siblings<T> parser::parse_varargs(Func&& inner,
 }
 
 decl::function* parser::parse_function(decl::specifiers&& mods, identifier&& ident) {
-  auto p = [this]() -> variable {
+  auto p = [this]() -> variable* {
     decl::specifiers specs = parse_specifiers();
-
     auto id                = parse_identifier();
     auto* rank             = parse_rank();
     expr::expression* e    = nullptr;
@@ -442,7 +432,7 @@ decl::function* parser::parse_function(decl::specifiers&& mods, identifier&& ide
       e = parse_expr();
     }
 
-    return *create_node<variable>(std::move(specs), rank, id, e);
+    return create_node<variable>(std::move(specs), rank, id, e);
   };
 
   auto params = parse_varargs(p, token_t::o_paren, token_t::comma, token_t::c_paren);
@@ -502,8 +492,8 @@ statement* parser::parser::parse_for() {
 }
 
 statement* parser::parser::parse_if() {
-  auto token        = m_tokens.next();
-  auto* condition   = parse_condition();
+  const auto& token = m_tokens.next();
+  auto& condition   = *parse_condition();
   block* if_block   = parse_block();
 
   block* else_block = nullptr;
@@ -513,7 +503,7 @@ statement* parser::parser::parse_if() {
     else_block = parse_block();
   }
 
-  return create_node<selection::if_>(token, *condition, if_block, else_block);
+  return create_node<selection::if_>(token, condition, if_block, else_block);
 }
 
 void parser::parser::want(const token& token, const cmm::token_t& type, bool needed_value) {
@@ -523,6 +513,7 @@ void parser::parser::want(const token& token, const cmm::token_t& type, bool nee
 
   if (needed_value && !token.value.empty()) {
     THROW(UNEXPECTED_TOKEN, token);
+    ;
   }
 }
 
@@ -543,4 +534,13 @@ void parser::parser::want_semicolon() {
     m_tokens.advance();
   }
 };
+
+template <typename T, typename... Args>
+  requires(std::is_constructible_v<T, Args...>)
+T* parser::create_node(Args&&... args) {
+  T* obj = m_arena.emplace<T>(std::forward<Args>(args)...);
+  obj->initialize();
+  return obj;
+}
+
 } // namespace cmm::parser

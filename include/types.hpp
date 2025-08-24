@@ -70,28 +70,13 @@ static_assert(std::is_default_constructible_v<type_category_t>);
       type_t::unscoped_enum_t, type_t::class_t
 
 struct type;
-struct type_specifier;
-using crptype_spec = const std::shared_ptr<const type_specifier>&;
 
-struct type_specifier : displayable {
-  type_specifier(type_category_t t)
-      : category(t) {}
+using ptype   = std::shared_ptr<const type>;
+using crptype = const ptype&;
+using crtype  = const type&;
 
-  ~type_specifier() override                           = default;
-  [[nodiscard]] virtual bool match(crptype_spec) const = 0;
-
+struct type : std::enable_shared_from_this<type>, displayable {
   type_category_t category;
-};
-
-struct type;
-
-using ptype      = std::shared_ptr<const type>;
-using crptype    = const ptype&;
-using crtype     = const type&;
-using ptype_spec = std::shared_ptr<const type_specifier>;
-using ctype_spec = const type_specifier&;
-
-struct type : public type_specifier {
   std::shared_ptr<const type> underlying = nullptr;
   uint8_t rank                           = 0;
   bool c                                 = false;
@@ -105,22 +90,22 @@ struct type : public type_specifier {
        size_t n               = 0,
        bool c_                = false,
        bool v_                = false)
-      : type_specifier(t),
+      : category(t),
         underlying(std::move(u)),
         rank(n),
         c(c_),
         v(v_) {}
 
-  [[nodiscard]] bool match(crptype_spec other) const override {
-    if (const auto& t = std::dynamic_pointer_cast<const type>(other)) {
-      return *this == *t; // type vs type
-    }
-    return typeid(this) == typeid(other);
-  }
-
   friend bool operator==(const type& lhs, const type& rhs) {
     return lhs.category == rhs.category && lhs.rank == rhs.rank &&
            lhs.underlying == rhs.underlying && lhs.c == rhs.c && lhs.v == rhs.v;
+  }
+
+  [[nodiscard]] virtual bool match(crptype other) const {
+    if (!other) {
+      return false;
+    }
+    return other->match(shared_from_this());
   }
 
   type clone() const { return {category, underlying, rank, c, v}; }
@@ -203,17 +188,17 @@ create_wrapper(add_pointer, pointer_t);
 using match_t   = std::function<bool(crtype)>;
 using compare_t = std::function<bool(crtype, crtype)>;
 
-struct type_matcher : public type_specifier {
+struct type_matcher : public type {
   ~type_matcher() { registers[m_desc].second++; }
   using value_type = std::function<bool(crptype)>;
   type_matcher(std::string desc, value_type v)
-      : type_specifier(type_category_t::generic_t),
+      : type(type_category_t::generic_t),
         m_matcher(std::move(v)),
         m_desc(std::move(desc)) {
     registers[m_desc].first++;
   }
   type_matcher(std::string desc, const type_matcher& v)
-      : type_specifier(type_category_t::generic_t),
+      : type(type_category_t::generic_t),
         m_matcher(std::move(v)),
         m_desc(std::move(desc)) {
     registers[m_desc].first++;
@@ -221,7 +206,7 @@ struct type_matcher : public type_specifier {
   COPYABLE_CLS(type_matcher);
   NOT_MOVABLE_CLS(type_matcher);
   bool operator()(crptype) const;
-  [[nodiscard]] bool match(crptype_spec) const override;
+  [[nodiscard]] bool match(crptype) const override;
   [[nodiscard]] std::string string() const override;
   type_matcher operator&&(const type_matcher&) const;
   type_matcher operator||(const type_matcher&) const;
@@ -236,7 +221,7 @@ private:
   std::string m_desc;
 };
 
-inline bool operator==(crptype_spec lhs, crptype_spec rhs) {
+inline bool operator==(crptype lhs, crptype rhs) {
   if (lhs == rhs) {
     return true; // same pointer
   }
@@ -292,7 +277,7 @@ struct type_converter : displayable {
 private:
   type_converter() = default;
 
-  ptype_spec m_from;
+  ptype m_from;
   type_modifier m_converter = modifiers::identity;
   std::string m_desc;
 };

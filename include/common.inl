@@ -19,44 +19,30 @@
 #include <utility>
 #include <vector>
 
-#include "os.hpp"
 #include "traits.hpp"
 
 namespace cmm {
-namespace log {
-enum class style_t : uint8_t;
-} // namespace log
 
 [[nodiscard]] constexpr const compilation_error_data::properties_map&
 compilation_error_data::properties_array() {
   using enum compilation_error_t;
-  using namespace os;
   static_assert(std::is_constant_evaluated());
   static constexpr properties_map MAP{
-      {{{GENERIC, os::status::GENERIC_ERROR, "Generic error", false},
-        {INVALID_CONTINUE,
-         os::status::INVALID_CONTINUE,
-         "continue statement not within loop or switch",
-         true},
-        {INVALID_BREAK,
-         os::status::INVALID_BREAK,
-         "break statement not within loop or switch",
-         true},
-        {UNDECLARED_SYMBOL, os::status::UNDECLARED_SYMBOL, "{} not declared", true},
-        {ALREADY_DECLARED_SYMBOL, os::status::ALREADY_DECLARED_SYMBOL, "{} already declared", true},
-        {UNDEFINED_FUNCTION, os::status::COMPILATION_ERROR, "Function {} is not defined", true},
-        {LABEL_IN_GLOBAL, os::status::LABEL_IN_GLOBAL, "Label {} in global scope", true},
-        {RETURN_IN_GLOBAL, os::status::RETURN_IN_GLOBAL, "Return in global scope", true},
-        {BAD_FUNCTION_CALL, os::status::BAD_FUNCTION_CALL, "Label {} in global scope", true},
-        {WRONG_FUNCTION_ARGUMENT,
-         os::status::WRONG_FUNCTION_ARGUMENT,
-         "Wrong argument. Declared {}.",
-         true},
-        {UNEXPECTED_TOKEN, os::status::UNEXPECTED_TOKEN, "Unexpected token {}", true},
-        {INCOMPATIBLE_TOKEN, os::status::INCOMPATIBLE_TOKEN, "Incompatible token {}", true},
-        {REQUIRED_TYPE, os::status::REQUIRED_TYPE, "Required type in specifiers", true},
-        {TOO_MANY_TYPES, os::status::UNEXPECTED_TOKEN, "More than one type in specifiers", true},
-        {MISSING_ENTRY_POINT, os::status::MISSING_ENTRY_POINT, "Main function not found", false}}}};
+      {{{GENERIC, "Generic error", false},
+        {INVALID_CONTINUE, "continue statement not within loop or switch", true},
+        {INVALID_BREAK, "break statement not within loop or switch", true},
+        {UNDECLARED_SYMBOL, "{} not declared", true},
+        {ALREADY_DECLARED_SYMBOL, "{} already declared", true},
+        {UNDEFINED_FUNCTION, "Function {} is not defined", true},
+        {LABEL_IN_GLOBAL, "Label {} in global scope", true},
+        {RETURN_IN_GLOBAL, "Return in global scope", true},
+        {BAD_FUNCTION_CALL, "Label {} in global scope", true},
+        {WRONG_FUNCTION_ARGUMENT, "Wrong argument. Declared {}.", true},
+        {UNEXPECTED_TOKEN, "Unexpected token {}", true},
+        {INCOMPATIBLE_TOKEN, "Incompatible token {}", true},
+        {REQUIRED_TYPE, "Required type in specifiers", true},
+        {TOO_MANY_TYPES, "More than one type in specifiers", true},
+        {MISSING_ENTRY_POINT, "Main function not found", false}}}};
   return MAP;
 }; // namespace cmm
 
@@ -73,6 +59,9 @@ constexpr std::string apply(T&& t, style_t s) {
       break;
     case style_t::ERROR:
       pre = "\033[1;38;2;205;92;92m";
+      break;
+    case style_t::ERROR_UNDERLINE:
+      pre = "\e[38;2;239;137;165m";
       break;
     case style_t::RED:
       pre = "\033[0;31m";

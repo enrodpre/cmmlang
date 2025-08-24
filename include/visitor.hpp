@@ -1,16 +1,12 @@
 #pragma once
 
-#include <algorithm>
-#include <functional>
 #include <optional>
-#include <ranges>
 #include <revisited/visitor.h>
 #include <type_traits>
-#include <utility>
-#include <vector>
 
 #include "common.hpp"
 #include "macros.hpp"
+#include "token.hpp"
 
 namespace cmm::ast {
 
@@ -19,12 +15,15 @@ using visitor = revisited::Visitor<std::add_lvalue_reference_t<Visitable>...>;
 template <typename... Visitable>
 using const_visitor = visitor<std::add_const_t<Visitable>...>;
 
-template <typename B, typename T>
-using visitable = revisited::DerivedVisitable<B, T>;
+template <typename T, typename B>
+using visitable = revisited::DerivedVisitable<T, B>;
 
-struct node : revisited::Visitable<node>, public displayable {
+struct node : public revisited::Visitable<node>, public displayable {
   ~node() override = default;
-  node()           = default;
+  node(std::optional<cmm::location> l = {})
+      : m_location(l) {}
+  node(const token& t)
+      : node(t.location()) {}
   MOVABLE_CLS(node);
   COPYABLE_CLS(node);
   template <typename T = node>
@@ -37,12 +36,22 @@ struct node : revisited::Visitable<node>, public displayable {
   }
   virtual void set_parent(node* parent_) { m_parent = parent_; }
   virtual void set_parent(node* parent_) const { m_parent = parent_; }
-  virtual std::optional<cmm::location> location() const = 0;
+  virtual std::optional<cmm::location> location() const { return m_location; };
   operator node*() { return static_cast<node*>(this); }
   std::string string() const override { return demangle(typeid(this).name()); }
+  virtual std::vector<node*> children() = 0;
+  void initialize() {
+    for (node* child : children()) {
+      if (child != nullptr) {
+        child->set_parent(this);
+        m_location = m_location + child->location();
+      }
+    }
+  }
 
 private:
   mutable node* m_parent = nullptr;
+  std::optional<cmm::location> m_location;
 };
 
 template <typename T>
@@ -51,55 +60,11 @@ concept is_node = std::is_base_of_v<ast::node, T>;
 template <typename T>
 concept is_pointer_node = std::is_assignable_v<T, ast::node*>;
 
-struct composite : visitable<composite, node> {
-
-  composite() = default;
-  ~composite() {
-    for (const node* n : m_data) {
-      // delete n;
-    }
-  }
-  composite(std::vector<node*>&& v)
-      : m_data(std::move(v)) {}
-
-  void set_parent(node* n) const override {
-    for (const node* a : m_data) {
-      a->set_parent(n);
-    }
-  }
-  [[nodiscard]] std::optional<cmm::location> location() const override {
-    return std::ranges::fold_left_first(m_data | TRANSFORM(to_location) | FILTER(opt_has_value) |
-                                            TRANSFORM(opt_to_value),
-                                        std::plus<cmm::location>{})
-        .value();
-  }
-
-  friend class check_visitor;
-  friend class generic_node_visitor;
-
-protected:
-  template <typename... Nodes>
-    requires(std::is_assignable_v<Nodes, node*>, ...)
-  void add_all(Nodes... ns) {
-    (add(ns), ...);
-  }
-  template <is_node T>
-  void add(const std::vector<T*>& t) {
-    for (auto&& elem : t) {
-      add(elem);
-    }
-  }
-  void add(node* n) {
-    if (n != nullptr) {
-      n->set_parent(this);
-      m_data.push_back(n);
-    }
-  }
-
-protected:
-  std::vector<node*> m_data;
-};
-
 struct identifier;
 struct literal;
+
+#define children_impl(CHILDREN)                                                   \
+  std::vector<node*> children() override { return std::vector<node*>{CHILDREN}; }
+
+#define to_node(OBJ) dynamic_cast<node*>(OBJ)
 } // namespace cmm::ast

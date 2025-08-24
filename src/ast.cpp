@@ -15,45 +15,36 @@ namespace cmm::ast {
 
 using namespace decl;
 
-leaf::leaf(std::optional<cmm::location> loc)
-    : m_location(std::move(loc)) {}
-
-leaf::leaf(const token& t)
-    : m_location(t.location()) {}
-
 label::label(const token& label_)
-    : visitable<label, declaration>(label_) {
-  add(ident);
-}
+    : visitable<label, declaration>(label_) {}
 
 specifiers::specifiers(ast::type&& t, ast::linkage&& l, ast::storage&& s)
     : type(std::move(t)),
       linkage(std::move(l)),
-      storage(std::move(s)) {
-  add_all(&type, &linkage, &storage);
-}
+      storage(std::move(s)) {}
 
-decl::rank::rank(const token& l, decltype(number) e, const token& r)
+rank::rank(const token& l, decltype(number) e, const token& r)
     : open(l),
       number(e),
-      close(r) {
-  add_all(&open, number, &close);
-}
+      close(r) {}
 
 decl::rank::rank(const token& l, const token& r)
     : rank(r, nullptr, l) {}
+
+std::vector<node*> decl::rank::children() {
+  return {dynamic_cast<node*>(&open), dynamic_cast<node*>(number), dynamic_cast<node*>(&close)};
+}
 
 variable::variable(specifiers&& spec, decltype(rank) r, identifier id, decltype(init) i)
     : visitable<variable, declaration>(std::move(id)),
       specs(std::move(spec)),
       rank(r),
-      init(i) {
-  add_all(&specs, &ident, init);
-}
+      init(i) {}
 
 variable::variable(ptype t, decltype(ident) id, decltype(init) init)
     : variable(specifiers(std::move(t)), nullptr, std::move(id), init) {}
 
+std::vector<node*> variable::children() { return {to_node(&specs), rank, init}; }
 function::function(decltype(specs)&& s,
                    decltype(ident)&& ident_,
                    decltype(params)&& args,
@@ -61,8 +52,9 @@ function::function(decltype(specs)&& s,
     : visitable<function, declaration>(std::move(ident_)),
       specs(std::move(s)),
       params(std::move(args)),
-      body(body_) {
-  add_all(&specs, &ident, &params, body);
+      body(body_) {}
+std::vector<node*> decl::function::children() {
+  return {to_node(&ident), to_node(&specs), to_node(&params), to_node(body)};
 }
 
 assembly::operand* decl::conversion_function::operator()(assembly::operand* reg) const noexcept {
@@ -78,16 +70,18 @@ selection::if_::if_(const token& t, decltype(condition) c, decltype(block) b, de
     : keyword(t),
       condition(c),
       block(b),
-      else_(e) {
-  add_all(&keyword, &condition, block, else_);
+      else_(e) {}
+
+std::vector<node*> selection::if_::children() {
+  return std::vector<node*>{&keyword, &condition, block, else_};
 }
 
 iteration::while_::while_(const token& t, expr::expression& condition_, block* block)
     : keyword(t),
       condition(condition_),
-      body(block) {
-  add_all(&keyword, &condition, body);
-}
+      body(block) {}
+
+std::vector<node*> iteration::while_::children() { return {&keyword, &condition, body}; }
 
 iteration::for_::for_(const token& t,
                       decl::variable* start_,
@@ -98,30 +92,26 @@ iteration::for_::for_(const token& t,
       start(start_),
       condition(condition_),
       step(step_),
-      body(block) {
-  add_all(&keyword, start, condition, step, body);
-}
+      body(block) {}
+
+std::vector<node*> iteration::for_::children() { return {&keyword, start, condition, step, body}; }
 
 jump::goto_::goto_(const token& token)
-    : term(token) {
-  add(&term);
-}
+    : term(token) {}
+std::vector<node*> jump::goto_::children() { return {&term}; }
 
 jump::break_::break_(const token& token)
-    : keyword(token) {
-  add(&keyword);
-}
+    : keyword(token) {}
+std::vector<node*> jump::break_::children() { return {&keyword}; }
 
 jump::continue_::continue_(const token& token)
-    : keyword(token) {
-  add(&keyword);
-}
+    : keyword(token) {}
+std::vector<node*> jump::continue_::children() { return {&keyword}; }
 
 jump::return_::return_(ast::keyword&& k, expr::expression* expr_)
     : keyword(std::move(k)),
-      expr(expr_) {
-  add(&keyword);
-}
+      expr(expr_) {}
+std::vector<node*> jump::return_::children() { return {&keyword, expr}; }
 
 // std::vector<ptype> conversion_store::get_convertible_types(crtype from) const {
 //   return get_conversions(from) | std::views::transform([&from](const auto& conversion) ->
@@ -155,7 +145,7 @@ callable_contract ast::decl::function::contract() const {
   return {specs.type.value(),
           ident.value(),
           params | std::views::transform([](const auto& param) -> ptype {
-            return param.specs.type.value();
+            return param->specs.type.value();
           }) | std::ranges::to<std::vector>()};
 }
 
@@ -431,7 +421,7 @@ void ast_visitor::visit(ast ::decl ::function& c) {
   c.specs.accept(*this);
   c.ident.accept(*this);
   for (auto& param : c.params) {
-    param.accept(*this);
+    param->accept(*this);
   }
   if (auto* body = c.body) {
     body->accept(*this);
@@ -572,7 +562,7 @@ void const_ast_visitor::visit(const ast ::decl ::function& c) {
   c.specs.accept(*this);
   c.ident.accept(*this);
   for (const auto& param : c.params) {
-    param.accept(*this);
+    param->accept(*this);
   }
   if (auto* body = c.body) {
     body->accept(*this);

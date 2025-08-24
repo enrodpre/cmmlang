@@ -8,7 +8,6 @@
 #include <cstdio>
 #include <cxxabi.h>
 #include <exception>
-#include <fmt/base.h>
 #include <format>
 #include <initializer_list>
 
@@ -31,7 +30,6 @@
 #include <vector>
 
 #include "macros.hpp"
-#include "os.hpp"
 #include "traits.hpp"
 
 namespace cmm {
@@ -43,6 +41,7 @@ enum class style_t : uint8_t {
   HEADER,
   BOLD,
   ERROR,
+  ERROR_UNDERLINE,
   NORMAL,
   RED,
   MAGENTA,
@@ -456,6 +455,31 @@ struct location : displayable {
   friend location operator+(const location& r, const location& l) {
     return {std::min(r.start, l.start), std::max(r.end, l.end)};
   }
+  friend location& operator+=(location& r, const location& l) {
+    r = r + l;
+    return r;
+  }
+  friend std::optional<location> operator+(std::optional<location> lhs,
+                                           std::optional<location> rhs) {
+    if (!lhs && !rhs) {
+      return std::nullopt;
+    }
+    if (!lhs) {
+      // rhs == true
+      return *rhs;
+    } else {
+      return *lhs;
+    }
+
+    return *lhs + *rhs;
+  }
+
+  friend std::optional<location> operator+(location lhs, std::optional<location> rhs) {
+    if (rhs) {
+      return lhs + *rhs;
+    }
+    return lhs;
+  }
 };
 
 } // namespace cmm
@@ -534,17 +558,15 @@ enum class compilation_error_t : uint8_t {
   MISSING_ENTRY_POINT
 };
 
-BUILD_ENUMERATION_DATA_CLASS(compilation_error, os::status, status, cstring, fmt, bool, located);
+BUILD_ENUMERATION_DATA_CLASS(compilation_error, cstring, fmt, bool, located);
 
 struct compilation_error : public cmm::error {
-  cmm::os::status status;
   std::optional<cmm::location> loc;
 
   compilation_error(const compilation_error_data& err,
                     const std::string& str,
                     std::optional<location> l = std::nullopt)
       : error(str),
-        status(err.status),
         loc(std::move(l)) {}
 };
 
@@ -798,12 +820,6 @@ private:
 };
 
 static_assert(std::is_copy_constructible_v<vector<int>>);
-
-template <typename T>
-struct node {
-  node* next;
-  T value;
-};
 
 #define transform_vector(IN, FN) IN | std::views::transform(FN) | std::ranges::to<std::vector>()
 
@@ -1160,5 +1176,17 @@ inline std::string demangle(const std::string& name, bool check_prefix = true) {
     return name;
   }
 }
+template <Allocated N>
+constexpr auto vector_to_location = [](std::vector<N> v) {
+  return std::ranges::fold_left_first(v | std ::views ::transform([](const auto& s) {
+                                        if constexpr (std::is_pointer_v<N>) {
+                                          return s->location();
+                                        } else if constexpr (!std::is_pointer_v<N>) {
+                                          return s.location();
+                                        }
+                                      }),
+                                      std::plus<std::optional<location>>()) |
+         TO_VEC;
+};
 } // namespace cmm
 #include "common.inl"

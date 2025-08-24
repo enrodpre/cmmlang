@@ -4,6 +4,7 @@ TESTS="OFF"
 
 flags=(-DSAVE_PREPROCESSED=0 -DSAVE_ASSEMBLY=1 -DDEBUG_AST=0)
 
+export ASAN_OPTIONS=abort_on_error=1
 while getopts "ad:ptr" opt; do
   case "$opt" in
   d)

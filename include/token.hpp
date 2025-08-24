@@ -167,7 +167,7 @@ struct token_data : public cmm::enumeration<token_t> {
   }
 };
 
-struct token : public formattable, public self_allocated {
+struct token : public displayable, public self_allocated {
   token_t type;
   std::string value;
 
@@ -179,7 +179,7 @@ struct token : public formattable, public self_allocated {
         type(t),
         value(std::move(v)) {}
   bool operator==(const token& other) const { return value == other.value && type == other.type; }
-  [[nodiscard]] std::string format() const override;
+  [[nodiscard]] std::string string() const override;
 };
 
 class tokens : public formattable_range<std::vector<token>> {

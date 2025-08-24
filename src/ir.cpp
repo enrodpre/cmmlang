@@ -154,7 +154,7 @@ const T* compilation_unit::get_callable(
 
   std::vector<const T*> overloads;
   std::vector<ptype> parameter_types;
-  if constexpr (std::is_same_v<T, operator_builtin_data>) {
+  if constexpr (std::is_same_v<T, builtin_operator_data>) {
     overloads = get_builtin_operator(id);
   } else if constexpr (std::is_same_v<T, decl::function>) {
     overloads = ast->m_functions.get_by_name(id);
@@ -257,7 +257,7 @@ operand* compilation_unit::call_builtin_operator(const operator_& op,
     semantics::load_node_semantics(*e);
     return runner.generate_expr(*e, params.next());
   };
-  auto* impls = get_callable<operator_builtin_data>(op, args.data());
+  auto* impls = get_callable<builtin_operator_data>(op, args.data());
   auto ops    = args | TRANSFORM(load_argument) | TO_VEC;
   operand* l;
   operand* r;
@@ -400,9 +400,9 @@ const T* compilation_unit::resolve_overloads(
   return step2.front();
 }
 
-template const operator_builtin_data* compilation_unit::resolve_overloads(
+template const builtin_operator_data* compilation_unit::resolve_overloads(
     operator_,
-    std::vector<const operator_builtin_data*>,
+    std::vector<const builtin_operator_data*>,
     std::vector<expr::expression*>) const;
 template const ast::decl::function* compilation_unit::resolve_overloads(
     ast::identifier,
@@ -411,7 +411,7 @@ template const ast::decl::function* compilation_unit::resolve_overloads(
 
 template <typename T>
   requires(std::is_same_v<T, const ast::decl::function*> ||
-           std::is_same_v<T, const operator_builtin_data*>)
+           std::is_same_v<T, const builtin_operator_data*>)
 [[nodiscard]] std::vector<T> compilation_unit::progressive_prefix_match(
     const std::vector<ptype>& argument_types,
     const std::vector<T>& possible_fns) const {
@@ -433,9 +433,9 @@ template <typename T>
          }) |
          std::views::join | std::ranges::to<std::vector>();
 }
-template std::vector<const operator_builtin_data*> compilation_unit::progressive_prefix_match(
+template std::vector<const builtin_operator_data*> compilation_unit::progressive_prefix_match(
     const std::vector<ptype>&,
-    const std::vector<const operator_builtin_data*>&) const;
+    const std::vector<const builtin_operator_data*>&) const;
 template std::vector<const ast::decl::function*> compilation_unit::progressive_prefix_match(
     const std::vector<ptype>&,
     const std::vector<const ast::decl::function*>&) const;

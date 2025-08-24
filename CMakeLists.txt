@@ -74,7 +74,7 @@ function(add_iwyu_to_target target_name)
 endfunction()
 include(cmake/cotire.cmake)
 include(cmake/sanitizers.cmake)
-add_sanitizer_support(address)
+# add_sanitizer_support(address)
 
 # unset(CMAKE_CXX_COMPILER_LAUNCHER)
 # set(CMAKE_CXX_COMPILER /usr/bin/clang++)
@@ -107,7 +107,7 @@ set(FLAGS
   # -Wno-gnu-zero-variadic-macro-arguments
   # -Wno-switch
   # -Wshadow
-  -fsanitize=address
+  # -fsanitize=address
 #undefined,
 )
 

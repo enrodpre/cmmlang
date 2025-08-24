@@ -5,13 +5,6 @@
 #include "ast.hpp"
 #include "visitor.hpp"
 
-namespace cmm::ast {
-namespace expr {
-struct expression;
-} // namespace expr
-struct node;
-} // namespace cmm::ast
-
 #define SET_PARENT_AND_VISIT(node, member) \
   node.member.set_parent(&(node));         \
   std::visit(this, (node).member);

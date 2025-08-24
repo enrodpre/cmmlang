@@ -78,7 +78,7 @@ void semantics::visitor::visit(const ast::expr::identifier& c) {
 void semantics::visitor::visit(const ast::expr::unary_operator& c) {
   TRACE_VISITOR(c);
   c.expr.accept(*this);
-  const operator_builtin_data* data = v.get_callable<operator_builtin_data>(c.operator_, {&c.expr});
+  const builtin_operator_data* data = v.get_callable<builtin_operator_data>(c.operator_, {&c.expr});
   // if (c.operator_.value() == operator_t::post_inc || c.operator_.value() == operator_t::post_dec)
   // {
   //   load_operator_semantics(v, c, c.operator_, {c.expr.type(), SINT_T});
@@ -95,8 +95,8 @@ void semantics::visitor::visit(const ast::expr::binary_operator& c) {
   TRACE_VISITOR(c);
   c.left.accept(*this);
   c.right.accept(*this);
-  const operator_builtin_data* data =
-      v.get_callable<operator_builtin_data>(c.operator_, {&c.left, &c.right});
+  const builtin_operator_data* data =
+      v.get_callable<builtin_operator_data>(c.operator_, {&c.left, &c.right});
   auto* semantics           = c.semantics();
   semantics->value_category = get_value_category(data->ret);
   semantics->original_type  = data->ret;

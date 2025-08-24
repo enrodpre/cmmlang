@@ -160,18 +160,18 @@ namespace ast {
 struct operator_;
 }
 
-struct operator_builtin_data : callable {
+struct builtin_operator_data : callable {
   using identifier_t = ast::operator_;
   ptype ret;
   std::vector<ptype> params;
   std::vector<instruction> ins;
 
-  operator_builtin_data(decltype(ret) c, decltype(ret) b, decltype(ins)&& e)
+  builtin_operator_data(decltype(ret) c, decltype(ret) b, decltype(ins)&& e)
       : ret(std::move(c)),
         params({std::move(b)}),
         ins(std::move(e)) {}
 
-  operator_builtin_data(decltype(ret) c, decltype(ret) b, decltype(ret) a, decltype(ins)&& e)
+  builtin_operator_data(decltype(ret) c, decltype(ret) b, decltype(ret) a, decltype(ins)&& e)
       : ret(std::move(c)),
         params({std::move(a), std::move(b)}),
         ins(std::move(e)) {}
@@ -189,13 +189,13 @@ struct operator_builtin_data : callable {
 
 struct builtin_operator {
   operator_t op;
-  operator_builtin_data data;
+  builtin_operator_data data;
 };
 
-extern const std::unordered_map<operator_t, std::vector<operator_builtin_data>> builtin_operators;
+extern const std::unordered_map<operator_t, std::vector<builtin_operator_data>> builtin_operators;
 static_assert(std::formattable<cmm::instruction_t, char>);
 
-std::vector<const operator_builtin_data*> get_builtin_operator(operator_t);
+std::vector<const builtin_operator_data*> get_builtin_operator(operator_t);
 
 enum class attribute : uint8_t {
   no_return          = 1 << 1,

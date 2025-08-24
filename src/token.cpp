@@ -6,12 +6,12 @@ namespace cmm {
 
 using RCtoken = const token&;
 
-std::string token::format() const {
+std::string token::string() const {
+  auto res = std::format("Token: {}, {}", type, location());
   if (!value.empty()) {
-    return std::format("token:\n  {}\n  location: {}\n  Value: {}\n", type, location(), value);
+    res = std::format("{}, {}", res, value);
   }
-
-  return std::format("token:\n  {}\n  location: {}\n", type, location());
+  return res;
 }
 tokens::tokens()
     : formattable_range(&m_tokens),
