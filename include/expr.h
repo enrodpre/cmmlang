@@ -11,7 +11,7 @@
 
 namespace cmm::ast {
 
-class statement;
+struct statement;
 
 namespace expr {
 

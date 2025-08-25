@@ -292,8 +292,8 @@ void expression_visitor::visit(ast ::expr ::literal& c) {
 
 void expression_visitor::visit(expr::identifier& ident) {
   const auto& [var, addr] = gen->ast->get_variable(ident);
-  auto b = gen->m_context.asmgen.begin_comment_block("loading address of {}", ident.value());
-  out    = gen->m_context.lea(out, addr);
+  auto b                  = gen->m_context.asmgen.begin_comment_block("loading {}", ident.value());
+  out                     = gen->m_context.lea(out, addr);
 }
 
 statement_visitor::statement_visitor(ast_traverser* gen_)

@@ -1,0 +1,3 @@
+file @CTEST_BINARY_DIRECTORY@/unit_@CMM_TEST_NAME@
+
+run

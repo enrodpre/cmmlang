@@ -65,7 +65,6 @@ statement* parser::parse_statement() {
     m_tokens.advance();
     return nullptr;
   }
-  token* n = &next;
   if (next.type == token_t::debug_ast) {
     // REGISTER_DEBUG("{}", m_compound);
     // return emplace<debug::printobj>(next, debug::Component::ast);

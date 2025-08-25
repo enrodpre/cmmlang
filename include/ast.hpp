@@ -634,7 +634,7 @@ private:
     check(n); // call user-defined check
 
     // recursively visit children if this is a composite
-    if (const auto* c = dynamic_cast<const node*>(&n)) {}
+    // if (const auto* c = dynamic_cast<const node*>(&n)) {}
   }
 };
 

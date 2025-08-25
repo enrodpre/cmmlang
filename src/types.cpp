@@ -83,10 +83,11 @@ bool belongs_to(const type_category_data& child, type_category_t parent) {
 }
 
 [[nodiscard]] bool type_matcher::match(crptype spec) const {
-  if (const auto& type_ = std::dynamic_pointer_cast<const type>(spec)) {
-    return m_matcher(type_);
+  if (const auto& matcher = std::dynamic_pointer_cast<const type_matcher>(spec)) {
+    return m_desc == matcher->m_desc;
   }
-  return typeid(this) == typeid(spec);
+  // It is a type
+  return m_matcher(spec);
 }
 
 bool type_matcher::operator()(crptype lhs) const { return m_matcher(lhs); }

@@ -33,7 +33,7 @@ public:
 private:
   std::string src;
   size_t pointer;
-  size_t m_row;
+  // size_t m_row;
 
   void replace(size_t, size_t, cstring);
 

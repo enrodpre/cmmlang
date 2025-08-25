@@ -1,0 +1,135 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "debug",
+      "displayName": "Debug Build",
+      "description": "Debug build with optimization disabled",
+      "binaryDir": "${sourceDir}/build",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"
+      },
+      "environment": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "ccache /usr/bin/clang++",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "debug-tests",
+      "displayName": "Debug with Tests",
+      "description": "Debug build with unit and integration tests enabled",
+      "inherits": "debug",
+      "binaryDir": "${sourceDir}/build/debug-tests",
+      "cacheVariables": {
+        "BUILD_TESTS": "ON",
+        "BUILD_UNIT_TESTS": "ON",
+        "BUILD_INTEGRATION_TESTS": "ON"
+      }
+    },
+    {
+      "name": "release-tests",
+      "displayName": "Release with Tests",
+      "description": "Release build with tests for CI/CD",
+      "binaryDir": "${sourceDir}/build/release-tests",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTS": "ON",
+        "BUILD_UNIT_TESTS": "ON",
+        "BUILD_INTEGRATION_TESTS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "displayName": "Build Debug",
+      "configurePreset": "debug",
+      "jobs": 4
+    },
+    {
+      "name": "debug-tests",
+      "displayName": "Build Debug with Tests",
+      "configurePreset": "debug-tests",
+      "jobs": 4
+    },
+    {
+      "name": "release-tests",
+      "displayName": "Build Release with Tests", 
+      "configurePreset": "release-tests",
+      "jobs": 4
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "unit-tests",
+      "displayName": "Run Unit Tests",
+      "description": "Run only unit tests",
+      "configurePreset": "debug-tests",
+      "filter": {
+        "include": {
+          "label": "unit"
+        }
+      },
+      "output": {
+        "outputOnFailure": true,
+        "verbosity": "default"
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": false
+      }
+    },
+    {
+      "name": "integration-tests",
+      "displayName": "Run Integration Tests",
+      "description": "Run integration/end-to-end tests with the built binary",
+      "configurePreset": "debug-tests",
+      "filter": {
+        "include": {
+          "label": "integration"
+        }
+      },
+      "output": {
+        "outputOnFailure": true,
+        "verbosity": "default"
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": false
+      }
+    },
+    {
+      "name": "all-tests",
+      "displayName": "Run All Tests",
+      "description": "Run both unit and integration tests",
+      "configurePreset": "debug-tests",
+      "output": {
+        "outputOnFailure": true,
+        "verbosity": "default"
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": false
+      }
+    },
+    {
+      "name": "ci-tests",
+      "displayName": "CI Test Suite",
+      "description": "Complete test suite for CI/CD pipeline",
+      "configurePreset": "release-tests",
+      "output": {
+        "outputOnFailure": true,
+        "verbosity": "verbose",
+        "outputLogFile": "${sourceDir}/build/test-results.log"
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true
+      }
+    }
+  ]
+}

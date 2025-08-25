@@ -1,0 +1,3 @@
+file @CMAKE_BINARY_DIR@/@COMPILED_NAME@
+
+run

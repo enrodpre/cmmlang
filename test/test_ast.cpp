@@ -45,12 +45,6 @@ struct AstTest : public ::testing::Test {
   token cparen     = create_token(token_t::c_paren);
   token true_      = create_token(token_t::true_lit);
   token else_      = create_token(token_t::else_);
-
-  template <typename T, typename U>
-  T* trycast(U u) {
-    EXPECT_NO_THROW(auto ptr = dynamic_cast<T*>(u));
-    return dynamic_cast<T*>(u);
-  }
 };
 
 TEST_F(AstTest, operator_precedence) {
@@ -59,11 +53,11 @@ TEST_F(AstTest, operator_precedence) {
   cmm::parser::parser p(expr);
 
   expression* actual = p.parse_expr();
-  auto* binop        = trycast<binary_operator>(actual);
+  auto* binop        = dynamic_cast<binary_operator*>(actual);
   EXPECT_EQ(operator_t::assign, binop->operator_.value());
-  EXPECT_EQ("x", trycast<identifier>(&binop->left)->value());
-  auto* adding = trycast<binary_operator>(&binop->right);
-  EXPECT_EQ("8", trycast<literal>(&adding->right)->value());
-  EXPECT_EQ("x", trycast<identifier>(&adding->left)->value());
+  EXPECT_EQ("x", dynamic_cast<identifier*>(&binop->left)->value());
+  auto* adding = dynamic_cast<binary_operator*>(&binop->right);
+  EXPECT_EQ("8", dynamic_cast<literal*>(&adding->right)->value());
+  EXPECT_EQ("x", dynamic_cast<identifier*>(&adding->left)->value());
   EXPECT_EQ(operator_t::plus, adding->operator_.value());
 }

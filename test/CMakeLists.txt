@@ -1,96 +1,79 @@
-# ---- Project ----
 cmake_minimum_required(VERSION 3.20)
 
-set(TESTSNAME
-    CmmTests
-    CACHE INTERNAL "")
-
 message(STATUS "CWD: ${CMAKE_CURRENT_SOURCE_DIR}")
+project(CmmTests LANGUAGES CXX)
 
-project(${TESTSNAME} LANGUAGES CXX)
+find_package(GTest)
+include(GoogleTest)
+target_link_libraries(GTest::gtest INTERFACE gtest_main)
 
-# set(GTEST_DISABLE_PTHREADS ON)
-add_definitions(-DGTEST_PRINT_ENABLED)
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+file(GLOB_RECURSE TEST_SOURCES "test_*.cpp")
 
-# ---- Dependencies ----
-# include(../cmake/CPM.cmake)
+foreach(unit ${TEST_SOURCES})
+  get_filename_component(NAME ${unit} NAME_WLE)
+  add_executable(${NAME} ${unit})
+  target_compile_definitions(${NAME} PRIVATE -DGTEST_PRINT_ENABLED=1)
+  target_link_libraries(${NAME} PRIVATE CmmLib GTest::gtest pthread)
+  target_compile_options(${NAME} PRIVATE
+        -g3                     # Maximum debug info
+        -O0                     # No optimization
+        -fno-omit-frame-pointer # Better stack traces
+    )
+  target_link_options(${NAME} PRIVATE
+    -fsanitize=address
+    -fsanitize=undefined)
 
-find_package(GTest REQUIRED QUIET)
-# ---- Unit test function ----
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGTEST_PRINT_ENABLED")
-# ---- Add unit tests ----
-# add_unit_test(parser)
-set(UNIT_TEST_LIST state token preprocessor ast asm
-types parser)
-foreach(file ${UNIT_TEST_LIST})
-  set(name unit_${file})
-  add_executable(${name} "${CMAKE_CURRENT_SOURCE_DIR}/test_${file}.cpp")
-  target_link_libraries(${name} CmmLib gtest gtest_main Revisited)
-  gtest_discover_tests(${name})
-  add_test(NAME ${name} COMMAND ${name})
-  set_tests_properties(${name} PROPERTIES LABELS "unit")
+  gtest_discover_tests(${NAME} ) #DISCOVERY_TIMEOUT 10 PROPERTIES LABELS "unit_tests")
+
+  set_target_properties(${NAME} PROPERTIES CXX_STANDARD 26 CXX_STANDARD_REQUIRED ON)
+  target_include_directories(${NAME}
+    PRIVATE
+    ${CMAKE_SOURCE_DIR}/src          # Access to your main source
+    ${CMAKE_CURRENT_SOURCE_DIR}      # Access to test headers
+)
 endforeach()
 
-target_include_directories(CmmLib PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
+include(sanitizers)
+add_sanitizer_support(address)
+
 include_directories(${GTEST_INCLUDE_DIRS})
-# include(GoogleTest)
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-add_custom_target(run_unit_tests
-COMMAND ${CMAKE_CTEST_COMMAND}
---output-on-failure
--VV
--C $<CONFIGURATION>
-WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-COMMENT "Running all unit tests" )
 
-set(ENV{PYTEST_INPUT_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/../examples")
-set(ENV{PYTEST_OUTPUT_DIR} "${CMAKE_CURRENT_BINARY_DIR}/generated")
+if(BUILD_INTEGRATION_TESTS)
+  set(ENV{PYTEST_INPUT_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/../examples")
+  set(ENV{PYTEST_OUTPUT_DIR} "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
-function(create_symlink file)
-  file(CREATE_LINK
+  function(create_symlink file)
+    file(CREATE_LINK
     ${CMAKE_CURRENT_SOURCE_DIR}/${file}
     ${CMAKE_CURRENT_BINARY_DIR}/${file}
     SYMBOLIC
   )
-endfunction()
+  endfunction()
 
-create_symlink(conftest.py)
-create_symlink(e2e.py)
+  create_symlink(conftest.py)
+  create_symlink(e2e.py)
 
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/../examples
+  # add_custom_target(${NAME} COMMAND ${UNIT_NAME} --gtest-filter="${NAME}"
+  #   DEPENDS ${UNIT_NAME} WORKING_DIRECTORY CMAKE_CURRENT_BINARY_DIR
+  #   COMMENT "Run ${unit} test suite}")
+  file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/../examples
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated)
+  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
-# set(PYTEST_ARGS
-#   --quiet
-#   --tb=no
-#   --disable-warnings
-#   --no-header
-#   --no-summary
-#   -rN
-# )
 
-add_test(NAME e2e
+  add_test(NAME e2e
   COMMAND pytest e2e.py
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-set_tests_properties(e2e PROPERTIES LABELS "e2e")
-
-add_custom_target(test_unit
-    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure --label-regex "unit"
-    COMMENT "Running unit tests"
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-)
-
-add_custom_target(test_e2e
+  add_custom_target(test_e2e
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure --label-regex "e2e" -VV
     COMMENT "Running integration tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
+endif()
 
 add_custom_target(test_all
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -VV

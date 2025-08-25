@@ -96,14 +96,13 @@ struct type : std::enable_shared_from_this<type>, displayable {
         c(c_),
         v(v_) {}
 
-  friend bool operator==(const type& lhs, const type& rhs) {
-    return lhs.category == rhs.category && lhs.rank == rhs.rank &&
-           lhs.underlying == rhs.underlying && lhs.c == rhs.c && lhs.v == rhs.v;
-  }
-
   [[nodiscard]] virtual bool match(crptype other) const {
     if (!other) {
       return false;
+    }
+    if (typeid(this) == typeid(other.get())) {
+      return category == other->category && rank == other->rank &&
+             underlying == other->underlying && c == other->c && v == other->v;
     }
     return other->match(shared_from_this());
   }
@@ -161,8 +160,7 @@ protected:
   std::string m_desc;
 };
 
-#define create_mod(NAME, RET)                                              \
-  static const type_modifier NAME(#NAME, [](crptype t) -> ptype { RET; });
+#define create_mod(NAME, RET) static const type_modifier NAME(#NAME, [](ptype t) -> ptype { RET; });
 #define create_wrapper(NAME, CAT)                                                              \
   static const type_modifier NAME{#NAME, [](crptype t) -> ptype {                              \
                                     return type::create(                                       \
@@ -222,16 +220,18 @@ private:
 };
 
 inline bool operator==(crptype lhs, crptype rhs) {
-  if (lhs == rhs) {
-    return true; // same pointer
-  }
-  if (!lhs || !rhs) {
-    return false; // null check
-  }
-  if (const auto& matcher = std::dynamic_pointer_cast<const type_matcher>(lhs)) {
-    return matcher->match(rhs);
-  }
-  return lhs->match(rhs); // virtual dispatch
+  // Handle null pointer cases first
+  if (!lhs && !rhs)
+    return true;
+  if (!lhs || !rhs)
+    return false;
+
+  // If same object, return true
+  if (lhs.get() == rhs.get())
+    return true;
+
+  // Use virtual equals method for polymorphic comparison
+  return lhs->match(rhs);
 }
 
 #define make_belongs(NAME, CAT)                                                                    \

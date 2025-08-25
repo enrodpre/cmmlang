@@ -12,8 +12,7 @@ using svmatch = std::match_results<cstring::const_iterator>;
 
 Preprocessor::Preprocessor(std::string src)
     : src(std::move(src)),
-      pointer(0),
-      m_row(0) {}
+      pointer(0) {}
 
 std::string&& Preprocessor::preprocess() {
   remove_single_line_comments();

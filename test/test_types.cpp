@@ -30,16 +30,11 @@ TEST_F(types_test, comparisons) {
   EXPECT_TRUE(boolean->match(type::create_fundamental(type_category_t::bool_t)));
 }
 struct binding_test : public ::testing::Test {
-  static inline const auto int_t    = type::create_fundamental(type_category_t::sint_t);
-  static inline const auto intref_t = type::create_lvalue(std::make_shared<const type>(*int_t));
-  static inline const auto intcref_t =
-      type::create_lvalue(std::make_shared<const type>(*int_t), true);
-  static inline const auto intrref_t = type::create_rvalue(std::make_shared<const type>(*int_t));
+  const ptype int_t     = type::create_fundamental(type_category_t::sint_t);
+  const ptype intref_t  = type::create_lvalue(std::make_shared<const type>(*int_t));
+  const ptype intcref_t = type::create_lvalue(std::make_shared<const type>(*int_t), true);
+  const ptype intrref_t = type::create_rvalue(std::make_shared<const type>(*int_t));
 };
-
-#define EXPECT_NOTHROW_AND_RETURN(CAT, ARG, PARAM)                    \
-  EXPECT_NO_THROW(bind_argument(value_category_t::CAT, ARG, PARAM));  \
-  EXPECT_EQ(PARAM, bind_argument(value_category_t::CAT, ARG, PARAM));
 
 TEST_F(binding_test, LvalueToIntByValue) {
   EXPECT_TRUE(is_bindeable(value_category_t::LVALUE, int_t, int_t));

@@ -384,7 +384,7 @@ const T* compilation_unit::resolve_overloads(
             // Is not viable function
             return !rvaluearg_nonconstlvalue && !lvaluearg_rvaluerefparam;
           } else {
-            return std::ranges::all_of(conversions::standard, [&expression](const auto& conv) {
+            return std::ranges::any_of(conversions::standard, [&expression](const auto& conv) {
               auto* semantics = expression->semantics();
               auto expr_t     = semantics->original_type;
               return conv->is_convertible(expr_t);
