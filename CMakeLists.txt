@@ -27,23 +27,12 @@ set(WARNING_LEVEL SOME CACHE STRING "The level of the
 enabled warnings")
 set_property(CACHE WARNING_LEVEL PROPERTY STRINGS NONE SOME ALL ERROR)
 
-option(BUILD_TESTS "Build tests" OFF)
-option(BUILD_UNIT_TESTS "Build unit tests" OFF)
-option(BUILD_INTEGRATION_TESTS "Build integration tests" OFF)
+option(BUILD_TESTING "Build tests")
 option(WARNING_LEVEL "The set warning level")
 option(USE_ASAN "Compile address sanitizer into the binary")
 option(ENABLE_IWYU "Enable include-what-you-use analysis")
 option(IWYU_AUTOFIX "Automatically apply IWYU suggestions")
 
-
-set(CXX_COMPILER ccache clang++)
-set(CXX_COMPILER_ID Clang)
-set(CXX_COMPILER_LAUNCHER ccache)
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-set(CMAKE_CXX_STANDARD 26)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS ONN)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(cotire)
 include(CPM)
@@ -59,7 +48,6 @@ file(GLOB_RECURSE sources CONFIGURE_DEPENDS
 find_package(magic_enum REQUIRED)
 find_package(Revisited REQUIRED)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/gdb")
 add_subdirectory(gdb)
 
 # Apply warning flags depending on selection
@@ -94,7 +82,7 @@ add_executable(${APPNAME} main.cpp)
 find_package(cxxopts REQUIRED)
 target_link_libraries(${APPNAME} PRIVATE ${LIBNAME} cxxopts::cxxopts)
 
-if(BUILD_TESTS)
+if(BUILD_TESTING)
   enable_testing()
   add_subdirectory(test)
 endif()

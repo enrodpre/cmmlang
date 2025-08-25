@@ -1,74 +1,60 @@
 {
-  "version": 3,
+  "$schema": "https://cmake.org/cmake/help/latest/_downloads/3e2d73bff478d88a7de0de736ba5e361/schema.json",
+  "version": 10,
   "configurePresets": [
     {
-      "name": "debug",
-      "displayName": "Debug Build",
+      "name": "dev",
+      "displayName": "dev build",
       "description": "Debug build with optimization disabled",
       "binaryDir": "${sourceDir}/build",
       "generator": "Ninja",
       "cacheVariables": {
-        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "/usr/bin/clang",
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+        "CMAKE_CXX_STANDARD": "26",
+        "CMAKE_CXX_EXTENSIONS ": "ON",
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_MODULE_PATH": "${sourceDir}/cmake"
       },
       "environment": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "ccache /usr/bin/clang++",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "BUILD_TESTS": "OFF"
+        "WARNING_LEVEL": "SOME"
       }
     },
     {
-      "name": "debug-tests",
-      "displayName": "Debug with Tests",
+      "name": "dev-asan",
+      "displayName": "dev build with sanitizers",
+      "description": "Debug build with optimization disabled and address sanitizers",
+      "inherits": "dev"
+    },
+    {
+      "name": "test",
+      "displayName": "dev with tests",
       "description": "Debug build with unit and integration tests enabled",
-      "inherits": "debug",
-      "binaryDir": "${sourceDir}/build/debug-tests",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build/test",
       "cacheVariables": {
-        "BUILD_TESTS": "ON",
-        "BUILD_UNIT_TESTS": "ON",
-        "BUILD_INTEGRATION_TESTS": "ON"
-      }
-    },
-    {
-      "name": "release-tests",
-      "displayName": "Release with Tests",
-      "description": "Release build with tests for CI/CD",
-      "binaryDir": "${sourceDir}/build/release-tests",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "BUILD_TESTS": "ON",
-        "BUILD_UNIT_TESTS": "ON",
-        "BUILD_INTEGRATION_TESTS": "ON"
+        "BUILD_TESTING": "ON"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "debug",
-      "displayName": "Build Debug",
-      "configurePreset": "debug",
-      "jobs": 4
-    },
-    {
-      "name": "debug-tests",
-      "displayName": "Build Debug with Tests",
-      "configurePreset": "debug-tests",
-      "jobs": 4
-    },
-    {
-      "name": "release-tests",
-      "displayName": "Build Release with Tests", 
-      "configurePreset": "release-tests",
-      "jobs": 4
+      "name": "dev",
+      "displayName": "build for developing",
+      "configurePreset": "dev",
+      "jobs": 12
     }
   ],
   "testPresets": [
     {
-      "name": "unit-tests",
+      "name": "test",
       "displayName": "Run Unit Tests",
       "description": "Run only unit tests",
-      "configurePreset": "debug-tests",
+      "configurePreset": "test",
       "filter": {
         "include": {
           "label": "unit"
@@ -87,10 +73,10 @@
       "name": "integration-tests",
       "displayName": "Run Integration Tests",
       "description": "Run integration/end-to-end tests with the built binary",
-      "configurePreset": "debug-tests",
+      "configurePreset": "test",
       "filter": {
         "include": {
-          "label": "integration"
+          "label": "e2e"
         }
       },
       "output": {
@@ -106,7 +92,10 @@
       "name": "all-tests",
       "displayName": "Run All Tests",
       "description": "Run both unit and integration tests",
-      "configurePreset": "debug-tests",
+      "inherits": [
+        "test",
+        "integration-tests"
+      ],
       "output": {
         "outputOnFailure": true,
         "verbosity": "default"
@@ -114,21 +103,6 @@
       "execution": {
         "noTestsAction": "error",
         "stopOnFailure": false
-      }
-    },
-    {
-      "name": "ci-tests",
-      "displayName": "CI Test Suite",
-      "description": "Complete test suite for CI/CD pipeline",
-      "configurePreset": "release-tests",
-      "output": {
-        "outputOnFailure": true,
-        "verbosity": "verbose",
-        "outputLogFile": "${sourceDir}/build/test-results.log"
-      },
-      "execution": {
-        "noTestsAction": "error",
-        "stopOnFailure": true
       }
     }
   ]

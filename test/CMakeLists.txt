@@ -40,40 +40,35 @@ add_sanitizer_support(address)
 include_directories(${GTEST_INCLUDE_DIRS})
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
-if(BUILD_INTEGRATION_TESTS)
-  set(ENV{PYTEST_INPUT_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/../examples")
-  set(ENV{PYTEST_OUTPUT_DIR} "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(ENV{PYTEST_INPUT_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/../examples")
+set(ENV{PYTEST_OUTPUT_DIR} "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
-  function(create_symlink file)
-    file(CREATE_LINK
+function(create_symlink file)
+  file(CREATE_LINK
     ${CMAKE_CURRENT_SOURCE_DIR}/${file}
     ${CMAKE_CURRENT_BINARY_DIR}/${file}
     SYMBOLIC
   )
-  endfunction()
+endfunction()
 
-  create_symlink(conftest.py)
-  create_symlink(e2e.py)
+create_symlink(conftest.py)
+create_symlink(e2e.py)
 
-  # add_custom_target(${NAME} COMMAND ${UNIT_NAME} --gtest-filter="${NAME}"
-  #   DEPENDS ${UNIT_NAME} WORKING_DIRECTORY CMAKE_CURRENT_BINARY_DIR
-  #   COMMENT "Run ${unit} test suite}")
-  file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/../examples
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/../examples
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-  file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
 
-  add_test(NAME e2e
+add_test(NAME e2e
   COMMAND pytest e2e.py
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-  add_custom_target(test_e2e
+add_custom_target(test_e2e
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure --label-regex "e2e" -VV
     COMMENT "Running integration tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-endif()
 
 add_custom_target(test_all
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -VV
