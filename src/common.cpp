@@ -12,7 +12,7 @@ self_allocated::self_allocated(const cmm::location& loc)
 
 [[nodiscard]] std::string location::string() const { return std::format("({}, {})", start, end); }
 
-string_buffer::string_buffer() { m_actives.emplace_back(); }
+string_buffer::string_buffer() { m_actives.emplace(); }
 
 string_buffer& string_buffer::operator<<(string_buffer& other) {
   active() << other.dump();
@@ -24,7 +24,7 @@ string_buffer& string_buffer::operator<<(const std::string& str) {
   return *this;
 }
 
-void string_buffer::create() { m_actives.emplace_back(); }
+void string_buffer::create() { m_actives.emplace(); }
 
 void string_buffer::save() {
   auto to_save = std::move(m_actives.top());
@@ -37,7 +37,7 @@ void string_buffer::load() {
   m_saved.pop();
 }
 
-std::string string_buffer::dump() { return m_actives.pop_return().str(); }
+std::string string_buffer::dump() { return m_actives.pop_value().str(); }
 
 std::string string_buffer::flush() {
   while (!m_saved.empty()) {

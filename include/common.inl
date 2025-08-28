@@ -127,6 +127,18 @@ std::string classname_only() {
 }
 } // namespace
 
+template <typename From, ScopedEnum To>
+  requires(Castable<From, To>)
+constexpr To cast_enum(From f) {
+  return magic_enum::enum_cast<To>(magic_enum::enum_name(f)).value();
+}
+
+template <ScopedEnum E>
+template <typename From>
+  requires(Castable<From, E>)
+constexpr enumeration<E>::enumeration(From f)
+    : m_value(magic_enum::enum_cast<E>(magic_enum::enum_name(f))) {}
+
 template <ScopedEnum E>
 constexpr enumeration<E>::enumeration()
     : m_value(magic_enum::enum_values<E>()[0]) {}
@@ -143,23 +155,6 @@ template <ScopedEnum E>
 [[nodiscard]] constexpr auto enumeration<E>::value() const noexcept {
   return magic_enum::enum_integer(m_value);
 };
-
-template <ScopedEnum From>
-template <typename To>
-[[nodiscard]] constexpr bool enumeration<From>::is_castable() const {
-
-  if constexpr (Enumerable<To>) {
-    if (auto to =
-            magic_enum::enum_cast<typename To::value_type>(name(), magic_enum::case_insensitive)) {
-      return to.has_value();
-    }
-  } else {
-    if (auto to = magic_enum::enum_cast<To>(name(), magic_enum::case_insensitive)) {
-      return to.has_value();
-    }
-  }
-  return false;
-}
 
 template <ScopedEnum From>
 template <typename To>
@@ -188,6 +183,17 @@ template <ScopedEnum E>
 constexpr std::string enumeration<E>::format() const {
   return std::format("{}::{}", type_name(), name());
 }
+
+template <typename T>
+stack<T>::stack(const container_type& other)
+    : m_data(other) {}
+template <typename T>
+stack<T>::stack(container_type&& other)
+    : m_data(std::move(other)) {}
+template <typename T>
+template <is_range_asignable<T> Range>
+stack<T>::stack(Range&& r)
+    : m_data(std::ranges::to<container_type>(std::forward<Range>(r))) {}
 
 template <typename T>
 bool stack<T>::operator==(const stack& other) const noexcept {
@@ -273,9 +279,8 @@ size_t stack<T>::count(Func func) const {
 }
 template <typename T>
 template <typename... Args>
-void stack<T>::emplace_back(Args&&... args)
   requires std::is_constructible_v<T, Args...>
-{
+void stack<T>::emplace(Args&&... args) {
   m_data.emplace_back(std::forward<Args>(args)...);
 }
 template <typename T>
@@ -287,33 +292,10 @@ void stack<T>::push(T&& t) noexcept {
   return m_data.push_back(std::move(t));
 }
 template <typename T>
-T stack<T>::pop_return() {
-  // Check if T is move constructible
-  if constexpr (std::is_move_constructible_v<T>) {
-    T value = std::move(m_data.back()); // Move the last element
-    m_data.pop_back();                  // Remove it from the container
-    return value;                       // Return the moved value
-  } else if constexpr (std::is_copy_constructible_v<T>) {
-    T value = m_data.back(); // Copy the last element
-    m_data.pop_back();       // Remove it from the container
-    return value;            // Return the copied value
-  } else if constexpr (std::is_copy_assignable_v<T>) {
-    T value;
-    value = m_data.back();
-    m_data.pop_back(); // Remove it from the container
-    return value;      // Return the copied value
-  } else if constexpr (std::is_move_assignable_v<T>) {
-    T value;
-    value = std::move(m_data.back());
-    m_data.pop_back(); // Remove it from the container
-    return value;      // Return the copied value
-  }
-}
-template <typename T>
-T&& stack<T>::pop_move() {
-  auto&& ret = std::move(m_data.back());
-  m_data.pop_back();
-  return std::move(ret);
+auto stack<T>::pop_value() {
+  T t = std::move(top());
+  pop();
+  return t;
 }
 
 template <typename T>

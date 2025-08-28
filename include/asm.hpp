@@ -16,7 +16,7 @@
 #include "ast.hpp"    // for identifier, variable
 #include "common.hpp" // for cstring, formattable, DATASIZE, string_buffer
 #include "macros.hpp" // for BUILD_ENUMERATION_DATA_CLASS, CTOR_ASSIGN_DATA_4
-#include "types.hpp"  // for crtype
+#include "types.hpp"  // for type
 
 namespace cmm {
 enum class instruction_t : uint8_t;
@@ -40,7 +40,7 @@ enum class syscall_t : uint8_t {
 
 BUILD_ENUMERATION_DATA_CLASS(syscall, size_t, n_param, size_t, number)
 
-struct operand : public formattable {
+struct operand : public displayable {
   using content_t = const ast::decl::variable*;
 
   struct symbol_container {
@@ -76,10 +76,10 @@ struct operand : public formattable {
   [[nodiscard]] virtual type_t type() const = 0;
   // [[nodiscard]] virtual size size() const         = 0;
   [[nodiscard]] virtual std::string value() const = 0;
-  [[nodiscard]] std::string format() const override;
+  [[nodiscard]] std::string string() const override;
 
   [[nodiscard]] std::optional<symbol_container> content() const;
-  [[nodiscard]] ptype content_type() const;
+  [[nodiscard]] types::type_id content_type() const;
   [[nodiscard]] content_t variable() const;
   operand* hold_value(content_t);
   operand* hold_address(content_t);

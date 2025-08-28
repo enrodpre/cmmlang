@@ -15,7 +15,7 @@ protected:
   void SetUp() override {
     regs = std::make_unique<assembly::registers>();
     var  = std::make_unique<decl::variable>(
-        cmm::type::create(type_category_t::bool_t), identifier("a"), nullptr);
+        cmm::type::create(category_t::bool_t), identifier("a"), nullptr);
   }
   void TearDown() override {
     regs.reset();

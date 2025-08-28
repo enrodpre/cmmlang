@@ -8,32 +8,32 @@
 using namespace cmm;
 
 struct types_test : public ::testing::Test {
-  static constexpr ptype create_type(type_category_t c) { return std::make_shared<type>(c); }
+  static constexpr type create_type(category_t c) { return std::make_shared<type>(c); }
 
 protected:
-  type_category_t boolean_t = type_category_t::bool_t;
-  ptype boolean             = type::create_fundamental(type_category_t::bool_t);
-  ptype cboolean            = type::create_fundamental(type_category_t::bool_t, true);
+  category_t boolean_t = category_t::bool_t;
+  type boolean             = type::create_fundamental(category_t::bool_t);
+  type cboolean            = type::create_fundamental(category_t::bool_t, true);
 };
 
 TEST_F(types_test, tree) {
-  EXPECT_TRUE(belongs_to(boolean_t, type_category_t::any_t));
-  EXPECT_TRUE(belongs_to(boolean_t, type_category_t::fundamental_t));
-  EXPECT_TRUE(belongs_to(boolean_t, type_category_t::bool_t));
-  EXPECT_FALSE(belongs_to(boolean_t, type_category_t::compound_t));
+  EXPECT_TRUE(belongs_to(boolean_t, category_t::any_t));
+  EXPECT_TRUE(belongs_to(boolean_t, category_t::fundamental_t));
+  EXPECT_TRUE(belongs_to(boolean_t, category_t::bool_t));
+  EXPECT_FALSE(belongs_to(boolean_t, category_t::compound_t));
 }
 
 TEST_F(types_test, comparisons) {
   EXPECT_TRUE(boolean->match(boolean));
-  EXPECT_FALSE(cboolean->match(type::create_fundamental(type_category_t::bool_t)));
+  EXPECT_FALSE(cboolean->match(type::create_fundamental(category_t::bool_t)));
   EXPECT_FALSE(boolean->match(cboolean));
-  EXPECT_TRUE(boolean->match(type::create_fundamental(type_category_t::bool_t)));
+  EXPECT_TRUE(boolean->match(type::create_fundamental(category_t::bool_t)));
 }
 struct binding_test : public ::testing::Test {
-  const ptype int_t     = type::create_fundamental(type_category_t::sint_t);
-  const ptype intref_t  = type::create_lvalue(std::make_shared<const type>(*int_t));
-  const ptype intcref_t = type::create_lvalue(std::make_shared<const type>(*int_t), true);
-  const ptype intrref_t = type::create_rvalue(std::make_shared<const type>(*int_t));
+  const type int_t     = type::create_fundamental(category_t::sint_t);
+  const type intref_t  = type::create_lvalue(std::make_shared<const type>(*int_t));
+  const type intcref_t = type::create_lvalue(std::make_shared<const type>(*int_t), true);
+  const type intrref_t = type::create_rvalue(std::make_shared<const type>(*int_t));
 };
 
 TEST_F(binding_test, LvalueToIntByValue) {

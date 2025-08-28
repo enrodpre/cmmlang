@@ -16,12 +16,11 @@ struct statement;
 namespace expr {
 
 struct semantic_data {
-  semantic_data() = default;
-  bool loaded     = false;
+  bool loaded = false;
   std::optional<value_category_t> value_category;
   bool is_constant_evaluable{};
-  ptype original_type;
-  ptype casted_type;
+  type_id original_type;
+  type_id casted_type;
 };
 
 struct expression : visitable<expression, statement> {
@@ -30,9 +29,9 @@ struct expression : visitable<expression, statement> {
   using visitable<expression, statement>::statement;
 
   semantic_data* semantics() const;
-  virtual ptype type() const {
+  virtual types::type_id type() const {
     const auto* sem = semantics();
-    return sem->casted_type ? sem->casted_type : sem->original_type;
+    return sem->casted_type.is_valid() ? sem->casted_type : sem->original_type;
   }
 
 private:
@@ -78,8 +77,8 @@ struct call : visitable<call, expression> {
   arguments args;
 
   call(decltype(ident)&& ident_, decltype(args)&& args);
-  [[nodiscard]] std::vector<ptype> types() const {
-    return args | std::views::transform([](const expr::expression* expr) -> ptype {
+  [[nodiscard]] std::vector<types::type_id> types() const {
+    return args | std::views::transform([](const expr::expression* expr) -> types::type_id {
              return expr->type();
            }) |
            std::ranges::to<std::vector>();
@@ -111,9 +110,9 @@ using conversion_function = std::function<expression&(expression&)>;
 
 struct type_conversion : visitable<type_conversion, expression> {
   expression& expr;
-  const type_converter func;
+  const types::converter func;
 
-  type_conversion(expression& exp, type_converter fn)
+  type_conversion(expression& exp, types::converter fn)
       : expr(exp),
         func(std::move(fn)) {}
 };

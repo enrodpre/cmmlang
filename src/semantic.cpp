@@ -32,23 +32,23 @@ semantics::visitor::visitor()
 void semantics::visitor::visit(const ast::expr::literal& lit) {
   switch (lit.category) {
     case ast::expr::literal_t::CHAR:
-      lit.semantics()->original_type = cmm::type::create_fundamental(type_category_t::char_t);
+      lit.semantics()->original_type = cmm::type::create_fundamental(category_t::char_t);
       break;
     case ast::expr::literal_t::STRING:
       lit.semantics()->original_type = cmm::type::create_string(lit.value().size());
       break;
     case ast::expr::literal_t::SINT:
-      lit.semantics()->original_type = cmm::type::create_fundamental(type_category_t::sint_t);
+      lit.semantics()->original_type = cmm::type::create_fundamental(category_t::sint_t);
       break;
     case ast::expr::literal_t::UINT:
-      lit.semantics()->original_type = cmm::type::create_fundamental(type_category_t::uint_t);
+      lit.semantics()->original_type = cmm::type::create_fundamental(category_t::uint_t);
       break;
     case ast::expr::literal_t::FALSE:
     case ast::expr::literal_t::TRUE:
-      lit.semantics()->original_type = cmm::type::create_fundamental(type_category_t::bool_t);
+      lit.semantics()->original_type = cmm::type::create_fundamental(category_t::bool_t);
       break;
     case ast::expr::literal_t::FLOAT:
-      lit.semantics()->original_type = cmm::type::create_fundamental(type_category_t::float_t);
+      lit.semantics()->original_type = cmm::type::create_fundamental(category_t::float_t);
       break;
   }
 

@@ -109,11 +109,11 @@
   NOT_COPYABLE_CLS(CLS) \
   NOT_MOVABLE_CLS(CLS)
 
-#define AST_SIBLINGS(...)                                                                 \
+#define AST_SIBLINGS(...)                                                       \
   std::string string() const override { return demangle(typeid(this).name()); }
-#define AST_COMPOSITE(...)                                                                \
+#define AST_COMPOSITE(...)                                                      \
   std::string string() const override { return demangle(typeid(this).name()); }
-#define AST_LEAF                                                                          \
+#define AST_LEAF                                                                \
   std::string string() const override { return demangle(typeid(this).name()); }
 
 #define ENUM_PROPERTY(TYPE, NAME, N) TYPE NAME
@@ -292,3 +292,38 @@ private:              \
   target_t m_obj;     \
   }                   \
   ;
+
+// Recursive expansion helpers
+#define FOR_EACH_1_1(macro, x)       macro(x)
+#define FOR_EACH_1_2(macro, x, ...)  macro(x) FOR_EACH_1_1(macro, __VA_ARGS__)
+#define FOR_EACH_1_3(macro, x, ...)  macro(x) FOR_EACH_1_2(macro, __VA_ARGS__)
+#define FOR_EACH_1_4(macro, x, ...)  macro(x) FOR_EACH_1_3(macro, __VA_ARGS__)
+#define FOR_EACH_1_5(macro, x, ...)  macro(x) FOR_EACH_1_4(macro, __VA_ARGS__)
+#define FOR_EACH_1_6(macro, x, ...)  macro(x) FOR_EACH_1_5(macro, __VA_ARGS__)
+#define FOR_EACH_1_7(macro, x, ...)  macro(x) FOR_EACH_1_6(macro, __VA_ARGS__)
+#define FOR_EACH_1_8(macro, x, ...)  macro(x) FOR_EACH_1_7(macro, __VA_ARGS__)
+#define FOR_EACH_1_9(macro, x, ...)  macro(x) FOR_EACH_1_8(macro, __VA_ARGS__)
+#define FOR_EACH_1_10(macro, x, ...) macro(x) FOR_EACH_1_9(macro, __VA_ARGS__)
+
+#define FOR_EACH_1_N(macro, N, ...) CONCAT(FOR_EACH_1_, N)(macro, __VA_ARGS__)
+#define FOR_EACH_1(macro, ...)      FOR_EACH_1_N(macro, GET_ARG_COUNT(__VA_ARGS__), __VA_ARGS__)
+
+#define USING_ENUM(ENUM) using enum ENUM;
+#define USING_ENUMS(...) FOR_EACH_1(USING_ENUM, __VA_ARGS__)
+
+#define FOR_EACH_2_1(macro, x, y)       macro(x, y)
+#define FOR_EACH_2_2(macro, x, y, ...)  macro(x, y) FOR_EACH_2_1(macro, __VA_ARGS__)
+#define FOR_EACH_2_3(macro, x, y, ...)  macro(x, y) FOR_EACH_2_2(macro, __VA_ARGS__)
+#define FOR_EACH_2_4(macro, x, y, ...)  macro(x, y) FOR_EACH_2_3(macro, __VA_ARGS__)
+#define FOR_EACH_2_5(macro, x, y, ...)  macro(x, y) FOR_EACH_2_4(macro, __VA_ARGS__)
+#define FOR_EACH_2_6(macro, x, y, ...)  macro(x, y) FOR_EACH_2_5(macro, __VA_ARGS__)
+#define FOR_EACH_2_7(macro, x, y, ...)  macro(x, y) FOR_EACH_2_6(macro, __VA_ARGS__)
+#define FOR_EACH_2_8(macro, x, y, ...)  macro(x, y) FOR_EACH_2_7(macro, __VA_ARGS__)
+#define FOR_EACH_2_9(macro, x, y, ...)  macro(x, y) FOR_EACH_2_8(macro, __VA_ARGS__)
+#define FOR_EACH_2_10(macro, x, y, ...) macro(x, y) FOR_EACH_2_9(macro, __VA_ARGS__)
+
+#define FOR_EACH_2_N(macro, N, ...) CONCAT(FOR_EACH_2_, N)(macro, __VA_ARGS__)
+#define FOR_EACH_2(macro, ...)      FOR_EACH_2_(macro, GET_ARG_COUNT(__VA_ARGS__), __VA_ARGS__)
+
+#define IS_TYPE(T1, T2) std::same_v<T1, T2>
+#define ARE_TYPES(...)  FOR_EACH_2(IS_TYPE, __VA_ARGS__)

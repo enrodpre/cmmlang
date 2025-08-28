@@ -1,152 +1,174 @@
 #include "types.hpp"
-#include "common.hpp"
 
 #include <format>
 
 namespace cmm {
+namespace types {
 
-std::string type::string() const {
-  switch (category) {
-    case type_category_t::void_t:
-      return "void";
-    case type_category_t::nullptr_t:
-      return "nullptr_t";
-    case type_category_t::bool_t:
-      return std::format("{}{}bool", c ? "c" : "", v ? "v" : "");
-    case type_category_t::char_t:
-      return std::format("{}{}char", c ? "c" : "", v ? "v" : "");
-    case type_category_t::uint_t:
-      return std::format("{}{}uint", c ? "c" : "", v ? "v" : "");
-    case type_category_t::sint_t:
-      return std::format("{}{}sint", c ? "c" : "", v ? "v" : "");
-    case type_category_t::float_t:
-      return std::format("{}{}float", c ? "c" : "", v ? "v" : "");
-    case type_category_t::lvalue_ref_t:
-      return std::format("{}&{}{}", underlying->string(), c ? "c" : "", v ? "v" : "");
-    case type_category_t::rvalue_ref_t:
-      return std::format("{}&&{}{}", underlying->string(), c ? "c" : "", v ? "v" : "");
-    case type_category_t::pointer_t:
-      return std::format("{}*{}{}", underlying->string(), c ? "c" : "", v ? "v" : "");
-    case type_category_t::array_t:
-      return std::format("<{}, {}>", underlying->string(), rank);
-    case type_category_t::scoped_enum_t:
-    case type_category_t::unscoped_enum_t:
-      return std::format("<{}, {}>", underlying->string(), rank);
-    case type_category_t::class_t:
-      return std::format("{}", underlying->string());
-    case type_category_t::function_t:
-    default:
-      return "";
+core::core(core_t t)
+    : kind(t),
+{}
+core::core(category_t cat)
+    : kind(core_t::Builtin) {
+  auto cat_name = magic_enum::enum_name(cat);
+  name          = cat_name.substr(cat_name.size() - 2);
+}
+
+const info* type_id::operator->() const { return &arena().id(*this); }
+types::info type_id::info() const { return arena().id(*this); }
+
+category_t categorize(type_id t) {
+  if (t->layers.size() == 0) {
+    auto name = t->core.name;
+    return magic_enum::enum_cast<category_t>(name.substr(name.size() - 2)).value();
   }
+  auto outer_fold = t->layers.top();
+  return magic_enum::enum_cast<category_t>(magic_enum::enum_name(outer_fold.tag)).value();
 }
 
-[[nodiscard]] ptype type::create_void() { return create(type_category_t::void_t); }
-
-[[nodiscard]] ptype type::create_fundamental(type_category_t cat, bool b, bool v) {
-  return create(cat, nullptr, 0, b, v);
+size_t core_keyhash::operator()(const std::pair<core, std::vector<layer>>& k) const noexcept {
+  // Simple FNV-like fold
+  auto h = std::hash<int>{}(static_cast<int>(k.first.kind));
+  h ^= std::hash<std::string>{}(k.first.name) + 0x9e3779b9 + (h << 6) + (h >> 2);
+  for (auto& L : k.second) {
+    size_t lh = std::hash<int>{}(static_cast<int>(L.tag));
+    if (L.rank != 0)
+      lh ^= std::hash<size_t>{}(L.rank + 0x9e37);
+    h ^= lh + 0x9e3779b9 + (h << 6) + (h >> 2);
+  }
+  return h;
 }
 
-[[nodiscard]] ptype type::create_pointer(ptype t, bool b, bool v) {
-  return create(type_category_t::pointer_t, t, 0, b, v);
+bool core_keyeq::operator()(const std::pair<core, std::vector<layer>>& a,
+                            const std::pair<core, std::vector<layer>>& b) const noexcept {
+  if (!(a.first == b.first))
+    return false;
+  if (a.second.size() != b.second.size())
+    return false;
+  for (size_t i = 0; i < a.second.size(); ++i)
+    if (!(a.second[i] == b.second[i]))
+      return false;
+  return true;
+}
+match_result& match_result::operator&&(const match_result& other) {
+  ok &= other.ok;
+  return *this;
 }
 
-[[nodiscard]] ptype type::create_lvalue(ptype t, bool b, bool v) {
-  return create(type_category_t::lvalue_ref_t, t, 0, b, v);
-}
-[[nodiscard]] ptype type::create_rvalue(ptype t, bool b, bool v) {
-  return create(type_category_t::rvalue_ref_t, t, 0, b, v);
+match_result& match_result::operator||(const match_result& other) {
+  ok |= other.ok;
+  return *this;
 }
 
-[[nodiscard]] ptype type::create_array(ptype t, size_t n, bool b, bool v) {
-  return create(type_category_t::array_t, t, n, b, v);
+match_result& match_result::operator!() {
+  this->ok = !this->ok;
+  return *this;
 }
 
-[[nodiscard]] ptype type::create_string(size_t n, bool b, bool v) {
-  auto under = create_fundamental(type_category_t::char_t, b, v);
-  return create_array(under, n, b, v);
+matcher::matcher(std::string desc, matcher_t t)
+    : m_desc(desc),
+      m_matcher(t) {}
+
+match_result matcher::operator()(type_id t) const { return m_matcher(t); }
+
+std::string matcher::string() const { return m_desc; }
+
+matcher matcher::operator&&(const matcher& m) const {
+  return {std::format("{} and {}", *this, m),
+          [*this, m](type_id t) -> match_result { return this->m_matcher(t) && m.m_matcher(t); }};
 }
 
-bool belongs_to(const type_category_data& child, type_category_t parent) {
+matcher matcher::operator||(const matcher& m) const {
+  return {std::format("{} or {}", *this, m),
+          [*this, m](type_id t) -> match_result { return this->m_matcher(t) || m.m_matcher(t); }};
+}
+
+matcher matcher::operator!() const {
+  return {std::format("not {}", *this),
+          [this](type_id t) -> match_result { return !this->m_matcher(t); }};
+}
+
+bool belongs_to(const category_data& child, category_t parent) {
   if (parent == child.self) {
     return true;
   }
-  if (child.self == type_category_t::generic_t || child.self == type_category_t::dummy_t) {
+  if (child.self == category_t::generic_t || child.self == category_t::dummy_t) {
     return false;
   }
-  if (parent == type_category_t::any_t) {
+  if (parent == category_t::any_t) {
     return true;
   }
-  if (child.self == type_category_t::any_t) {
+  if (child.self == category_t::any_t) {
     return false;
   }
   return belongs_to(child.parent, parent);
 }
 
-[[nodiscard]] bool type_matcher::match(crptype spec) const {
-  if (const auto& matcher = std::dynamic_pointer_cast<const type_matcher>(spec)) {
-    return m_desc == matcher->m_desc;
-  }
-  // It is a type
-  return m_matcher(spec);
-}
+type_id modifier::operator()(type_id t) const { return arena().get(m_modifier(t.info())); }
+info modifier::operator()(info i) const { return m_modifier(i); }
 
-bool type_matcher::operator()(crptype lhs) const { return m_matcher(lhs); }
-
-std::string type_matcher::string() const { return m_desc; }
-
-type_matcher type_matcher::operator&&(const type_matcher& m) const {
-  return {std::format("{} and {}", *this, m),
-          [*this, &m](crptype t) { return this->m_matcher(t) && m.m_matcher(t); }};
-}
-
-type_matcher type_matcher::operator||(const type_matcher& m) const {
-  return {std::format("{} or {}", *this, m),
-          [*this, &m](crptype t) { return this->m_matcher(t) || m.m_matcher(t); }};
-}
-
-type_matcher type_matcher::operator!() const {
-  return {std::format("not {}", *this),
-          [this](crptype t) { return !this->m_matcher(t); }}; // namespace cmm
-}
-
-ptype type_modifier::operator()(crptype t) const { return m_modifier(t); }
-
-type_modifier type_modifier::operator|(const type_modifier& other) const {
+modifier modifier::operator|(const modifier& other) const {
   return {std::format("{}, {}", m_desc, other.m_desc),
-          [&other, *this](crptype t) -> ptype { return other(m_modifier(t)); }};
+          [=, *this](info t) -> info { return other(m_modifier(t)); }};
 }
 
-bool type_converter::is_convertible(crptype t) const { return m_from->match(t); }
+// bool converter::is_convertible(type t) const { return m_from->match(t); }
 
-ptype type_converter::operator()(ptype t) const {
-  if (!is_convertible(t)) {
-    throw error(std::format("Type {} is not convertible with {}", t, *this));
-  }
-  return m_converter(t);
-}
+// type converter::operator()(type t) const {
+//   if (!is_convertible(t)) {
+//     throw error(std::format("Type {} is not convertible with {}", t, *this));
+//   }
+//   return m_modifier(t);
+// }
 
-using namespace matchers;
-
-// const type_converter nullptr_to_ptr =
-//     cmm::type_converter::builder().name("Nullptr to
-//     pointer").from(NULLPTR_T).with() >> &is_pointer;
-// const type_converter bool_to_any      = cmm::type_converter::builder().name("Bool to
-
-std::vector<ptype> get_convertible_types(crptype from) {
-  return conversions::standard | std::views::filter([from](const type_converter* conv) {
-           return conv->is_convertible(from);
-         }) |
-         std::views::transform(
-             [&from](const type_converter* converter) { return (*converter)(from); }) |
-         std::ranges::to<std::vector>();
-}
-
-bool is_convertible(crptype from, crptype to) {
-  if (from == to) {
-    return true;
-  }
-  auto converted =
-      get_convertible_types(from) | std::views::filter([to](crptype t) { return t == to; });
-  return !std::ranges::empty(converted);
-}
+// std::vector<type> get_convertible_types(type from) {
+//   return conversions::standard |
+//          std::views::filter([from](const converter* conv) { return conv->is_convertible(from); })
+//          | std::views::transform([&from](const converter* converter) { return (*converter)(from);
+//          }) | std::ranges::to<std::vector>();
+// }
+//
+// bool is_convertible(type from, type to) {
+//   if (from == to) {
+//     return true;
+//   }
+//   auto converted =
+//       get_convertible_types(from) | std::views::filter([to](type t) { return t == to; });
+//   return !std::ranges::empty(converted);
+// }
+// std::string type::string() const {
+//   switch (category) {
+//     case category_t::void_t:
+//       return "void";
+//     case category_t::nullptr_t:
+//       return "nullptr_t";
+//     case category_t::bool_t:
+//       return std::format("{}{}bool", c ? "c" : "", v ? "v" : "");
+//     case category_t::char_t:
+//       return std::format("{}{}char", c ? "c" : "", v ? "v" : "");
+//     case category_t::uint_t:
+//       return std::format("{}{}uint", c ? "c" : "", v ? "v" : "");
+//     case category_t::sint_t:
+//       return std::format("{}{}sint", c ? "c" : "", v ? "v" : "");
+//     case category_t::float_t:
+//       return std::format("{}{}float", c ? "c" : "", v ? "v" : "");
+//     case category_t::lvalue_ref_t:
+//       return std::format("{}&{}{}", underlying->string(), c ? "c" : "", v ? "v" : "");
+//     case category_t::rvalue_ref_t:
+//       return std::format("{}&&{}{}", underlying->string(), c ? "c" : "", v ? "v" : "");
+//     case category_t::pointer_t:
+//       return std::format("{}*{}{}", underlying->string(), c ? "c" : "", v ? "v" : "");
+//     case category_t::array_t:
+//       return std::format("<{}, {}>", underlying->string(), rank);
+//     case category_t::scoped_enum_t:
+//     case category_t::unscoped_enum_t:
+//       return std::format("<{}, {}>", underlying->string(), rank);
+//     case category_t::class_t:
+//       return std::format("{}", underlying->string());
+//     case category_t::function_t:
+//     default:
+//       return "";
+//   }
+// }
+}; // namespace types
 } // namespace cmm

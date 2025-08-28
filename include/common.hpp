@@ -148,8 +148,8 @@ struct TypeErasedHash {
 
 struct displayable {
   constexpr virtual ~displayable() = default;
-  [[nodiscard]] virtual std::string repr() const { return string(); }
-  [[nodiscard]] virtual std::string string() const = 0;
+  [[nodiscard]] constexpr virtual std::string repr() const { return string(); }
+  [[nodiscard]] constexpr virtual std::string string() const = 0;
   constexpr operator std::string() const { return string(); };
 };
 
@@ -174,8 +174,14 @@ concept Formattable =
     std::is_base_of_v<cmm::formattable, std::remove_cv_t<std::remove_reference_t<T>>>;
 
 template <typename T>
-concept Displayable =
-    std::is_base_of_v<cmm::displayable, std::remove_cv_t<std::remove_reference_t<T>>>;
+concept Displayable = requires(T t) {
+  { t.string() } -> StringLike;
+};
+
+template <typename T>
+concept DisplayablePtr = requires(T t) {
+  { t->string() } -> StringLike;
+};
 
 template <typename T>
 concept FormattablePtr =
@@ -207,48 +213,51 @@ private:
 } // namespace cmm
 
 // Specialization for cmm::formattable itself
-template <cmm::Displayable T>
-struct std::formatter<T, char> : std::formatter<string_view> {
+template <cmm::Displayable T, typename CharT>
+struct std::formatter<T, CharT> : std::formatter<string_view> {
   template <typename Ctx>
   auto format(const T& obj, Ctx& ctx) const {
     return std::formatter<string_view>::format(obj.string(), ctx);
   }
 };
 
-template <cmm::Displayable T>
-struct std::formatter<std::shared_ptr<T>, char> : std::formatter<string_view> {
+template <cmm::DisplayablePtr T, typename CharT>
+struct std::formatter<T, CharT> : std::formatter<string_view> {
   template <typename Ctx>
-  auto format(const std::shared_ptr<T>& obj, Ctx& ctx) const {
-    return std::formatter<string_view>::format(obj->string(), ctx);
+  auto format(const T& obj, Ctx& ctx) const -> decltype(ctx.out()) {
+    if (obj) {
+      return std::formatter<string_view>::format(obj->string(), ctx);
+    }
+    return "No contained value";
   }
 };
 
-template <cmm::Displayable T>
-struct std::formatter<T*, char> : std::formatter<string_view> {
-  template <typename Ctx>
-  auto format(const T* obj, Ctx& ctx) const {
-    return std::formatter<string_view>::format(obj->string(), ctx);
-  }
-};
-
-// Specialization for cmm::formattable itself
-template <cmm::Formattable T>
-struct std::formatter<T, char> : std::formatter<string_view> {
-  template <typename Ctx>
-  auto format(const T& obj, Ctx& ctx) const {
-    return std::formatter<string_view>::format(obj.format(), ctx);
-  }
-};
-
-template <cmm::Formattable T>
-struct std::formatter<T*, char> : std::formatter<string_view> {
-  template <typename Ctx>
-  auto format(const T* obj, Ctx& ctx) const {
-    return std::formatter<string_view>::format(obj->format(), ctx);
-  }
-};
+// // Specialization for cmm::formattable itself
+// template <template <class...> class Wrapper, typename CharT, cmm::Displayable T, typename...
+// Args> struct std::formatter<Wrapper<T, Args...>, CharT> {
+//   std::formatter<T, CharT> inner;
+//   std::formatter<std::basic_string_view<CharT>, CharT> svf;
+//
+//   constexpr auto parte(std::basic_format_parse_context<CharT>& ctx) { return inner.parse(ctx); }
+//
+//   template <typename Ctx>
+//   auto format(const Wrapper<T, Args...>& obj, Ctx& ctx) const -> decltype(ctx.out()) {
+//     if (obj) {
+//       return svf.format(obj->string(), ctx);
+//     }
+//     return inner.format("No contained value", ctx);
+//   }
+// };
 
 namespace cmm {
+struct dummy {
+  std::string string() const;
+};
+static_assert(std::formattable<dummy, char>);
+static_assert(std::formattable<std::unique_ptr<dummy>, char>);
+static_assert(std::formattable<std::optional<dummy>, char>);
+static_assert(std::formattable<std::shared_ptr<dummy>, char>);
+
 template <typename T>
 concept uint_comparable_t = std::convertible_to<T, uint8_t>;
 
@@ -297,24 +306,26 @@ struct enumeration;
 template <typename E>
 concept Enumerable = DerivedFromTemplate<E, enumeration> && ScopedEnum<E>;
 
+template <typename From, typename To>
+concept Castable = magic_enum::enum_contains<To>(magic_enum::enum_type_name<From>());
+
+template <ScopedEnum From, ScopedEnum To>
+  requires(Castable<From, To>)
+constexpr To cast_enum(From);
+
 template <ScopedEnum E>
 struct enumeration : public formattable {
   constexpr enumeration();
+  constexpr enumeration(E e)
+      : m_value(e) {};
+  template <typename From>
+    requires(Castable<From, E>)
+  constexpr explicit enumeration(From);
   constexpr enumeration& operator=(const enumeration&) = default;
   constexpr enumeration& operator=(enumeration&&)      = default;
   constexpr enumeration(enumeration&&)                 = default;
   constexpr enumeration(const enumeration&)            = default;
-  constexpr enumeration(E e)
-      : m_value(e) {};
-  constexpr ~enumeration() override = default;
-
-  // Conversion
-  constexpr operator E() const { return inner(); };
-  constexpr operator uint8_t() const { return (uint8_t)value(); };
-  template <typename To>
-  [[nodiscard]] constexpr bool is_castable() const;
-  template <typename To>
-  constexpr To cast() const;
+  constexpr ~enumeration() override                    = default;
 
   // Data
   static constexpr auto type_name() noexcept;
@@ -323,6 +334,12 @@ struct enumeration : public formattable {
   [[nodiscard]] constexpr E inner() const noexcept { return m_value; }
   [[nodiscard]] constexpr auto value() const noexcept;
   [[nodiscard]] constexpr std::string format() const override;
+
+  // Conversion
+  constexpr operator E() const { return inner(); };
+  constexpr operator uint8_t() const { return (uint8_t)value(); };
+  template <typename To>
+  constexpr To cast() const;
 
   using value_type = E;
 
@@ -371,11 +388,16 @@ protected:
 template <typename T, template <typename> class BaseTemplate>
 concept DerivedFromTemplate = std::is_base_of_v<BaseTemplate<typename T::value_type>, T>;
 
+template <class Range, class T>
+concept is_range_asignable = std::ranges::input_range<Range> &&
+                             std::convertible_to<std::ranges::range_reference_t<Range>, T>;
+
 template <typename T>
 class stack {
 public:
   using value_type                   = T;
   using pointer_type                 = T*;
+  using container_type               = std::vector<T>;
   using const_pointer_type           = const T*;
   using reference_type               = T&;
   using const_reference_type         = const T&;
@@ -390,6 +412,11 @@ public:
   stack(stack&&) noexcept            = default;
   stack& operator=(const stack&)     = default;
   stack& operator=(stack&&) noexcept = default;
+
+  stack(const container_type&);
+  stack(container_type&&);
+  template <is_range_asignable<T> Range>
+  stack(Range&&);
 
   bool operator==(const stack& other) const noexcept;
   bool operator!=(const stack& other) const noexcept;
@@ -416,13 +443,12 @@ public:
   template <typename Func>
   size_t count(Func func) const;
   template <typename... Args>
-  void emplace_back(Args&&... args)
-    requires std::is_constructible_v<T, Args...>;
+    requires std::is_constructible_v<T, Args...>
+  void emplace(Args&&... args);
   void push(const T& t);
   void push(T&& t) noexcept;
   void pop();
-  T&& pop_move();
-  T pop_return();
+  auto pop_value();
   void clear() noexcept;
   void swap(stack& other) noexcept;
   [[nodiscard]] constexpr size_t size() const noexcept;
@@ -430,12 +456,17 @@ public:
   [[nodiscard]] constexpr bool empty() const noexcept;
 
 protected:
-  std::vector<T> m_data;
+  container_type m_data;
 };
 
-template <typename... Ts>
+template <class T>
+inline constexpr bool always_false = false;
+
+template <typename Ret, typename... Ts>
 struct overloaded : Ts... {
   using Ts::operator()...;
+  template <typename T>
+  consteval auto operator()(T) const = delete;
 };
 
 template <typename... Ts>
@@ -1188,5 +1219,6 @@ constexpr auto vector_to_location = [](std::vector<N> v) {
                                       std::plus<std::optional<location>>()) |
          TO_VEC;
 };
+
 } // namespace cmm
 #include "common.inl"

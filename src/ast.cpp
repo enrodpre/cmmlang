@@ -41,7 +41,7 @@ variable::variable(specifiers&& spec, decltype(rank) r, identifier id, decltype(
       rank(r),
       init(i) {}
 
-variable::variable(ptype t, decltype(ident) id, decltype(init) init)
+variable::variable(types::type_id t, decltype(ident) id, decltype(init) init)
     : variable(specifiers(std::move(t)), nullptr, std::move(id), init) {}
 
 std::vector<node*> variable::children() { return {to_node(&specs), rank, init}; }
@@ -58,8 +58,7 @@ std::vector<node*> decl::function::children() {
 }
 
 assembly::operand* decl::conversion_function::operator()(assembly::operand* reg) const noexcept {
-  crptype from = reg->content_type();
-  crptype to_t = to(from);
+  auto from = reg->content_type();
 
   // TODO
   return {};
@@ -113,15 +112,15 @@ jump::return_::return_(ast::keyword&& k, expr::expression* expr_)
       expr(expr_) {}
 std::vector<node*> jump::return_::children() { return {&keyword, expr}; }
 
-// std::vector<ptype> conversion_store::get_convertible_types(crtype from) const {
+// std::vector<type> conversion_store::get_convertible_types(type from) const {
 //   return get_conversions(from) | std::views::transform([&from](const auto& conversion) ->
-//   ptype {
+//   type {
 //            return &conversion->to(from);
 //          }) |
 //          std::ranges::to<std::vector>();
 // }
 
-// std::vector<const conversion_function*> conversion_store::get_conversions(crtype from) const {
+// std::vector<const conversion_function*> conversion_store::get_conversions(type from) const {
 //   auto mangled_from = from.format();
 //   auto glob_range =
 //       m_glob_store | std::views::filter([&from](const glob_conversion& fn) -> bool {
@@ -144,7 +143,7 @@ std::vector<node*> jump::return_::children() { return {&keyword, expr}; }
 callable_contract ast::decl::function::contract() const {
   return {specs.type.value(),
           ident.value(),
-          params | std::views::transform([](const auto& param) -> ptype {
+          params | std::views::transform([](const auto& param) -> types::type_id {
             return param->specs.type.value();
           }) | std::ranges::to<std::vector>()};
 }

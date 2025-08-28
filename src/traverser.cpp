@@ -37,16 +37,16 @@ translation_unit& ast_completer::complete(translation_unit& t) {
 
 void ast_completer::conversions_visitor::visit(ast::expr::binary_operator& bin) {
   REGISTER_INFO("visited{}", bin);
-  if (bin.semantics()->original_type->category == type_category_t::bool_t) {
+  if (bin.semantics()->original_type->category == category_t::bool_t) {
     // bin.left = *bool_wrap_if(&bin.left);
   }
-  if (bin.semantics()->original_type->category == type_category_t::bool_t) {
+  if (bin.semantics()->original_type->categorize() == types::category_t::bool_t) {
     // bin.right = *bool_wrap_if(&bin.right);
   }
 }
 
 void ast_completer::conversions_visitor::visit(ast::expr::unary_operator& un) {
-  if (un.semantics()->original_type->category == type_category_t::bool_t) {
+  if (un.semantics()->original_type->categorize() == types::category_t::bool_t) {
     // un.expr = *bool_wrap_if(&un.expr);
   }
 }
@@ -64,8 +64,8 @@ void ast_completer::conversions_visitor::visit(ast::selection::if_&) {
 }
 
 expr::expression* ast_completer::conversions_visitor::bool_wrap_if(expr::expression* e) {
-  if (e != nullptr && e->type()->category != type_category_t::bool_t) {
-    return allocator.emplace<expr::implicit_type_conversion>(*e, conversions::any_to_bool);
+  if (e != nullptr && e->type()->categorize() != types::category_t::bool_t) {
+    // return allocator.emplace<expr::implicit_type_conversion>(*e, conversions::any_to_bool);
   }
   return e;
 }
@@ -143,7 +143,7 @@ void ast_traverser::end_scope() {
 
 //
 // std::optional<assembly::operand*> ast_traverser::call_function(const identifier& t,
-//                                                                const std::vector<ptype>&
+//                                                                const std::vector<type>&
 //                                                                types, const expr::arguments&
 //                                                                args) {
 //   decl::signature sig(t.value(), types);

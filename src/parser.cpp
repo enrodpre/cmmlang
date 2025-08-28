@@ -214,7 +214,7 @@ ast::expr::expression* parser::parse_lhs_expr() {
       op = operator_t::pre_dec;
     } else if (next.type == token_t::inc) {
       op = operator_t::pre_inc;
-    } else if (token_data(next.type).is_castable<operator_t>()) {
+    } else {
       op = token_data(next.type).cast<operator_t>();
     }
     operator_ t(token, op);
@@ -320,14 +320,14 @@ ast::storage parse_storage(const std::vector<token>& ts) {
   throw_error<compilation_error_t::INCOMPATIBLE_TOKEN>(storages[1]);
 }
 
-constexpr type_category_t parse_enum_type(const token_data& token_type, bool unsigned_) {
+constexpr types::category_t parse_enum_type(const token_data& token_type, bool unsigned_) {
   if (token_type == token_t::int_t) {
-    return unsigned_ ? type_category_t::uint_t : type_category_t::sint_t;
+    return unsigned_ ? types::category_t::uint_t : types::category_t::sint_t;
   } // namespace cmm::ast
-  return token_type.cast<type_category_t>();
+  return token_type.cast<types::category_t>();
 }
 
-ptype parse_type(const std::vector<token>& ts) {
+type_id parse_type(const std::vector<token>& ts) {
   bool const_    = false;
   bool volatile_ = false;
   bool unsigned_ = false;

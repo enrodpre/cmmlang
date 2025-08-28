@@ -262,10 +262,6 @@ concept Every = (std::is_same_v<T, Ts> && ...);
 template <typename T>
 concept Str = std::is_convertible_v<T, std::string_view>;
 
-template <typename T>
-concept StrSource = std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view> ||
-                    std::is_same_v<T, const char*>;
-
 template <typename T, typename = void>
 struct ensure_pointer {
   using type = T*;
@@ -432,3 +428,7 @@ concept should_use_arrow = std::is_pointer_v<std::remove_cvref_t<T>>;
   } else {                                                \
     OBJ.FUNC                                              \
   }
+
+template <class T>
+concept StringLike = std::is_same_v<std::decay_t<T>, std::string> ||
+                     std::is_same_v<std::decay_t<T>, std::string_view>;

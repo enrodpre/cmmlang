@@ -153,7 +153,7 @@ const T* compilation_unit::get_callable(
   auto argument_types = argument_expressions | TRANSFORM(to_type) | TO_VEC;
 
   std::vector<const T*> overloads;
-  std::vector<ptype> parameter_types;
+  std::vector<types::type_id> parameter_types;
   if constexpr (std::is_same_v<T, builtin_operator_data>) {
     overloads = get_builtin_operator(id);
   } else if constexpr (std::is_same_v<T, decl::function>) {
@@ -372,14 +372,14 @@ const T* compilation_unit::resolve_overloads(
           // Binding rules are supposed to be counted as  a implicit conversions
           // But for now we'll just take into account the implicit conversion rule
           // on those parameter types that are not reference (hence applies the binding rule)
-          if (matchers::is_ref(parameter.type)) {
+          if (types::is_reference(parameter.type)) {
             // If is a lvalue argument with a non const lvalue ref parameter
             bool rvaluearg_nonconstlvalue =
-                (matchers::is_lvalue && matchers::is_const)(parameter.type) &&
+                (types::is_lvalue && types::is_const)(parameter.type) &&
                 expression->semantics()->value_category == value_category_t::RVALUE;
             // Or lvalue arg with rvalue reference parameter
             bool lvaluearg_rvaluerefparam =
-                matchers::is_rvalue(parameter.type) &&
+                types::is_rvalue(parameter.type) &&
                 expression->semantics()->value_category == value_category_t::LVALUE;
             // Is not viable function
             return !rvaluearg_nonconstlvalue && !lvaluearg_rvaluerefparam;
@@ -413,15 +413,15 @@ template <typename T>
   requires(std::is_same_v<T, const ast::decl::function*> ||
            std::is_same_v<T, const builtin_operator_data*>)
 [[nodiscard]] std::vector<T> compilation_unit::progressive_prefix_match(
-    const std::vector<ptype>& argument_types,
+    const std::vector<type>& argument_types,
     const std::vector<T>& possible_fns) const {
   return argument_types | std::views::enumerate |
          std::views::transform([&possible_fns](const auto& pair) {
-           auto i              = std::get<0>(pair);
-           ptype castable_type = std::get<1>(pair);
+           auto i             = std::get<0>(pair);
+           type castable_type = std::get<1>(pair);
 
-           auto r              = get_convertible_types(castable_type) |
-                    std::views::transform([i, &possible_fns](const ptype& casted_type) {
+           auto r             = get_convertible_types(castable_type) |
+                    std::views::transform([i, &possible_fns](const type& casted_type) {
                       auto p = possible_fns | std::views::filter([i, casted_type](const T& fn) {
                                  return fn->signature().argument_types.at(i)->string() ==
                                         casted_type->string();
@@ -434,14 +434,14 @@ template <typename T>
          std::views::join | std::ranges::to<std::vector>();
 }
 template std::vector<const builtin_operator_data*> compilation_unit::progressive_prefix_match(
-    const std::vector<ptype>&,
+    const std::vector<type>&,
     const std::vector<const builtin_operator_data*>&) const;
 template std::vector<const ast::decl::function*> compilation_unit::progressive_prefix_match(
-    const std::vector<ptype>&,
+    const std::vector<type>&,
     const std::vector<const ast::decl::function*>&) const;
 
-[[nodiscard]] bool compilation_unit::match_arguments(const std::vector<ptype>& builtin,
-                                                     const std::vector<ptype>& called) {
+[[nodiscard]] bool compilation_unit::match_arguments(const std::vector<type>& builtin,
+                                                     const std::vector<type>& called) {
   return std::ranges::all_of(std::views::zip(builtin, called), [](const auto& pair) {
     const auto& [required, actual] = pair;
     return required->match(actual);

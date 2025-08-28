@@ -102,13 +102,15 @@ private:
 };
 
 struct type : visitable<type, node> {
-  type(ptype t)
-      : m_value(std::move(t)) {}
+  type(types::type_id t)
+      : m_value(t) {}
 
-  term_properties(ptype);
+  [[nodiscard]] type value() const { return m_value; }
+  std ::string string() const override { return std ::format("{}", m_value); }
+  std ::vector<node*> children() override { return std ::vector<node*>{}; };
 
 private:
-  ptype m_value;
+  type_id m_value;
 };
 
 struct identifier : visitable<identifier, node> {
@@ -158,6 +160,7 @@ struct identifier;
 struct unary_operator;
 struct call;
 struct binary_operator;
+struct arguments;
 struct implicit_type_conversion;
 }; // namespace expr
 
@@ -228,10 +231,6 @@ struct siblings : public vector<T>, public visitable<siblings<T>, node> {
   };
 };
 
-namespace expr {
-using arguments = siblings<expr::expression*>;
-}
-
 DERIVE_OK(node, statement);
 
 using global_declarations = siblings<declaration*>;
@@ -274,7 +273,7 @@ struct specifiers : visitable<specifiers, node> {
   ast::storage storage;
   specifiers(ast::type&&, ast::linkage&&, ast::storage&&);
 
-  specifiers(ptype t, decltype(linkage) l = {}, decltype(storage) s = {})
+  specifiers(types::type_id t, decltype(linkage) l = {}, decltype(storage) s = {})
       : type(std::move(t)),
         linkage(std::move(l)),
         storage(std::move(s)) {}
@@ -305,7 +304,7 @@ struct variable : visitable<variable, declaration> {
   expr::expression* init;
 
   variable(specifiers&&, decltype(rank), identifier, decltype(init));
-  variable(ptype, decltype(ident), decltype(init));
+  variable(types::type_id, decltype(ident), decltype(init));
 
   std::string repr() const override { return std::format("variable_{}", string()); }
   std::vector<node*> children() override;
@@ -321,9 +320,9 @@ struct function : visitable<function, declaration>, public callable {
 
   function(decltype(specs)&&, decltype(ident)&&, decltype(params)&&, decltype(body));
 
-  function(operator_& name, ptype ret, decltype(params)& p, decltype(body) b)
+  function(operator_& name, types::type_id ret, decltype(params)& p, decltype(body) b)
       : visitable<function, declaration>(name),
-        specs(std::move(ret)),
+        specs(ret),
         params(p),
         body(b) {}
 
@@ -375,8 +374,8 @@ struct conversion_function : public function {
   enum class conversion_type_t : uint8_t { IMPLICIT, EXPLICIT };
   conversion_type_t type;
   conversion_function(const decltype(body)&);
-  [[nodiscard]] virtual bool is_convertible(ptype) const noexcept = 0;
-  [[nodiscard]] virtual ptype to(crptype) const noexcept          = 0;
+  [[nodiscard]] virtual bool is_convertible(types::type_id) const noexcept = 0;
+  [[nodiscard]] virtual types::type_id to(types::type_id) const noexcept   = 0;
   [[nodiscard]] virtual assembly::operand* operator()(assembly::operand*) const noexcept;
   [[nodiscard]] bool is_implicit() const { return type == conversion_type_t::IMPLICIT; };
   [[nodiscard]] bool is_explicit() const { return type == conversion_type_t::EXPLICIT; };
@@ -392,11 +391,11 @@ public:
   // std::unordered_map<key_type, value_type>;
 
   // conversion_store() = default;
-  // [[nodiscard]] bool is_convertible(ptype, ptype) const;
-  // [[nodiscard]] std::vector<ptype> get_convertible_types(ptype) const;
+  // [[nodiscard]] bool is_convertible(type, type) const;
+  // [[nodiscard]] std::vector<type> get_convertible_types(type) const;
   // [[nodiscard]] std::vector<const decl::conversion_function*>
-  // get_conversions(ptype) const; void emplace_direct(const
-  // decltype(decl::conversion_function::body)&, ptype, ptype); void
+  // get_conversions(type) const; void emplace_direct(const
+  // decltype(decl::conversion_function::body)&, type, type); void
   // emplace_glob(std::string&&,
   //                   const decltype(decl::conversion_function::body)&,
   //                   const decl::glob_conversion::condition_t&,
@@ -623,18 +622,35 @@ struct generic_node_visitor {
   virtual ~generic_node_visitor() = default;
 
   // entry point for visiting any node
-  void visit(const node& n) { visit_impl(n); }
+  void visit(node& n) { visit_impl(n); }
 
 protected:
   // Override this to implement your check logic on any node
-  virtual void check(const node& n) = 0;
+  virtual void check(node& n) = 0;
 
 private:
-  void visit_impl(const node& n) {
+  void visit_impl(node& n) {
     check(n); // call user-defined check
 
     // recursively visit children if this is a composite
     // if (const auto* c = dynamic_cast<const node*>(&n)) {}
+  }
+};
+
+struct ast_pp_visitor : public generic_node_visitor {
+  std::string result;
+  int indent_level = 0;
+
+protected:
+  void check(node& n) override {
+    result += std::string(indent_level * 2, ' ') + n.string() + "\n";
+
+    indent_level++;
+    for (auto* child : n.children()) {
+      if (child)
+        visit(*child);
+    }
+    indent_level--;
   }
 };
 

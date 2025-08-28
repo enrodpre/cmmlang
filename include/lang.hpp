@@ -45,10 +45,10 @@ public:
   mangled_name(value_type&& v)
       : m_string(std::move(v)) {}
 
-  static mangled_name variable(cstring, crptype);
+  static mangled_name variable(cstring, type_id);
   static mangled_name label(cstring);
-  static mangled_name function(cstring, const std::vector<ptype>&);
-  static std::string types(const std::vector<ptype>&);
+  static mangled_name function(cstring, const std::vector<type_id>&);
+  static std::string types(const std::vector<type_id>&);
 
   [[nodiscard]] const value_type& str() const;
   operator std::string() const;
@@ -59,9 +59,9 @@ private:
 
 struct callable_signature : displayable {
   std::string name;
-  std::vector<ptype> argument_types;
+  std::vector<type_id> argument_types;
 
-  callable_signature(cstring, std::vector<ptype>);
+  callable_signature(cstring, std::vector<type_id>);
 
   [[nodiscard]] std::string string() const override {
     return mangled_name::function(name, argument_types);
@@ -78,8 +78,8 @@ struct callable_signature : displayable {
 };
 
 struct callable_contract : public callable_signature {
-  ptype return_type;
-  callable_contract(ptype ret, cstring n, std::vector<ptype> types)
+  type_id return_type;
+  callable_contract(type_id ret, cstring n, std::vector<type_id> types)
       : callable_signature(n, std::move(types)),
         return_type(std::move(ret)) {}
   bool operator==(const callable_contract& other) const {
@@ -89,33 +89,18 @@ struct callable_contract : public callable_signature {
 
 struct parameter {
   // value_category_t value_category;
-  ptype type;
+  type_id type;
   std::string identifier;
   ast::expr::expression* init;
   const ast::decl::variable* decl;
-  parameter(ptype t, std::string id, decltype(init) i, decltype(decl) d)
+  parameter(type_id t, std::string id, decltype(init) i, decltype(decl) d)
       : type(std::move(t)),
         identifier(std::move(id)),
         init(i),
         decl(d) {}
-  parameter(ptype t, std::string id)
+  parameter(type_id t, std::string id)
       : parameter(std::move(t), std::move(id), nullptr, nullptr) {}
 };
-
-// struct bound_argument : public parameter {
-//   assembly::operand* address;
-//
-//   bound_argument(ptype t,
-//                  std::string id,
-//                  decltype(init) i,
-//                  decltype(decl) d,
-//                  decltype(address) addr)
-//       : parameter(std::move(t), std::move(id), i, d),
-//         address(addr) {}
-//   bound_argument(ptype t, std::string id, decltype(address) addr)
-//       : parameter(std::move(t), std::move(id), nullptr, nullptr),
-//         address(addr) {}
-// };
 
 using bound_argument = parameter;
 
@@ -136,7 +121,7 @@ struct instruction {
 };
 
 enum class builtin_signature_t : uint8_t { MAIN, SYSCALL, EXIT, PRINT };
-using header_arguments_t = std::vector<ptype>;
+using header_arguments_t = std::vector<type_id>;
 
 struct builtin_signature_data : public cmm::enumeration<builtin_signature_t>,
                                 public displayable,
@@ -162,8 +147,8 @@ struct operator_;
 
 struct builtin_operator_data : callable {
   using identifier_t = ast::operator_;
-  ptype ret;
-  std::vector<ptype> params;
+  type_id ret;
+  std::vector<type_id> params;
   std::vector<instruction> ins;
 
   builtin_operator_data(decltype(ret) c, decltype(ret) b, decltype(ins)&& e)
@@ -242,35 +227,35 @@ enum class binding_aftermath_t : u_int8_t { DIRECT, COPY, TEMPORARY };
 
 struct binding_rule {
   binding_aftermath_t aftermath;
-  type_matcher matcher;
-  type_modifier modifier;
+  types::matcher matcher;
+  types::modifier modifier;
 };
 
 inline static const magic_enum::containers::array<value_category_t, std::vector<binding_rule>>
     binding_rules{
         {{// LVALUE
-          {{binding_aftermath_t::COPY, !matchers::is_ref, modifiers::identity},
-           {binding_aftermath_t::DIRECT, !matchers::is_ref, modifiers::add_lvalue_reference},
+          {{binding_aftermath_t::COPY, !types::is_reference},
+           {binding_aftermath_t::DIRECT, !types::is_reference, types::add_lvalue_reference},
            {binding_aftermath_t::DIRECT,
-            !matchers::is_ref,
-            modifiers::add_lvalue_reference | modifiers::add_const}},
+            !types::is_reference,
+            types::add_lvalue_reference | types::add_const}},
           // PRVALUE
-          {{binding_aftermath_t::COPY, !matchers::is_ref, modifiers::identity},
+          {{binding_aftermath_t::COPY, !types::is_reference},
            {binding_aftermath_t::TEMPORARY,
-            !matchers::is_ref,
-            modifiers::add_lvalue_reference | modifiers::add_const},
-           {binding_aftermath_t::DIRECT, !matchers::is_ref, modifiers::add_rvalue_reference}},
+            !types::is_reference,
+            types::add_lvalue_reference | types::add_const},
+           {binding_aftermath_t::DIRECT, !types::is_reference, types::add_rvalue_reference}},
           // XVALUE
-          {{binding_aftermath_t::COPY, matchers::is_rvalue, modifiers::remove_reference},
+          {{binding_aftermath_t::COPY, types::is_rvalue, types::remove_reference},
            {binding_aftermath_t::DIRECT,
-            matchers::is_rvalue,
-            modifiers::add_rvalue_reference | modifiers::add_const},
-           {binding_aftermath_t::DIRECT, matchers::is_rvalue, modifiers::identity}}}}};
+            types::is_rvalue,
+            types::add_rvalue_reference | types::add_const},
+           {binding_aftermath_t::DIRECT, types::is_rvalue}}}}};
 
-extern std::vector<ptype> get_bindable_candidates(value_category_t, crptype);
-extern bool is_bindeable(value_category_t, crptype, crptype);
-extern ptype bind_argument(value_category_t, crptype, crptype);
-extern value_category_t get_value_category(crptype);
+extern std::vector<type_id> get_bindable_candidates(value_category_t, type_id);
+extern bool is_bindeable(value_category_t, type_id, type_id);
+extern type_id bind_argument(value_category_t, type_id, type_id);
+extern value_category_t get_value_category(type_id);
 
 struct value {};
 
@@ -285,7 +270,7 @@ struct object;
 
 struct sizeof_ {
   STATIC_CLS(sizeof_);
-  constexpr static size_t operator()(const type&);
+  constexpr static size_t operator()(const type_id&);
   constexpr static size_t operator()(const object&);
 };
 
@@ -295,13 +280,13 @@ struct object {
   std::string name;
   align alignment;
   storage_t storage;
-  cmm::type type;
+  type_id type;
   cmm::value* value;
 };
 
-constexpr size_t cmm::sizeof_::operator()(const type& t) {
-  using enum type_category_t;
-  switch (t.category) {
+constexpr size_t cmm::sizeof_::operator()(const type_id& t) {
+  using enum types::category_t;
+  switch (t->categorize()) {
     case lvalue_ref_t:
     case rvalue_ref_t:
     case nullptr_t:
@@ -323,14 +308,14 @@ constexpr size_t cmm::sizeof_::operator()(const type& t) {
     case unscoped_enum_t:
     case class_t:
       return 0;
-    case type_category_t::any_t:
-    case type_category_t::fundamental_t:
-    case type_category_t::arithmetic_t:
-    case type_category_t::integral_t:
-    case type_category_t::compound_t:
-    case type_category_t::indirection_t:
-    case type_category_t::reference_t:
-    case type_category_t::enum_t:
+    case any_t:
+    case fundamental_t:
+    case arithmetic_t:
+    case integral_t:
+    case compound_t:
+    case indirection_t:
+    case reference_t:
+    case enum_t:
     default:
       break;
   }

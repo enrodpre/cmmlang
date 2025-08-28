@@ -11,12 +11,10 @@
 #include "asm.hpp"
 #include "ast.hpp"
 #include "common.hpp"
-#include "expr.h"
 #include "lang.hpp"
 #include "traverser.hpp"
 
 namespace cmm {
-
 namespace ast {
 struct identifier;
 struct translation_unit;
@@ -127,12 +125,14 @@ private:
   const T* resolve_overloads(Id,
                              std::vector<const T*> candidates,
                              std::vector<expr::expression*>) const;
-  [[nodiscard]] static bool match_arguments(const std::vector<ptype>&, const std::vector<ptype>&);
+  [[nodiscard]] static bool match_arguments(const std::vector<types::type_id>&,
+                                            const std::vector<types::type_id>&);
   template <typename T>
     requires(std::is_same_v<T, const ast::decl::function*> ||
              std::is_same_v<T, const builtin_operator_data*>)
-  [[nodiscard]] std::vector<T> progressive_prefix_match(const std::vector<ptype>& argument_types,
-                                                        const std::vector<T>& possible_fns) const;
+  [[nodiscard]] std::vector<T> progressive_prefix_match(
+      const std::vector<types::type_id>& argument_types,
+      const std::vector<T>& possible_fns) const;
 };
 
 } // namespace cmm::ir

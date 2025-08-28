@@ -21,7 +21,7 @@ std::string operand::format() const { return value(); }
 
 [[nodiscard]] std::optional<operand::symbol_container> operand::content() const { return m_symbol; }
 
-[[nodiscard]] ptype operand::content_type() const { return content().value().content->specs.type; };
+[[nodiscard]] type operand::content_type() const { return content().value().content->specs.type; };
 
 [[nodiscard]] operand::content_t operand::variable() const { return m_symbol.value().content; }
 

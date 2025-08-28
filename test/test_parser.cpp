@@ -119,7 +119,7 @@ TEST_F(ParserTest, Vardecl) {
   EXPECT_EQ(vardecl->ident.value(), "var");
   auto* expr = cast<expr::literal*>(vardecl->init);
   EXPECT_EQ("5", expr->value());
-  EXPECT_EQ(type_category_t::sint_t, expr->type()->category);
+  EXPECT_EQ(category_t::sint_t, expr->type()->category);
 }
 
 TEST_F(ParserTest, binop_expression) {
