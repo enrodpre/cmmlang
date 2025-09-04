@@ -252,20 +252,7 @@
 #define ADD_POINTER_TO_POINTERS(...) EVAL(ADD_PTR_PTR_IMPL(__VA_ARGS__))
 
 template <typename T>
-concept Ptr = std::is_pointer_v<T>;
-template <typename T>
-concept Ref = std::is_lvalue_reference_v<T>;
-
-template <typename T, typename... Ts>
-concept Every = (std::is_same_v<T, Ts> && ...);
-
-template <typename T>
 concept Str = std::is_convertible_v<T, std::string_view>;
-
-template <typename T, typename = void>
-struct ensure_pointer {
-  using type = T*;
-};
 
 template <typename T>
 concept IsTrivial = std::is_trivially_default_constructible_v<T> && std::is_trivially_copyable_v<T>;
@@ -302,15 +289,6 @@ concept Comparable = requires(T t, S s) {
   { s == t } -> std::convertible_to<bool>;
 };
 
-template <typename From, typename To>
-concept convertible_t = std::is_convertible_v<From, To>;
-
-template <typename T>
-concept pointer_t = std::is_pointer_v<T>;
-
-template <typename T>
-concept not_pointer_t = !std::is_pointer_v<T>;
-
 template <template <typename...> class C, typename... Ts>
 auto is_base_of_template_t_impl(const C<Ts...>*) -> std::true_type;
 
@@ -320,36 +298,13 @@ auto is_base_of_template_t_impl(...) -> std::false_type;
 template <typename T, template <typename...> class C>
 using is_base_of_template_t = decltype(is_base_of_template_t_impl<C>(std::declval<T*>()));
 
-template <typename T, typename... Args>
-concept constructible_t = std::is_constructible_v<T, Args...>;
-
 template <typename T, typename V, std::size_t... I>
 constexpr bool is_one_of_variant(std::index_sequence<I...>) {
   return (std::is_same_v<T, std::variant_alternative_t<I, V>> || ...);
 }
 
-template <typename T>
-class Base {};
-
-template <typename T>
-class Derived {};
-
-template <typename T, template <typename> class BaseTemplate>
-concept DerivedFromTemplate = std::is_base_of_v<BaseTemplate<typename T::value_type>, T>;
-
 template <typename Variant, template <typename> class Trait>
 struct check_variant_compliance;
-
-template <typename T, typename = void>
-struct is_hashable : std::false_type {};
-
-// Specialization: Check if std::hash<T> is valid
-template <typename T>
-struct is_hashable<T, std::void_t<decltype(std::hash<T>{}(std::declval<T>()))>> : std::true_type {};
-
-// Helper alias for easier usage
-template <typename T>
-inline constexpr bool is_hashable_v = is_hashable<T>::value;
 
 template <typename T>
 concept Hashable = requires(T t) {
@@ -385,10 +340,7 @@ concept EntryLike = requires(T t) {
 };
 
 template <typename Func, typename... Args>
-struct get_return_type : std::invoke_result_t<Func, Args...> {};
-
-template <typename Func, typename... Args>
-concept ReturnsVoid = std::is_same_v<get_return_type<Func, Args...>, void>;
+concept ReturnsVoid = std::is_same_v<std::invoke_result_t<Func, Args...>, void>;
 
 template <typename T>
 struct OptionalChecker {
@@ -430,5 +382,5 @@ concept should_use_arrow = std::is_pointer_v<std::remove_cvref_t<T>>;
   }
 
 template <class T>
-concept StringLike = std::is_same_v<std::decay_t<T>, std::string> ||
-                     std::is_same_v<std::decay_t<T>, std::string_view>;
+concept stringish = std::is_same_v<std::decay_t<T>, std::string> ||
+                    std::is_same_v<std::decay_t<T>, std::string_view>;

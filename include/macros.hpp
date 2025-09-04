@@ -1,14 +1,6 @@
-/// @brief Some useful common macros.
-/// @link  https://nessan.github.io/utilities/
-/// NOTE:  MSVC's traditional preprocessor barfs on these macros but their newer
-/// cross platform compatible one is fine.
-///        To use the upgrade, add the '/Zc:preprocessor' flag at compile time.
-///        Our CMake module `compiler_init` does that for you.
-/// SPDX-FileCopyrightText:  2024 Nessan Fitzmaurice <nessan.fitzmaurice@me.com>
-/// SPDX-License-Identifier: MIT
 #pragma once
 
-#include <print> // NOLINT
+#include <print>
 /// @brief Invoke the pre-processor stringizing operator but fully expanding any
 /// macro argument first!
 #define STRINGIZE(s)      STRINGIZE_IMPL(s)
@@ -108,13 +100,6 @@
   ~CLS() = delete;      \
   NOT_COPYABLE_CLS(CLS) \
   NOT_MOVABLE_CLS(CLS)
-
-#define AST_SIBLINGS(...)                                                       \
-  std::string string() const override { return demangle(typeid(this).name()); }
-#define AST_COMPOSITE(...)                                                      \
-  std::string string() const override { return demangle(typeid(this).name()); }
-#define AST_LEAF                                                                \
-  std::string string() const override { return demangle(typeid(this).name()); }
 
 #define ENUM_PROPERTY(TYPE, NAME, N) TYPE NAME
 
@@ -248,7 +233,6 @@
   using member_types   = std::tuple<value_type, GET_TYPES(__VA_ARGS__)>;                \
   using properties_map = magic_enum::containers::array<value_type, member_types>;       \
   [[nodiscard]] std::string string() const override { return std::format("{}", self); } \
-  static_assert(std::is_constant_evaluated());                                          \
   [[nodiscard]] static constexpr const properties_map& properties_array();              \
   constexpr CONCAT(TYPE, _data)(value_type e)                                           \
       : self(e),                                                                        \
@@ -258,6 +242,27 @@
 #define TRANSFORM(FUNC) std::views::transform(FUNC)
 #define FILTER(FUNC)    std::views::filter(FUNC)
 
+#define CREATE_ENUM_EXTENSION_BODY(TYPE, ...)                                     \
+  using value_type   = CONCAT(TYPE, _t);                                          \
+  using element_type = CONCAT(TYPE, _ext);                                        \
+  using enum value_type;                                                          \
+  const value_type self;                                                          \
+  DECLARE_VARS(__VA_ARGS__)                                                       \
+  using member_types   = std::tuple<value_type, GET_TYPES(__VA_ARGS__)>;          \
+  using properties_map = magic_enum::containers::array<value_type, member_types>; \
+  [[nodiscard]] constexpr std::string string() const override {                   \
+    return magic_enum::enum_name(m_value);                                        \
+  }                                                                               \
+  [[nodiscard]] static constexpr const properties_map& properties_array();        \
+  constexpr CONCAT(TYPE, _data)(value_type e)                                     \
+      : self(e),                                                                  \
+        CTOR_ASSIGN_DATA(__VA_ARGS__) {}
+
+#define CREATE_ENUM_EXTENSION_CLASS(TYPE, ...) \
+  struct CONCAT(TYPE, ext)                     \
+      : public displayable {                   \
+    BUILD_ENUMERATION_DATA(TYPE, __VA_ARGS__)  \
+  };
 #define BUILD_ENUMERATION_DATA_CLASS(TYPE, ...) \
   struct CONCAT(TYPE, _data)                    \
       : public displayable {                    \
@@ -290,8 +295,7 @@
 #define END_BUILDER() \
 private:              \
   target_t m_obj;     \
-  }                   \
-  ;
+  }
 
 // Recursive expansion helpers
 #define FOR_EACH_1_1(macro, x)       macro(x)
@@ -308,7 +312,7 @@ private:              \
 #define FOR_EACH_1_N(macro, N, ...) CONCAT(FOR_EACH_1_, N)(macro, __VA_ARGS__)
 #define FOR_EACH_1(macro, ...)      FOR_EACH_1_N(macro, GET_ARG_COUNT(__VA_ARGS__), __VA_ARGS__)
 
-#define USING_ENUM(ENUM) using enum ENUM;
+#define USING_ENUM(ENUM) using enum types::ENUM;
 #define USING_ENUMS(...) FOR_EACH_1(USING_ENUM, __VA_ARGS__)
 
 #define FOR_EACH_2_1(macro, x, y)       macro(x, y)
@@ -327,3 +331,9 @@ private:              \
 
 #define IS_TYPE(T1, T2) std::same_v<T1, T2>
 #define ARE_TYPES(...)  FOR_EACH_2(IS_TYPE, __VA_ARGS__)
+
+#define using_category() USING_ENUMS(group_t, core_t, layer_t);
+
+;
+;
+;

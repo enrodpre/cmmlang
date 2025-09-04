@@ -22,16 +22,25 @@ source_code::source_code(const fs::ifile& input)
       m_file(input) {}
 
 std::pair<std::size_t, std::size_t> source_code::to_coordinates(cmm::location loc) const {
-  const auto& [start, end] = get_line(loc);
-  auto before              = get_code().substr(0, start);
-  auto line                = std::ranges::count(before, '\n');
-  auto column              = loc.start - start;
-  // +2 because is
-  // 1. is 0 based
-  // 2. the fist line does not have \n
-  return {line + 2, column};
+  if (loc.start > m_code.size()) {
+    throw std::out_of_range("n is out of range of the text");
+  }
+
+  std::size_t line = 1;
+  std::size_t col  = 1;
+
+  for (unsigned int i = 0; i < loc.start; ++i) {
+    if (m_code[i] == '\n') {
+      ++line;
+      col = 1;
+    } else {
+      ++col;
+    }
+  }
+
+  return {line, col};
 }
-[[nodiscard]] const std::string& source_code::get_code() const { return m_code; }
+[[nodiscard]] std::string_view source_code::get_code() const { return m_code; }
 [[nodiscard]] std::string source_code::get_filename() const { return m_file.filename().c_str(); }
 bool source_code::is_valid(const location& loc) const {
   auto line                = get_line(loc);
@@ -39,6 +48,17 @@ bool source_code::is_valid(const location& loc) const {
   return (start <= line.first) && (end <= line.second);
 }
 
+[[nodiscard]] std::string source_code::get_nth_line(const location& loc) const {
+  const auto& [n, c] = to_coordinates(loc);
+  std::istringstream in(m_code);
+  std::string line;
+  size_t i = 1;
+  while (std::getline(in, line)) {
+    if (i++ == n)
+      return line;
+  }
+  throw cmm::error("aaa");
+}
 std::pair<size_t, size_t> source_code::get_line(const location& loc) const {
   const auto& [start, end] = loc;
 
@@ -56,24 +76,14 @@ std::pair<size_t, size_t> source_code::get_line(const location& loc) const {
   return std::make_pair(right_before + 1, end + right_after);
 }
 
-std::string source_code::get_chunk(const location& loc) const {
-  if (!is_valid(loc)) {
-    auto line = get_line(loc);
-    REGISTER_ERROR("location {}, size {}", loc, line.second - line.first);
-    throw std::exception();
-  }
-
-  auto [start, len] = loc;
-  return m_code.substr(start, start + len);
-}
-
 std::tuple<std ::string, std::string, std::string> source_code::get_line_chunked(
     const location& loc) const {
-  auto [start, end]                 = loc;
-  const auto& [top_left, top_right] = get_line(loc);
-  auto left                         = m_code.substr(top_left, start - top_left);
-  auto middle                       = m_code.substr(start, (end - start));
-  auto right                        = m_code.substr(end, top_right - end);
+  auto [start, end]       = loc;
+  auto str                = get_nth_line(loc);
+  const auto& [line, col] = to_coordinates(loc);
+  auto left               = m_code.substr(col);
+  auto middle             = m_code.substr(col, end);
+  auto right              = m_code.substr(end);
 
   return {left, middle, right};
 }

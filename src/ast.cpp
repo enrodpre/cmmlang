@@ -5,8 +5,8 @@
 #include "ir.hpp"
 #include "lang.hpp"
 #include "types.hpp"
-#include "visitor.hpp"
 #include <algorithm>
+#include <initializer_list>
 #include <ranges>
 #include <type_traits>
 #include <utility>
@@ -15,10 +15,18 @@ namespace cmm::ast {
 
 using namespace decl;
 
+template <typename... Ts>
+std::vector<node*> lift_to_nodes(Ts*... ptrs) {
+  return {static_cast<node*>(ptrs)...};
+}
+template <typename... Args>
+std::vector<node*> concat_nodes(Args&&... args) {
+  return lift_to_nodes(std::forward<Args>(args)...);
+}
 label::label(const token& label_)
-    : visitable<label, declaration>(label_) {}
+    : derived_visitable<label, declaration>(label_) {}
 
-specifiers::specifiers(ast::type&& t, ast::linkage&& l, ast::storage&& s)
+specifiers::specifiers(ast::type_spec&& t, ast::linkage_spec&& l, ast::storage_spec&& s)
     : type(std::move(t)),
       linkage(std::move(l)),
       storage(std::move(s)) {}
@@ -36,7 +44,7 @@ std::vector<node*> decl::rank::children() {
 }
 
 variable::variable(specifiers&& spec, decltype(rank) r, identifier id, decltype(init) i)
-    : visitable<variable, declaration>(std::move(id)),
+    : derived_visitable<variable, declaration>(std::move(id)),
       specs(std::move(spec)),
       rank(r),
       init(i) {}
@@ -44,12 +52,13 @@ variable::variable(specifiers&& spec, decltype(rank) r, identifier id, decltype(
 variable::variable(types::type_id t, decltype(ident) id, decltype(init) init)
     : variable(specifiers(std::move(t)), nullptr, std::move(id), init) {}
 
-std::vector<node*> variable::children() { return {to_node(&specs), rank, init}; }
+std::vector<node*> variable::children() { return concat_nodes(&specs, rank, init); }
+
 function::function(decltype(specs)&& s,
                    decltype(ident)&& ident_,
                    decltype(params)&& args,
                    decltype(body) body_)
-    : visitable<function, declaration>(std::move(ident_)),
+    : derived_visitable(std::move(ident_)),
       specs(std::move(s)),
       params(std::move(args)),
       body(body_) {}
@@ -58,7 +67,7 @@ std::vector<node*> decl::function::children() {
 }
 
 assembly::operand* decl::conversion_function::operator()(assembly::operand* reg) const noexcept {
-  auto from = reg->content_type();
+  // auto from = reg->content_type();
 
   // TODO
   return {};
@@ -66,51 +75,55 @@ assembly::operand* decl::conversion_function::operator()(assembly::operand* reg)
 }
 
 selection::if_::if_(const token& t, decltype(condition) c, decltype(block) b, decltype(else_) e)
-    : keyword(t),
+    : keyword(t, keyword_t::IF),
       condition(c),
       block(b),
       else_(e) {}
 
 std::vector<node*> selection::if_::children() {
-  return std::vector<node*>{&keyword, &condition, block, else_};
+  return concat_nodes(&keyword, &condition, block, else_);
 }
 
 iteration::while_::while_(const token& t, expr::expression& condition_, block* block)
-    : keyword(t),
+    : keyword(t, keyword_t::WHILE),
       condition(condition_),
       body(block) {}
 
-std::vector<node*> iteration::while_::children() { return {&keyword, &condition, body}; }
+std::vector<node*> iteration::while_::children() {
+  return concat_nodes(&keyword, &condition, body);
+}
 
 iteration::for_::for_(const token& t,
                       decl::variable* start_,
                       expr::expression* condition_,
                       expr::expression* step_,
                       block* block)
-    : keyword(t),
+    : keyword(t, keyword_t::FOR),
       start(start_),
       condition(condition_),
       step(step_),
       body(block) {}
 
-std::vector<node*> iteration::for_::children() { return {&keyword, start, condition, step, body}; }
+std::vector<node*> iteration::for_::children() {
+  return concat_nodes(&keyword, start, condition, step, body);
+}
 
 jump::goto_::goto_(const token& token)
     : term(token) {}
 std::vector<node*> jump::goto_::children() { return {&term}; }
 
 jump::break_::break_(const token& token)
-    : keyword(token) {}
+    : keyword(token, keyword_t::BREAK) {}
 std::vector<node*> jump::break_::children() { return {&keyword}; }
 
 jump::continue_::continue_(const token& token)
-    : keyword(token) {}
+    : keyword(token, keyword_t::CONTINUE) {}
 std::vector<node*> jump::continue_::children() { return {&keyword}; }
 
-jump::return_::return_(ast::keyword&& k, expr::expression* expr_)
-    : keyword(std::move(k)),
+jump::return_::return_(const token& t_token, expr::expression* expr_)
+    : keyword(t_token, keyword_t::RETURN),
       expr(expr_) {}
-std::vector<node*> jump::return_::children() { return {&keyword, expr}; }
+std::vector<node*> jump::return_::children() { return concat_nodes(&keyword, expr); }
 
 // std::vector<type> conversion_store::get_convertible_types(type from) const {
 //   return get_conversions(from) | std::views::transform([&from](const auto& conversion) ->
@@ -157,14 +170,17 @@ void decl::function::definition::clear() noexcept {
 
 [[nodiscard]] bool decl::function::definition::is_declared(const ast::identifier& id) const {
   return variables.contains(id) || std::ranges::any_of(local_scopes, [id](const scope* s) {
-           return s->variables.contains(id.value());
+           return s->variables.contains(id.value().data());
          });
 }
 
 std::vector<function_store::value_type> function_store::get_by_name(const std::string& name) const {
   return data() | std::views::filter([name](const auto& pair) -> bool {
-           const auto& [k, v] = pair;
-           return k == name;
+           std::string key = pair.first;
+           if (size_t pos = key.find_first_of('_')) {
+             return name == key.substr(0, pos);
+           }
+           return key == name;
          }) |
          std::views::transform([](const auto& pair) { return pair.second; }) |
          std::ranges::to<std::vector>();
@@ -198,8 +214,8 @@ void variable_store::insert(const decl::variable* var, assembly::operand* op) {
   }
 
   for (const auto& s : local_scopes) {
-    if (s->variables.contains(ident.value())) {
-      return s->variables.at(ident.value());
+    if (s->variables.contains(ident.value().data())) {
+      return s->variables.at(ident.value().data());
     }
   }
 
@@ -244,7 +260,7 @@ bool translation_unit::is_entry_point_defined() const noexcept {
 }
 
 const decl::label* translation_unit::get_label(const ast::identifier& id) const {
-  return active_frame()->labels.at(id.value());
+  return active_frame()->labels.at(id.value().data());
 }
 
 void block::declare_label(const ast::decl::label* l) { labels.emplace(l->ident.value(), l); }
@@ -257,8 +273,8 @@ assembly::operand* scope::declare_variable(ast::decl::variable* decl) {
 void translation_unit::create_frame(decl::function::definition* fn) { m_stackframe.push(fn); }
 
 const variable_store::value_type& translation_unit::get_variable(const ast::identifier& id) const {
-  if (variables.contains(id.value())) {
-    return variables.at(id.value());
+  if (variables.contains(id.value().data())) {
+    return variables.at(id.value().data());
   }
 
   return active_frame()->get_variable(id);
@@ -485,13 +501,13 @@ void ast_visitor::visit(ast::jump::break_& c) { TRACE_VISITOR(c); }
 
 void ast_visitor::visit(ast::operator_& c) { TRACE_VISITOR(c); }
 
-void ast_visitor::visit(ast::storage& c) { TRACE_VISITOR(c); }
+void ast_visitor::visit(ast::storage_spec& c) { TRACE_VISITOR(c); }
 
-void ast_visitor::visit(ast::type& c) { TRACE_VISITOR(c); }
+void ast_visitor::visit(ast::type_spec& c) { TRACE_VISITOR(c); }
 
-void ast_visitor::visit(ast::linkage& c) { TRACE_VISITOR(c); }
+void ast_visitor::visit(ast::linkage_spec& c) { TRACE_VISITOR(c); }
 
-void ast_visitor::visit(siblings<expr::expression*>& c) { TRACE_VISITOR(c); }
+void ast_visitor::visit(expr::arguments& c) { TRACE_VISITOR(c); }
 
 void ast_visitor::visit(ast ::expr ::implicit_type_conversion& c) { TRACE_VISITOR(c); }
 
@@ -517,7 +533,7 @@ void const_ast_visitor::visit(const ast::keyword& c) { TRACE_VISITOR(c); }
 
 void const_ast_visitor::visit(const ast::identifier& c) { TRACE_VISITOR(c); }
 
-void const_ast_visitor::visit(const siblings<expr::expression*>& c) { TRACE_VISITOR(c); }
+void const_ast_visitor::visit(const expr::arguments& c) { TRACE_VISITOR(c); }
 
 void const_ast_visitor::visit(const ast ::expr ::implicit_type_conversion& c) { TRACE_VISITOR(c); }
 
@@ -618,9 +634,9 @@ void const_ast_visitor::visit(const ast ::jump ::return_& c) {
 }
 void const_ast_visitor::visit(const ast::jump::continue_& c) { TRACE_VISITOR(c); }
 void const_ast_visitor::visit(const ast::jump::break_& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::storage& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::linkage& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::type& c) { TRACE_VISITOR(c); }
+void const_ast_visitor::visit(const ast::storage_spec& c) { TRACE_VISITOR(c); }
+void const_ast_visitor::visit(const ast::linkage_spec& c) { TRACE_VISITOR(c); }
+void const_ast_visitor::visit(const ast::type_spec& c) { TRACE_VISITOR(c); }
 void const_ast_visitor::visit(const ast::expr::literal& c) { TRACE_VISITOR(c); }
 void const_ast_visitor::visit(const ast::decl::function::definition& c) {
   TRACE_VISITOR(c);

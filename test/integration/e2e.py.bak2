@@ -1,0 +1,41 @@
+import subprocess
+from enum import Enum
+from pathlib import Path
+
+import pytest
+
+TEST_BUILD_DIR = Path("/home/kike/dev/cmm/build/test")
+BINARY_PATH = TEST_BUILD_DIR / "../CmmLang"
+EXAMPLES_PATH = TEST_BUILD_DIR / "examples"
+GENERATED_PATH = TEST_BUILD_DIR / "generated"
+
+from conftest import (AssertionError, BinaryNotFound, CompilationError,
+                      RunError, TestfileNotFound)
+
+
+# @pytest.mark.parametrize(
+#     "example_file", ["dummy"], indirect=True
+# )  # get values from fixture
+def test_example_file(example_file: Path, request):
+    compiled_path: Path = (GENERATED_PATH / example_file.name).with_suffix("")
+
+    if not BINARY_PATH.exists():
+        raise BinaryNotFound(str(BINARY_PATH))
+    if not example_file.exists():
+        raise TestfileNotFound(str(example_file))
+
+    try:
+        compile_proc = subprocess.run(
+            ["CmmLang", str(example_file), "-o", str(compiled_path)],
+            capture_output=True,
+            text=True,
+        )
+        if compile_proc.returncode != 0:
+            raise CompilationError(compile_proc.stderr)
+    except Exception as e:
+        raise CompilationError(compile_proc.stderr)
+
+    run_proc = subprocess.run([f"{compiled_path}"])
+
+    if run_proc.returncode != 255:
+        raise AssertionError(run_proc.returncode)

@@ -1,0 +1,12 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/kike/dev/cmm/build/test/cmake_install.cmake",
+		"/home/kike/dev/cmm/build/test/gdb/cmake_install.cmake",
+		"/home/kike/dev/cmm/build/test/_deps/revisited-build/cmake_install.cmake",
+		"/home/kike/dev/cmm/build/test/_deps/packageproject.cmake-build/cmake_install.cmake",
+		"/home/kike/dev/cmm/build/test/_deps/statictypeinfo-build/cmake_install.cmake",
+		"/home/kike/dev/cmm/build/test/test/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

@@ -1,0 +1,95 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"packageProject"
+		],
+		"files" : 
+		[
+			"build/_deps/packageproject.cmake-src/CMakeLists.txt",
+			"build/_deps/statictypeinfo-src/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 57,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 39,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 44,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 52,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 2,
+			"component" : "Unspecified",
+			"destination" : "lib/cmake/StaticTypeInfo-1.3",
+			"exportName" : "StaticTypeInfoTargets",
+			"exportTargets" : 
+			[
+				{
+					"id" : "StaticTypeInfo::@89021fe381b4ce39f276",
+					"index" : 0
+				}
+			],
+			"paths" : 
+			[
+				"_deps/statictypeinfo-build/CMakeFiles/Export/1bcb60dec39bc03bb81ae575af5dd682/StaticTypeInfoTargets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 3,
+			"component" : "Unspecified",
+			"destination" : "lib/cmake/StaticTypeInfo-1.3",
+			"paths" : 
+			[
+				"build/_deps/statictypeinfo-build/StaticTypeInfoConfigVersion.cmake",
+				"build/_deps/statictypeinfo-build/StaticTypeInfoConfig.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "Unspecified",
+			"destination" : "include/StaticTypeInfo-1.3",
+			"paths" : 
+			[
+				{
+					"from" : "build/_deps/statictypeinfo-src/include",
+					"to" : "."
+				}
+			],
+			"type" : "directory"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "_deps/statictypeinfo-build",
+		"source" : "build/_deps/statictypeinfo-src"
+	}
+}

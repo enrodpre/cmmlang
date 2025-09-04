@@ -2,19 +2,16 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <format>
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_containers.hpp>
 #include <magic_enum/magic_enum_format.hpp>
-#include <ranges>
+#include <magic_enum/magic_enum_switch.hpp>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
-#include "common.hpp"
 #include "macros.hpp"
 #include "types.hpp"
 
@@ -45,10 +42,10 @@ public:
   mangled_name(value_type&& v)
       : m_string(std::move(v)) {}
 
-  static mangled_name variable(cstring, type_id);
-  static mangled_name label(cstring);
-  static mangled_name function(cstring, const std::vector<type_id>&);
-  static std::string types(const std::vector<type_id>&);
+  static mangled_name variable(std::string_view, types::type_id);
+  static mangled_name label(std::string_view);
+  static mangled_name function(std::string_view, const std::vector<types::type_id>&);
+  static std::string types(const std::vector<types::type_id>&);
 
   [[nodiscard]] const value_type& str() const;
   operator std::string() const;
@@ -57,11 +54,13 @@ private:
   value_type m_string;
 };
 
+enum class binding_mode_t : u_int8_t { DIRECT, COPY, TEMPORARY, MOVE };
+
 struct callable_signature : displayable {
   std::string name;
-  std::vector<type_id> argument_types;
+  std::vector<types::type_id> argument_types;
 
-  callable_signature(cstring, std::vector<type_id>);
+  callable_signature(std::string_view, std::vector<types::type_id>);
 
   [[nodiscard]] std::string string() const override {
     return mangled_name::function(name, argument_types);
@@ -78,8 +77,8 @@ struct callable_signature : displayable {
 };
 
 struct callable_contract : public callable_signature {
-  type_id return_type;
-  callable_contract(type_id ret, cstring n, std::vector<type_id> types)
+  types::type_id return_type;
+  callable_contract(types::type_id ret, std::string_view n, std::vector<types::type_id> types)
       : callable_signature(n, std::move(types)),
         return_type(std::move(ret)) {}
   bool operator==(const callable_contract& other) const {
@@ -88,21 +87,20 @@ struct callable_contract : public callable_signature {
 };
 
 struct parameter {
-  // value_category_t value_category;
-  type_id type;
+  types::type_id type;
   std::string identifier;
   ast::expr::expression* init;
   const ast::decl::variable* decl;
-  parameter(type_id t, std::string id, decltype(init) i, decltype(decl) d)
+  parameter(types::type_id t, std::string id, decltype(init) i, decltype(decl) d)
       : type(std::move(t)),
         identifier(std::move(id)),
         init(i),
         decl(d) {}
-  parameter(type_id t, std::string id)
+  parameter(types::type_id t, std::string id)
       : parameter(std::move(t), std::move(id), nullptr, nullptr) {}
 };
 
-using bound_argument = parameter;
+using bound_argument = std::pair<parameter, binding_mode_t>;
 
 struct callable {
   virtual ~callable()                                           = default;
@@ -121,16 +119,23 @@ struct instruction {
 };
 
 enum class builtin_signature_t : uint8_t { MAIN, SYSCALL, EXIT, PRINT };
-using header_arguments_t = std::vector<type_id>;
+using header_arguments_t = std::vector<types::type_id>;
 
-struct builtin_signature_data : public cmm::enumeration<builtin_signature_t>,
-                                public displayable,
-                                public callable {
-  BUILD_ENUMERATION_DATA(builtin_signature,
-                         std::string_view,
-                         function_name,
-                         header_arguments_t,
-                         args);
+struct builtin_signature_data : public cmm::enumeration<builtin_signature_t>, public callable {
+  using value_type   = builtin_signature_t;
+  using element_type = builtin_signature_data;
+  using enum value_type;
+  const value_type self;
+  std ::string_view function_name;
+  header_arguments_t args;
+  using member_types   = std ::tuple<value_type, std ::string_view, header_arguments_t>;
+  using properties_map = magic_enum ::containers ::array<value_type, member_types>;
+  [[nodiscard]] std ::string string() const override { return std::format("{}", function_name); }
+  [[nodiscard]] static constexpr const properties_map& properties_array();
+  constexpr builtin_signature_data(value_type e)
+      : self(e),
+        function_name(std ::get<0 + 1>(element_type ::properties_array().at(e))),
+        args(std ::get<1 + 1>(element_type ::properties_array().at(e))) {};
   [[nodiscard]] cmm::callable_contract contract() const override;
   [[nodiscard]] std::vector<parameter> parameters() const override {
     return args | std::views::enumerate | std::views::transform([](const auto& pair) -> parameter {
@@ -147,8 +152,8 @@ struct operator_;
 
 struct builtin_operator_data : callable {
   using identifier_t = ast::operator_;
-  type_id ret;
-  std::vector<type_id> params;
+  types::type_id ret;
+  std::vector<types::type_id> params;
   std::vector<instruction> ins;
 
   builtin_operator_data(decltype(ret) c, decltype(ret) b, decltype(ins)&& e)
@@ -178,7 +183,6 @@ struct builtin_operator {
 };
 
 extern const std::unordered_map<operator_t, std::vector<builtin_operator_data>> builtin_operators;
-static_assert(std::formattable<cmm::instruction_t, char>);
 
 std::vector<const builtin_operator_data*> get_builtin_operator(operator_t);
 
@@ -204,58 +208,61 @@ enum class modifier_t : uint8_t {
   consteval_,
 };
 
-template <typename T>
-struct storage {
-  virtual T& stored() const = 0;
+struct conversor : displayable {
+  conversor(std::string d,
+            types::unary_matcher t_from,
+            types::unary_matcher t_to,
+            types::modifier t_modifier)
+      : m_desc(d),
+        m_from(t_from),
+        m_to(t_to),
+        m_modifier(t_modifier) {}
+  [[nodiscard]] bool is_convertible(types::type_id) const;
+  type_id operator()(type_id) const;
+  [[nodiscard]] std::string string() const override { return m_desc; }
+
+private:
+  std::string m_desc;
+  types::unary_matcher m_from;
+  types::unary_matcher m_to;
+  types::modifier m_modifier;
+  // bool m_explicit = false;
+  std::vector<instruction> m_instructions;
 };
 
-template <typename T>
-struct static_storage : public storage<T> {};
+#define CONVERSION(NAME, FROM, TO, MOD) inline const auto& NAME = conversor{#NAME, FROM, TO, MOD};
 
-template <typename T>
-struct dynamic_storage : public storage<T> {
-  uintptr_t address;
-};
+CONVERSION(lvalue_to_rvalue,
+           types::is_lvalue,
+           types::is_rvalue,
+           types::remove_lvalue | types::add_rvalue_reference);
+CONVERSION(any_to_bool,
+           types::is_integral || types::is_pointer || types::is_unscoped || types::is_floating,
+           types::is_bool,
+           types::replace(BOOL_T));
+// CONVERSION(nullptr_to_anyptr, types::is_nullptr, types::is_pointer, )
 
-#define DEFINE_STATIC_SIZE(TYPE, VALUE)    \
-  template <>                              \
-  struct sizeof_<TYPE> {                   \
-    static constexpr size_t value = VALUE; \
-  };
+inline const std::array standard_conversions = {&any_to_bool, &lvalue_to_rvalue};
 
-enum class binding_aftermath_t : u_int8_t { DIRECT, COPY, TEMPORARY };
+extern std::vector<types::type_id> get_convertible_types(types::type_id);
+extern bool is_convertible(types::type_id, types::type_id);
 
-struct binding_rule {
-  binding_aftermath_t aftermath;
-  types::matcher matcher;
-  types::modifier modifier;
-};
+inline static const magic_enum::containers::
+    array<value_category_t, std::vector<std::pair<types::unary_matcher, binding_mode_t>>>
+        binding_rules{{{// LVALUE
+                        {{types::is_direct, binding_mode_t::COPY},
+                         {types::is_lvalue, binding_mode_t::DIRECT}},
+                        // PRVALUE
+                        {{types::is_const_lvalue, binding_mode_t::TEMPORARY},
+                         {types::is_rvalue || types::is_direct, binding_mode_t::DIRECT}},
+                        // XVALUE
+                        {{types::is_const_lvalue, binding_mode_t::TEMPORARY},
+                         {types::is_direct, binding_mode_t::MOVE},
+                         {types::is_rvalue, binding_mode_t::DIRECT}}}}};
 
-inline static const magic_enum::containers::array<value_category_t, std::vector<binding_rule>>
-    binding_rules{
-        {{// LVALUE
-          {{binding_aftermath_t::COPY, !types::is_reference},
-           {binding_aftermath_t::DIRECT, !types::is_reference, types::add_lvalue_reference},
-           {binding_aftermath_t::DIRECT,
-            !types::is_reference,
-            types::add_lvalue_reference | types::add_const}},
-          // PRVALUE
-          {{binding_aftermath_t::COPY, !types::is_reference},
-           {binding_aftermath_t::TEMPORARY,
-            !types::is_reference,
-            types::add_lvalue_reference | types::add_const},
-           {binding_aftermath_t::DIRECT, !types::is_reference, types::add_rvalue_reference}},
-          // XVALUE
-          {{binding_aftermath_t::COPY, types::is_rvalue, types::remove_reference},
-           {binding_aftermath_t::DIRECT,
-            types::is_rvalue,
-            types::add_rvalue_reference | types::add_const},
-           {binding_aftermath_t::DIRECT, types::is_rvalue}}}}};
-
-extern std::vector<type_id> get_bindable_candidates(value_category_t, type_id);
-extern bool is_bindeable(value_category_t, type_id, type_id);
-extern type_id bind_argument(value_category_t, type_id, type_id);
-extern value_category_t get_value_category(type_id);
+extern bool is_bindable_to(value_category_t, types::type_id);
+extern binding_mode_t bind_value(value_category_t, types::type_id);
+extern value_category_t get_value_category(types::type_id);
 
 struct value {};
 
@@ -270,7 +277,7 @@ struct object;
 
 struct sizeof_ {
   STATIC_CLS(sizeof_);
-  constexpr static size_t operator()(const type_id&);
+  constexpr static size_t operator()(const types::type_id&);
   constexpr static size_t operator()(const object&);
 };
 
@@ -280,45 +287,50 @@ struct object {
   std::string name;
   align alignment;
   storage_t storage;
-  type_id type;
+  types::type_id type;
   cmm::value* value;
 };
 
-constexpr size_t cmm::sizeof_::operator()(const type_id& t) {
-  using enum types::category_t;
-  switch (t->categorize()) {
-    case lvalue_ref_t:
-    case rvalue_ref_t:
-    case nullptr_t:
-    case pointer_t:
-      return 8;
-    case bool_t:
-      return 1;
-    case char_t:
-      return 1;
-    case uint_t:
-    case sint_t:
-      return 4;
-    case float_t:
-      return 8;
-    case array_t:
-    case function_t:
-    case void_t:
-    case scoped_enum_t:
-    case unscoped_enum_t:
-    case class_t:
-      return 0;
-    case any_t:
-    case fundamental_t:
-    case arithmetic_t:
-    case integral_t:
-    case compound_t:
-    case indirection_t:
-    case reference_t:
-    case enum_t:
-    default:
-      break;
-  }
+constexpr size_t cmm::sizeof_::operator()(const types::type_id& t) {
+  using enum types::group_t;
+  using enum types::core_t;
+  using enum types::layer_t;
+
+  t->categorize();
+  // if (cat == lvalue) {}
+  //   switch (t->categorize().inner()) {
+  //     case lvalue_ref_t:
+  //     case rvalue_ref_t:
+  //     case nullptr_t:
+  //     case pointer_t:
+  //       return 8;
+  //     case bool_t:
+  //       return 1;
+  //     case char_t:
+  //       return 1;
+  //     case uint_t:
+  //     case sint_t:
+  //       return 4;
+  //     case float_t:
+  //       return 8;
+  //     case array_t:
+  //     case function_t:
+  //     case void_t:
+  //     case scoped_enum_t:
+  //     case unscoped_enum_t:
+  //     case class_t:
+  //       return 0;
+  //     case any_t:
+  //     case fundamental_t:
+  //     case arithmetic_t:
+  //     case integral_t:
+  //     case compound_t:
+  //     case indirection_t:
+  //     case reference_t:
+  //     case enum_t:
+  //     default:
+  //       break;
+  //   }
   return 0;
 }
 

@@ -1,36 +1,87 @@
 #include "types.hpp"
 
 #include <format>
+#include <magic_enum/magic_enum.hpp>
+#include <utility>
 
-namespace cmm {
-namespace types {
+namespace cmm::types {
 
 core::core(core_t t)
     : kind(t),
-{}
-core::core(category_t cat)
-    : kind(core_t::Builtin) {
-  auto cat_name = magic_enum::enum_name(cat);
-  name          = cat_name.substr(cat_name.size() - 2);
-}
+      name(magic_enum::enum_name(t)) {}
 
-const info* type_id::operator->() const { return &arena().id(*this); }
-types::info type_id::info() const { return arena().id(*this); }
+info::info(const types::core& t_core, cv_qualification_t t_cv, cmm::stack<layer> t_layers)
+    : core(t_core),
+      cv_qualifiers(t_cv),
+      layers(t_layers) {}
 
-category_t categorize(type_id t) {
-  if (t->layers.size() == 0) {
-    auto name = t->core.name;
-    return magic_enum::enum_cast<category_t>(name.substr(name.size() - 2)).value();
+const info* types::type_id::operator->() const { return &manager::instance().info(*this); }
+types::type_id::operator const info&() const { return manager::instance().info(*this); }
+
+namespace {
+std::string get_cv_repr(cv_qualification_t cvqual) {
+  switch (cvqual) {
+    case cmm::types::cv_qualification_t::CONST:
+      return "c";
+    case cmm::types::cv_qualification_t::VOLATILE:
+      return "v";
+    case cmm::types::cv_qualification_t::CONST_VOLATILE:
+      return "cv";
   }
-  auto outer_fold = t->layers.top();
-  return magic_enum::enum_cast<category_t>(magic_enum::enum_name(outer_fold.tag)).value();
+  return "";
+}
+} // namespace
+
+std::string info::string() const {
+  std::string indirection_repr = "";
+  if (!layers.empty()) {
+    switch (layers.top().tag) {
+      case layer_t::array_t:
+        indirection_repr = "a" + std::to_string(layers.top().rank);
+        break;
+      case layer_t::pointer_t:
+        indirection_repr = "p";
+        break;
+      case layer_t::lvalue_ref_t:
+        indirection_repr = "ref";
+        break;
+      case layer_t::rvalue_ref_t:
+        indirection_repr = "rref";
+        break;
+      case layer_t::function_t:
+        indirection_repr = "fn";
+        break;
+    }
+  }
+  return std::format(
+      "{}{}{}", core.name.substr(0, core.name.size() - 2), get_cv_repr(cvqual()), indirection_repr);
+}
+category_t info::categorize() const {
+  if (layers.empty()) {
+    return core.kind;
+  }
+  return layers.top().tag;
 }
 
-size_t core_keyhash::operator()(const std::pair<core, std::vector<layer>>& k) const noexcept {
-  // Simple FNV-like fold
-  auto h = std::hash<int>{}(static_cast<int>(k.first.kind));
-  h ^= std::hash<std::string>{}(k.first.name) + 0x9e3779b9 + (h << 6) + (h >> 2);
-  for (auto& L : k.second) {
+cv_qualification_t& info::cvqual() {
+  if (layers.empty()) {
+    return cv_qualifiers;
+  }
+  return layers.top().cv_qualifiers;
+}
+
+const cv_qualification_t& info::cvqual() const {
+  if (layers.empty()) {
+    return cv_qualifiers;
+  }
+  return layers.top().cv_qualifiers;
+}
+
+size_t core_keyhash::operator()(const info::key_type& k) const noexcept {
+  const auto& [core, cv, layers] = k;
+  auto h                         = std::hash<int>{}(static_cast<int>(core.kind));
+  h ^= std::to_underlying(cv) + 0x9e3779b9 + (h << 6) + (h >> 2);
+  for (auto& L : layers) {
     size_t lh = std::hash<int>{}(static_cast<int>(L.tag));
     if (L.rank != 0)
       lh ^= std::hash<size_t>{}(L.rank + 0x9e37);
@@ -39,102 +90,152 @@ size_t core_keyhash::operator()(const std::pair<core, std::vector<layer>>& k) co
   return h;
 }
 
-bool core_keyeq::operator()(const std::pair<core, std::vector<layer>>& a,
-                            const std::pair<core, std::vector<layer>>& b) const noexcept {
-  if (!(a.first == b.first))
-    return false;
-  if (a.second.size() != b.second.size())
-    return false;
-  for (size_t i = 0; i < a.second.size(); ++i)
-    if (!(a.second[i] == b.second[i]))
-      return false;
-  return true;
-}
-match_result& match_result::operator&&(const match_result& other) {
-  ok &= other.ok;
-  return *this;
+bool core_keyeq::operator()(const info::key_type& a, const info::key_type& b) const noexcept {
+  return a == b;
 }
 
-match_result& match_result::operator||(const match_result& other) {
-  ok |= other.ok;
-  return *this;
+types::type_id manager::make(const types::core& c,
+                             const stack<layer>& layers,
+                             cv_qualification_t qual) {
+  auto key = std::make_tuple(c, qual, layers);
+  auto it  = m_idx.find(key);
+  if (it != m_idx.end())
+    return types::type_id{it->second};
+  uint32_t id = types_size();
+  m_nodes.emplace_back(c, qual, layers);
+  m_idx.emplace(std::move(key), id);
+  return types::type_id{id};
 }
 
-match_result& match_result::operator!() {
-  this->ok = !this->ok;
-  return *this;
+types::type_id manager::get(types::info i) { return make(i.core, i.layers, i.cv_qualifiers); }
+
+const info& manager::info(types::type_id t) const {
+  assert(t.value() < m_nodes.size());
+  return m_nodes[t.value()];
 }
 
-matcher::matcher(std::string desc, matcher_t t)
-    : m_desc(desc),
-      m_matcher(t) {}
+size_t manager::types_size() const { return m_nodes.size(); }
 
-match_result matcher::operator()(type_id t) const { return m_matcher(t); }
-
-std::string matcher::string() const { return m_desc; }
-
-matcher matcher::operator&&(const matcher& m) const {
-  return {std::format("{} and {}", *this, m),
-          [*this, m](type_id t) -> match_result { return this->m_matcher(t) && m.m_matcher(t); }};
+template <layer_t L>
+modifier manager::make_layer_adder() {
+  return {magic_enum::enum_name<L>(), [this](type_id t) -> type_id {
+            types::info i = this->info(t);
+            i.layers.emplace(L);
+            return get(i);
+          }};
+}
+template <cv_qualification_t L>
+modifier manager::make_cv_adder() {
+  return {magic_enum::enum_name<L>(), [this](type_id t) -> type_id {
+            types::info i = info(t);
+            i.cvqual() |= L;
+            return get(i);
+          }};
+}
+template <auto L>
+  requires(CategoryValue<L>)
+modifier manager::make_layer_remover() {
+  return {std::format("remove {}", magic_enum::enum_name<L>()), [this](type_id t) -> type_id {
+            if (is_category<L>(t)) {
+              types::info i = info(t);
+              i.layers.pop();
+              return get(i);
+            }
+            return t;
+          }};
+}
+template <cv_qualification_t L>
+modifier manager::make_cv_remover() {
+  return {magic_enum::enum_name<L>(), [this](type_id t) -> type_id {
+            types::info i = info(t);
+            i.cvqual() &= ~L;
+            return get(i);
+          }};
 }
 
-matcher matcher::operator||(const matcher& m) const {
-  return {std::format("{} or {}", *this, m),
-          [*this, m](type_id t) -> match_result { return this->m_matcher(t) || m.m_matcher(t); }};
-}
-
-matcher matcher::operator!() const {
-  return {std::format("not {}", *this),
-          [this](type_id t) -> match_result { return !this->m_matcher(t); }};
-}
-
-bool belongs_to(const category_data& child, category_t parent) {
-  if (parent == child.self) {
-    return true;
-  }
-  if (child.self == category_t::generic_t || child.self == category_t::dummy_t) {
-    return false;
-  }
-  if (parent == category_t::any_t) {
-    return true;
-  }
-  if (child.self == category_t::any_t) {
-    return false;
-  }
-  return belongs_to(child.parent, parent);
-}
-
-type_id modifier::operator()(type_id t) const { return arena().get(m_modifier(t.info())); }
-info modifier::operator()(info i) const { return m_modifier(i); }
-
-modifier modifier::operator|(const modifier& other) const {
-  return {std::format("{}, {}", m_desc, other.m_desc),
-          [=, *this](info t) -> info { return other(m_modifier(t)); }};
-}
-
-// bool converter::is_convertible(type t) const { return m_from->match(t); }
-
-// type converter::operator()(type t) const {
-//   if (!is_convertible(t)) {
-//     throw error(std::format("Type {} is not convertible with {}", t, *this));
-//   }
-//   return m_modifier(t);
-// }
-
-// std::vector<type> get_convertible_types(type from) {
-//   return conversions::standard |
-//          std::views::filter([from](const converter* conv) { return conv->is_convertible(from); })
-//          | std::views::transform([&from](const converter* converter) { return (*converter)(from);
-//          }) | std::ranges::to<std::vector>();
+// match_result& match_result::operator&&(const match_result& other) {
+//   ok &= other.ok;
+//   return *this;
 // }
 //
-// bool is_convertible(type from, type to) {
-//   if (from == to) {
-//     return true;
-//   }
-//   auto converted =
-//       get_convertible_types(from) | std::views::filter([to](type t) { return t == to; });
-//   return !std::ranges::empty(converted);
+// match_result& match_result::operator||(const match_result& other) {
+//   ok |= other.ok;
+//   return *this;
+// }
+//
+// match_result& match_result::operator!() {
+//   this->ok = !this->ok;
+//   return *this;
+// }
+//
+unary_matcher::unary_matcher(std::string_view desc, unary_matcher_t t)
+    : m_desc(desc),
+      m_unary_matcher(t) {}
+
+match_result unary_matcher::operator()(types::type_id t) const { return m_unary_matcher(t); }
+
+std::string unary_matcher::string() const { return m_desc; }
+
+unary_matcher unary_matcher::operator&&(const unary_matcher& m) const {
+  return {std::format("{} and {}", *this, m), [*this, m](types::type_id t) -> match_result {
+            return this->m_unary_matcher(t) && m.m_unary_matcher(t);
+          }};
+}
+
+unary_matcher unary_matcher::operator||(const unary_matcher& m) const {
+  return {std::format("{} or {}", *this, m), [*this, m](types::type_id t) -> match_result {
+            return this->m_unary_matcher(t) || m.m_unary_matcher(t);
+          }};
+}
+
+unary_matcher unary_matcher::operator!() const {
+  return {std::format("not {}", *this),
+          [this](types::type_id t) -> match_result { return !this->m_unary_matcher(t); }};
+}
+
+binary_matcher::binary_matcher(std::string_view s, binary_matcher_t b)
+    : m_desc(s),
+      m_matcher(b) {}
+
+match_result binary_matcher::operator()(type_id lhs, type_id rhs) const {
+  return m_matcher(lhs, rhs);
+}
+
+unary_matcher binary_matcher::operator()(type_id lhs) const {
+  return {std::format("{} {}", m_desc, lhs->string()),
+          [lhs, this](type_id rhs) { return m_matcher(rhs, lhs); }};
+}
+
+std::string binary_matcher::string() const { return m_desc; }
+
+bool belongs_to(category_t child, category_t parent) {
+  // category_data child_data = child->this;
+  if (parent == child) {
+    return true;
+  }
+  if (parent == group_t::any_t) {
+    return true;
+  }
+  if (child == group_t::any_t) {
+    return false;
+  }
+  return belongs_to(category_t{child->parent}, parent);
+}
+
+types::type_id modifier::operator()(types::type_id t) const { return m_modifier(t); }
+
+modifier modifier::operator|(const modifier& other) const {
+  return {std::format("{} | {}", m_desc, other.m_desc),
+          [other, this](type_id t) -> type_id { return other(operator()(t)); }};
+}
+
+// modifier modifier::operator^(const modifier& other) const {
+//   return {std::format("{} xor {}", m_desc, other.m_desc), [other, this](type_id t) -> type_id {
+//             if (m_condition(t)) {
+//               return operator()(t);
+//             }
+//             return other(t);
+//           }};
 // }
 // std::string type::string() const {
 //   switch (category) {
@@ -170,5 +271,4 @@ modifier modifier::operator|(const modifier& other) const {
 //       return "";
 //   }
 // }
-}; // namespace types
-} // namespace cmm
+} // namespace cmm::types

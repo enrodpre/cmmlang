@@ -2,10 +2,9 @@
 #include "ast.hpp"
 #include "expr.h"
 #include "parser.hpp"
+#include "test_base.hpp"
 #include "token.hpp"
 #include <gtest/gtest.h>
-
-#include <utility>
 
 using namespace cmm;
 using namespace parser;
@@ -14,37 +13,33 @@ using namespace memory;
 struct AstTest : public ::testing::Test {
   tokens* every_token;
   // ~AstTest() override { delete every_token; }
-  static token create_token(cmm::token_t type, std::string value = "") {
-    return {type, cmm::location(1, 2), std::move(value)};
-  }
-  token class_     = create_token(token_t::class_t);
-  token constexpr_ = create_token(token_t::constexpr_);
-  token static_    = create_token(token_t::static_);
-  token o_curly    = create_token(token_t::o_curly);
-  token c_curly    = create_token(token_t::c_curly);
-  token exit       = create_token(token_t::ident, "exit");
-  token doce       = create_token(token_t::int_lit, "12");
-  token x          = create_token(token_t::ident, "x");
-  token assign     = create_token(token_t::assign);
-  token comma      = create_token(token_t::comma);
-  token int_t      = create_token(token_t::int_t);
-  token ident      = create_token(token_t::ident, "var");
-  token lit        = create_token(token_t::int_lit, "5");
-  token zero       = create_token(token_t::int_lit, "10");
-  token plus       = create_token(token_t::plus);
-  token ocho       = create_token(token_t::int_lit, "8");
-  token dos        = create_token(token_t::int_lit, "2");
-  token star       = create_token(token_t::star);
-  token quince     = create_token(token_t::int_lit, "15");
-  token inc        = create_token(token_t::inc);
-  token y          = create_token(token_t::ident, "y");
-  token dec        = create_token(token_t::dec);
-  token semi       = create_token(token_t::semicolon);
-  token if_        = create_token(token_t::if_);
-  token oparen     = create_token(token_t::o_paren);
-  token cparen     = create_token(token_t::c_paren);
-  token true_      = create_token(token_t::true_lit);
-  token else_      = create_token(token_t::else_);
+  token constexpr_ = create_token(constexpr_);
+  token static_    = create_token(static_);
+  token o_curly    = create_token(o_curly);
+  token c_curly    = create_token(c_curly);
+  token exit       = create_token_val(ident, "exit");
+  token doce       = create_token_val(int_lit, "12");
+  token x          = create_token_val(ident, "x");
+  token assign     = create_token(assign);
+  token comma      = create_token(comma);
+  token int_t      = create_token(int_t);
+  token ident      = create_token_val(ident, "var");
+  token lit        = create_token_val(int_lit, "5");
+  token zero       = create_token_val(int_lit, "10");
+  token plus       = create_token(plus);
+  token ocho       = create_token_val(int_lit, "8");
+  token dos        = create_token_val(int_lit, "2");
+  token star       = create_token(star);
+  token quince     = create_token_val(int_lit, "15");
+  token inc        = create_token(inc);
+  token y          = create_token_val(ident, "y");
+  token dec        = create_token(dec);
+  token semi       = create_token(semicolon);
+  token if_        = create_token(if_);
+  token oparen     = create_token(o_paren);
+  token cparen     = create_token(c_paren);
+  token true_      = create_token(true_lit);
+  token else_      = create_token(else_);
 };
 
 TEST_F(AstTest, operator_precedence) {
@@ -52,12 +47,12 @@ TEST_F(AstTest, operator_precedence) {
   tokens expr{x, assign, x, plus, ocho, semi};
   cmm::parser::parser p(expr);
 
-  expression* actual = p.parse_expr();
-  auto* binop        = dynamic_cast<binary_operator*>(actual);
+  expression& actual = p.parse_expr();
+  auto* binop        = dynamic_cast<binary_operator*>(&actual);
   EXPECT_EQ(operator_t::assign, binop->operator_.value());
-  EXPECT_EQ("x", dynamic_cast<identifier*>(&binop->left)->value());
-  auto* adding = dynamic_cast<binary_operator*>(&binop->right);
-  EXPECT_EQ("8", dynamic_cast<literal*>(&adding->right)->value());
-  EXPECT_EQ("x", dynamic_cast<identifier*>(&adding->left)->value());
+  EXPECT_EQ("x", dynamic_cast<expr::identifier*>(&binop->left)->value());
+  auto* adding = dynamic_cast<expr::binary_operator*>(&binop->right);
+  EXPECT_EQ("8", dynamic_cast<expr::literal*>(&adding->right)->value());
+  EXPECT_EQ("x", dynamic_cast<expr::identifier*>(&adding->left)->value());
   EXPECT_EQ(operator_t::plus, adding->operator_.value());
 }

@@ -35,15 +35,14 @@ private:
   size_t pointer;
   // size_t m_row;
 
-  void replace(size_t, size_t, cstring);
+  void replace(size_t, size_t, std::string_view);
 
   static constexpr char NEWLINE_CHARACTER = '\n';
-  static constexpr std::string_view INCLUDE_PATTERN =
-      "^\\s*#\\s*include\\s+[<\"]([^>\"]*)[>\"]\\s*";
-  static constexpr std::string_view DEFINE_PATTERN =
+  static constexpr auto INCLUDE_PATTERN   = "^\\s*#\\s*include\\s+[<\"]([^>\"]*)[>\"]\\s*";
+  static constexpr auto DEFINE_PATTERN =
       "\\s*#\\s*define\\s+(\n[A-Za-z_][A-Za-z0-9_]*)\n\\s*(.*)\n$\n";
-  static constexpr std::string_view LINE_COMMENT        = "//";
-  static constexpr std::string_view OPEN_BLOCK_COMMENT  = "/*";
-  static constexpr std::string_view CLOSE_BLOCK_COMMENT = "*/";
+  static constexpr auto LINE_COMMENT        = "//";
+  static constexpr auto OPEN_BLOCK_COMMENT  = "/*";
+  static constexpr auto CLOSE_BLOCK_COMMENT = "*/";
 };
 } // namespace cmm

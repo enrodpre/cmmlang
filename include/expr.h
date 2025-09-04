@@ -4,7 +4,6 @@
 #include "common.hpp"
 #include "token.hpp"
 #include "types.hpp"
-#include "visitor.hpp"
 #include <cstdint>
 #include <type_traits>
 #include <utility>
@@ -19,19 +18,21 @@ struct semantic_data {
   bool loaded = false;
   std::optional<value_category_t> value_category;
   bool is_constant_evaluable{};
-  type_id original_type;
-  type_id casted_type;
+  types::type_id original_type;
+  std::optional<types::type_id> casted_type;
 };
 
-struct expression : visitable<expression, statement> {
-  expression()           = default;
+struct expression : derived_visitable<expression, statement> {
+  template <typename... Args>
+  expression(Args&&... args)
+      : derived_visitable(std::forward<Args>(args)...) {}
   ~expression() override = default;
-  using visitable<expression, statement>::statement;
+  using derived_visitable::derived_visitable;
 
   semantic_data* semantics() const;
   virtual types::type_id type() const {
     const auto* sem = semantics();
-    return sem->casted_type.is_valid() ? sem->casted_type : sem->original_type;
+    return sem->casted_type.has_value() ? sem->casted_type.value() : sem->original_type;
   }
 
 private:
@@ -40,12 +41,12 @@ private:
 
 static_assert(std::is_base_of_v<statement, expression>);
 
-struct identifier : visitable<identifier, expression> {
+struct identifier : derived_visitable<identifier, expression> {
   identifier(ast::identifier&& id);
-  const std::string& value() const { return m_term.value(); }
+  std::string_view value() const { return m_term.value(); }
   operator ast::identifier() const { return m_term; }
 
-  std::vector<node*> children() override { return {}; }
+  std::vector<node*> children() override { return {&m_term}; }
 
 private:
   ast::identifier m_term;
@@ -56,27 +57,24 @@ DERIVE_OK(statement, expression);
 DERIVE_OK(expression, identifier);
 
 enum class literal_t : uint8_t { CHAR, STRING, SINT, UINT, FALSE, TRUE, FLOAT };
-struct literal : visitable<literal, expression> {
+struct literal : derived_visitable<literal, expression> {
   literal_t category;
   literal(const token&, literal_t);
-  literal(cmm::location, std::string, literal_t);
 
-  const std::string& value() const { return m_term.value(); }
+  std::string_view value() const { return m_term.value(); }
   operator ast::literal() const { return m_term; }
 
-  std::vector<node*> children() override { return {}; }
+  std::vector<node*> children() override { return {&m_term}; }
 
 protected:
   ast::literal m_term;
 };
 
-using arguments = siblings<expr::expression*>;
-
-struct call : visitable<call, expression> {
+struct call : derived_visitable<call, expression> {
   ast::identifier ident;
-  arguments args;
+  siblings<expr::expression*> args;
 
-  call(decltype(ident)&& ident_, decltype(args)&& args);
+  call(decltype(ident)&& ident_, decltype(args) args);
   [[nodiscard]] std::vector<types::type_id> types() const {
     return args | std::views::transform([](const expr::expression* expr) -> types::type_id {
              return expr->type();
@@ -84,41 +82,37 @@ struct call : visitable<call, expression> {
            std::ranges::to<std::vector>();
   }
 
-  std::vector<node*> children() override {
-    std::vector<node*> res = {&ident};
-    res.append_range(args);
-    return res;
-  };
+  std::vector<node*> children() override { return {&ident, &args}; }
 };
 
-struct unary_operator : visitable<unary_operator, expression> {
+struct unary_operator : derived_visitable<unary_operator, expression> {
   expression& expr;
   ast::operator_ operator_;
-  unary_operator(expression* expression, ast::operator_&& op);
+  unary_operator(expression& expression, ast::operator_&& op);
   std ::vector<node*> children() override { return std ::vector<node*>{expr, &operator_}; }
 };
 
-struct binary_operator : visitable<binary_operator, expression> {
+struct binary_operator : derived_visitable<binary_operator, expression> {
   expression& left;
   expression& right;
   ast::operator_ operator_;
-  binary_operator(expression* left, ast::operator_&& op, expression* right);
+  binary_operator(expression& left, ast::operator_&& op, expression& right);
   std ::vector<node*> children() override { return std ::vector<node*>{left, &operator_, right}; }
 };
 
 using conversion_function = std::function<expression&(expression&)>;
 
-struct type_conversion : visitable<type_conversion, expression> {
+struct type_conversion : derived_visitable<type_conversion, expression> {
   expression& expr;
-  const types::converter func;
+  const conversor func;
 
-  type_conversion(expression& exp, types::converter fn)
+  type_conversion(expression& exp, conversor fn)
       : expr(exp),
         func(std::move(fn)) {}
 };
 
-struct implicit_type_conversion : visitable<implicit_type_conversion, type_conversion> {
-  using visitable<implicit_type_conversion, type_conversion>::visitable;
+struct implicit_type_conversion : derived_visitable<implicit_type_conversion, type_conversion> {
+  using derived_visitable<implicit_type_conversion, type_conversion>::derived_visitable;
   children_impl(&expr);
 };
 }; // namespace expr

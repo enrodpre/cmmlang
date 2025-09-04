@@ -15,7 +15,6 @@
 #include <string>
 #include <type_traits>
 #include <typeinfo>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -42,7 +41,8 @@ compilation_error_data::properties_array() {
         {INCOMPATIBLE_TOKEN, "Incompatible token {}", true},
         {REQUIRED_TYPE, "Required type in specifiers", true},
         {TOO_MANY_TYPES, "More than one type in specifiers", true},
-        {MISSING_ENTRY_POINT, "Main function not found", false}}}};
+        {MISSING_ENTRY_POINT, "Main function not found", false},
+        {NOT_BINDEABLE, "{} is not bindeable from value category {}", true}}}};
   return MAP;
 }; // namespace cmm
 
@@ -92,9 +92,6 @@ template <std::ranges::range T>
 formattable_range<T>::formattable_range(T* t)
     : m_range(t) {}
 
-static_assert(!PairLike<std::vector<int>>);
-static_assert(EntryLike<std::unordered_map<int, int>>);
-
 template <std::ranges::range T>
 template <class Delim>
 [[nodiscard]] constexpr std::string formattable_range<T>::join(Delim&& d) const {
@@ -113,7 +110,7 @@ auto formattable_range<T>::element_merger() const {
   }
 }
 
-constexpr formattable::operator std::string() const { return format(); }
+// constexpr formattable::operator std::string() const { return format(); }
 
 namespace {
 template <typename T>
@@ -127,60 +124,35 @@ std::string classname_only() {
 }
 } // namespace
 
-template <typename From, ScopedEnum To>
-  requires(Castable<From, To>)
-constexpr To cast_enum(From f) {
-  return magic_enum::enum_cast<To>(magic_enum::enum_name(f)).value();
-}
-
-template <ScopedEnum E>
-template <typename From>
-  requires(Castable<From, E>)
+template <scoped_enum E>
+template <scoped_enum From>
 constexpr enumeration<E>::enumeration(From f)
     : m_value(magic_enum::enum_cast<E>(magic_enum::enum_name(f))) {}
 
-template <ScopedEnum E>
+template <scoped_enum E>
 constexpr enumeration<E>::enumeration()
     : m_value(magic_enum::enum_values<E>()[0]) {}
 
-template <ScopedEnum E>
-constexpr auto enumeration<E>::type_name() noexcept {
-  return magic_enum::enum_type_name<E>();
-}
-template <ScopedEnum E>
-[[nodiscard]] constexpr auto enumeration<E>::name() const noexcept {
-  return std::string(magic_enum::enum_name<E>(m_value));
-};
-template <ScopedEnum E>
-[[nodiscard]] constexpr auto enumeration<E>::value() const noexcept {
-  return magic_enum::enum_integer(m_value);
-};
-
-template <ScopedEnum From>
+template <scoped_enum From>
 template <typename To>
 constexpr To enumeration<From>::cast() const {
   auto to_enum = name();
-  if constexpr (Enumerable<To>) {
-    if (auto to =
-            magic_enum::enum_cast<typename To::value_type>(to_enum, magic_enum::case_insensitive)) {
+  if constexpr (std::is_scoped_enum_v<To>) {
+    if (auto to = magic_enum::enum_cast<To>(to_enum, magic_enum::case_insensitive)) {
       return to.value();
     }
-
-    REGISTER_ERROR("Shouldnt cast {} to {} if it is not castable", name(), To::type_name());
-    assert(false);
   } else {
     if (auto to = magic_enum::enum_cast<To>(to_enum, magic_enum::case_insensitive)) {
       return to.value();
     }
-
-    REGISTER_ERROR(
-        "Shouldnt cast {} to {} if it is not castable", name(), magic_enum::enum_type_name<To>());
-    assert(false);
   }
+  REGISTER_ERROR(
+      "Shouldnt cast {} to {} if it is not castable", name(), magic_enum::enum_type_name<To>());
+  assert(false);
 }
 
-template <ScopedEnum E>
-constexpr std::string enumeration<E>::format() const {
+template <scoped_enum E>
+constexpr std::string enumeration<E>::string() const {
   return std::format("{}::{}", type_name(), name());
 }
 
@@ -323,115 +295,115 @@ template <typename T>
   return m_data.empty();
 }
 
-template <typename T>
-vector<T>::vector(std::initializer_list<vector<T>::value_type> init)
+template <typename T, typename Alloc>
+vector<T, Alloc>::vector(std::initializer_list<vector<T, Alloc>::value_type> init)
     : m_data(init) {}
 
-template <typename T>
-vector<T>::vector(const container_type& t)
+template <typename T, typename Alloc>
+vector<T, Alloc>::vector(const container_type& t)
     : m_data(t) {}
 
-template <typename T>
-vector<T>::vector(container_type&& t)
+template <typename T, typename Alloc>
+vector<T, Alloc>::vector(container_type&& t)
     : m_data(std::move(t)) {}
 
-template <typename T>
-inline T& vector<T>::at(size_t i) {
+template <typename T, typename Alloc>
+inline T& vector<T, Alloc>::at(size_t i) {
   return m_data.at(i);
 }
 
-template <typename T>
-inline const T& vector<T>::at(size_t i) const {
+template <typename T, typename Alloc>
+inline const T& vector<T, Alloc>::at(size_t i) const {
   return m_data.at(i);
 }
 
-template <typename T>
-const vector<T>::container_type& vector<T>::data() const {
+template <typename T, typename Alloc>
+const vector<T, Alloc>::container_type& vector<T, Alloc>::data() const {
   return m_data;
 }
 
-template <typename T>
-vector<T>::iterator vector<T>::begin() {
+template <typename T, typename Alloc>
+vector<T, Alloc>::iterator vector<T, Alloc>::begin() {
   return m_data.begin();
 }
 
-template <typename T>
-vector<T>::iterator vector<T>::end() {
+template <typename T, typename Alloc>
+vector<T, Alloc>::iterator vector<T, Alloc>::end() {
   return m_data.end();
 }
-template <typename T>
-vector<T>::const_iterator vector<T>::begin() const {
+template <typename T, typename Alloc>
+vector<T, Alloc>::const_iterator vector<T, Alloc>::begin() const {
   return m_data.begin();
 }
 
-template <typename T>
-vector<T>::const_iterator vector<T>::end() const {
+template <typename T, typename Alloc>
+vector<T, Alloc>::const_iterator vector<T, Alloc>::end() const {
   return m_data.end();
 }
 
-template <typename T>
-vector<T>::const_iterator vector<T>::cbegin() const {
+template <typename T, typename Alloc>
+vector<T, Alloc>::const_iterator vector<T, Alloc>::cbegin() const {
   return m_data.cbegin();
 }
 
-template <typename T>
-vector<T>::const_iterator vector<T>::cend() const {
+template <typename T, typename Alloc>
+vector<T, Alloc>::const_iterator vector<T, Alloc>::cend() const {
   return m_data.cend();
 }
 
-template <typename T>
-vector<T>::reverse_iterator vector<T>::rbegin() {
+template <typename T, typename Alloc>
+vector<T, Alloc>::reverse_iterator vector<T, Alloc>::rbegin() {
   return m_data.rbegin();
 }
-template <typename T>
-vector<T>::reverse_iterator vector<T>::rend() {
+template <typename T, typename Alloc>
+vector<T, Alloc>::reverse_iterator vector<T, Alloc>::rend() {
   return m_data.rend();
 }
-template <typename T>
-vector<T>::const_reverse_iterator vector<T>::rbegin() const {
+template <typename T, typename Alloc>
+vector<T, Alloc>::const_reverse_iterator vector<T, Alloc>::rbegin() const {
   return m_data.rbegin();
 }
-template <typename T>
-vector<T>::const_reverse_iterator vector<T>::rend() const {
+template <typename T, typename Alloc>
+vector<T, Alloc>::const_reverse_iterator vector<T, Alloc>::rend() const {
   return m_data.rend();
 }
 
-template <typename T>
-[[nodiscard]] bool vector<T>::empty() const {
+template <typename T, typename Alloc>
+[[nodiscard]] bool vector<T, Alloc>::empty() const {
   return m_data.empty();
 }
 
-template <typename T>
-[[nodiscard]] size_t vector<T>::size() const {
+template <typename T, typename Alloc>
+[[nodiscard]] size_t vector<T, Alloc>::size() const {
   return m_data.size();
 }
-template <typename T>
-void vector<T>::push_back(const T& t) {
+template <typename T, typename Alloc>
+void vector<T, Alloc>::push_back(const T& t) {
   m_data.push_back(t);
 }
-template <typename T>
-void vector<T>::push_back(T&& t) {
+template <typename T, typename Alloc>
+void vector<T, Alloc>::push_back(T&& t) {
   m_data.push_back(std::move(t));
 }
-template <typename T>
+template <typename T, typename Alloc>
 template <typename Fn>
-vector<T>::pointer_type vector<T>::find(Fn fn) {
+vector<T, Alloc>::pointer_type vector<T, Alloc>::find(Fn fn) {
   return *(m_data | std::ranges::find_if(fn));
 }
 
-template <typename T>
+template <typename T, typename Alloc>
 template <typename Fn>
-vector<T>::const_pointer_type vector<T>::find(Fn fn) const {
+vector<T, Alloc>::const_pointer_type vector<T, Alloc>::find(Fn fn) const {
   return *(m_data | std::ranges::find_if(fn));
 }
 
-template <typename T>
+template <typename T, typename Alloc>
 template <typename Fn>
-auto vector<T>::transform(Fn&& fn) const {
+auto vector<T, Alloc>::transform(Fn&& fn) const {
   return m_data | std::views::transform(fn) | std::ranges::to<std::vector>();
 }
-template <typename T>
-[[nodiscard]] std::string vector<T>::join(char delim, size_t lvl) const {
+template <typename T, typename Alloc>
+[[nodiscard]] std::string vector<T, Alloc>::join(char delim, size_t lvl) const {
   return data() | std::views::transform([lvl](const auto& elem) {
            if constexpr (requires { elem.operator->(); }) {
              return elem->repr(lvl + 1);
@@ -444,10 +416,10 @@ template <typename T>
          std::views::join_with(delim) | std::ranges::to<std::string>();
 }
 
-template <typename T>
+template <typename T, typename Alloc>
 template <std::ranges::forward_range Pattern>
   requires(std::ranges::view<Pattern>)
-std::string vector<T>::join(Pattern&& p, size_t lvl) const {
+std::string vector<T, Alloc>::join(Pattern&& p, size_t lvl) const {
   return data() | std::views::transform([lvl](const auto& elem) {
            if constexpr (requires { elem.operator->(); }) {
              return elem->repr(lvl + 1);
@@ -459,10 +431,10 @@ std::string vector<T>::join(Pattern&& p, size_t lvl) const {
          }) |
          std::views::join_with(p) | std::ranges::to<std::string>();
 }
-template <typename T>
+template <typename T, typename Alloc>
 template <std::move_constructible Func, std::ranges::forward_range Pattern>
   requires(std::ranges::view<Pattern>)
-std::string vector<T>::join(Func&& fn, Pattern&& p, size_t) const {
+std::string vector<T, Alloc>::join(Func&& fn, Pattern&& p, size_t) const {
   return data() | std::views::transform(fn) | std::views::join_with(p) |
          std::ranges::to<std::string>();
 }

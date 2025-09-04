@@ -1,126 +1,68 @@
 #pragma once
 
 #include "types.hpp"
+#include <magic_enum/magic_enum_flags.hpp>
 
 namespace cmm::types {
 
-constexpr category_data category_t::operator->() const { return category_data(underlying_type()); }
-[[nodiscard]] constexpr const category_data::properties& category_data::get_properties() {
+template <>
+constexpr const category_data* category_t::operator->() const {
+  return &global().s_category_data.at(m_value);
+}
+
+// consteval std::array<types::type_id, 20> provide_builtins() { return {}; }
+
+consteval decltype(manager::s_category_data) provide_categories() {
   using enum group_t;
   using enum core_t;
   using enum layer_t;
-  // static constexpr properties MAP{{{{any_t, any_t, {fundamental_t, compound_t}},
-  //                                   {fundamental_t, any_t, {void_t, nullptr_t, arithmetic_t}},
-  //                                   {arithmetic_t, fundamental_t, {integral_t, float_t}},
-  //                                   {integral_t, arithmetic_t, {bool_t, char_t, uint_t, sint_t}},
-  //                                   {compound_t, any_t, {}},
-  //                                   {indirection_t, compound_t, {reference_t, pointer_t}},
-  //                                   {reference_t, indirection_t, {lvalue_ref_t, rvalue_ref_t}},
-  //                                   {enum_t, compound_t, {scoped_enum_t, unscoped_enum_t}},
-  //                                   {void_t, fundamental_t, {}},
-  //                                   {nullptr_t, fundamental_t, {}},
-  //                                   {bool_t, integral_t, {}},
-  //                                   {char_t, integral_t, {}},
-  //                                   {uint_t, integral_t, {}},
-  //                                   {sint_t, integral_t, {}},
-  //                                   {float_t, arithmetic_t, {}},
-  //                                   {scoped_enum_t, enum_t, {}},
-  //                                   {unscoped_enum_t, enum_t, {}},
-  //                                   {class_t, compound_t, {}},
-  //                                   {lvalue_ref_t, reference_t, {}},
-  //                                   {rvalue_ref_t, reference_t, {}},
-  //                                   {pointer_t, indirection_t, {}},
-  //                                   {array_t, compound_t, {}},
-  //                                   {function_t, compound_t, {}}
-  //
-  // }}};
-  static constexpr properties MAP{{{{any_t, any_t},
-                                    {fundamental_t, any_t},
-                                    {arithmetic_t, fundamental_t},
-                                    {integral_t, arithmetic_t},
-                                    {compound_t, any_t},
-                                    {indirection_t, compound_t},
-                                    {reference_t, indirection_t},
-                                    {enum_t, compound_t},
-                                    {void_t, fundamental_t},
-                                    {nullptr_t, fundamental_t},
-                                    {bool_t, integral_t},
-                                    {char_t, integral_t},
-                                    {uint_t, integral_t},
-                                    {sint_t, integral_t},
-                                    {float_t, arithmetic_t},
-                                    {scoped_enum_t, enum_t},
-                                    {unscoped_enum_t, enum_t},
-                                    {class_t, compound_t},
-                                    {lvalue_ref_t, reference_t},
-                                    {rvalue_ref_t, reference_t},
-                                    {pointer_t, indirection_t},
-                                    {array_t, compound_t},
-                                    {function_t, compound_t}
-
-  }}};
-  return MAP;
+  constexpr decltype(manager::s_category_data) res{
+      {MakeData<any_t, any_t>(),
+       MakeData<fundamental_t, any_t, void_t, nullptr_t, arithmetic_t>(),
+       MakeData<arithmetic_t, fundamental_t, integral_t, float_t>(),
+       MakeData<integral_t, arithmetic_t, bool_t, char_t, uint_t, sint_t>(),
+       MakeData<compound_t, any_t>(),
+       MakeData<indirection_t, compound_t, reference_t, pointer_t>(),
+       MakeData<reference_t, indirection_t, lvalue_ref_t, rvalue_ref_t>(),
+       MakeData<void_t, fundamental_t>(),
+       MakeData<enum_t, compound_t, scoped_enum_t, unscoped_enum_t>(),
+       MakeData<nullptr_t, fundamental_t>(),
+       MakeData<bool_t, integral_t>(),
+       MakeData<char_t, integral_t>(),
+       MakeData<uint_t, integral_t>(),
+       MakeData<sint_t, integral_t>(),
+       MakeData<float_t, arithmetic_t>(),
+       MakeData<scoped_enum_t, enum_t>(),
+       MakeData<unscoped_enum_t, enum_t>(),
+       MakeData<class_t, compound_t>(),
+       MakeData<lvalue_ref_t, reference_t>(),
+       MakeData<rvalue_ref_t, reference_t>(),
+       MakeData<pointer_t, indirection_t>(),
+       MakeData<array_t, compound_t>(),
+       MakeData<function_t, compound_t>()}
+  };
+  return res;
 }
 
-template <ScopedEnum Enum>
-constexpr magic_enum::string_view enum_strip_t(Enum e) {
-
-  auto cat = magic_enum::enum_name(e);
-  return std::format("is_{}", cat.substr(cat.size() - 2));
-}
-template <auto E>
-constexpr std::string enum_strip_t() {
-  auto cat = magic_enum::enum_name<E>();
-  return std::format("is_{}", cat.substr(cat.size() - 2));
-}
+constexpr decltype(manager::s_category_data) manager::s_category_data = provide_categories();
 
 template <auto Cat>
-  requires(ValueCategory<Cat>)
-constexpr matcher is_category() {
+  requires CategoryValue<Cat>
+constexpr unary_matcher is_category() {
   auto cat = magic_enum::enum_name<Cat>();
-  return {std::format("is_{}", cat.substr(cat.size() - 2)), [](type_id t) -> match_result {
-            auto ok = belongs_to(t->categorize(), Cat);
-            return {
-                ok,
-                0,
-            };
-          }}; // namespace cmm::types
+  return {std::format("is_{}", cat.substr(cat.size() - 2)),
+          [](types::type_id t) -> match_result { return {belongs_to(t->categorize(), Cat)}; }};
 }
 
 template <auto Cat>
-  requires(ValueCategory<Cat>)
-constexpr match_result is_category(type_id t) {
-  return is_category<Cat>(t);
+  requires(CategoryValue<Cat>)
+constexpr match_result is_category(types::type_id t) {
+  return is_category<Cat>()(t);
 }
 
-template <layer_t L>
-modifier make_wrapper() {
-  return {enum_strip_t<L>(), [](info t) -> info {
-            t.layers.emplace(L);
-            return t;
-          }};
-}; // namespace cmm::types
-
-template <qualification_t L>
-modifier make_qualifier() {
-  return {enum_strip_t<L>(), [](info t) -> info {
-            if (t.layers.empty()) {
-              t.cv_qualifiers |= L;
-            } else {
-              t.layers.top().cv_qualifiers |= L;
-            }
-            return t;
-          }};
+template <cv_qualification_t Cv>
+constexpr unary_matcher is_cv_qualified() {
+  return {std::format("is_", magic_enum::enum_name<cv_qualification_t>(Cv)),
+          [](type_id t) -> match_result { return {magic_enum::enum_flags_test(t->cvqual(), Cv)}; }};
 }
-
-template <layer_t L>
-modifier make_peeler() {
-  return {std::format("remove {}", enum_strip_t<L>()), [](info t) -> info {
-            if (t.layers.top().tag == L) {
-              t.layers.pop();
-            }
-            return t;
-          }};
-}
-
 } // namespace cmm::types

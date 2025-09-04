@@ -3,12 +3,14 @@
 #include "common.hpp"
 #include "lang.hpp"
 #include "macros.hpp"
+#include "memory.hpp"
+#include "revisited/visitor.h"
 #include "token.hpp"
 #include "traits.hpp"
 #include "types.hpp"
-#include "visitor.hpp"
 #include <algorithm>
 #include <bits/ranges_algo.h>
+#include <concepts>
 #include <initializer_list>
 
 #include <magic_enum/magic_enum.hpp>
@@ -27,116 +29,131 @@ struct compilation_unit;
 
 namespace cmm::ast {
 
-#define term_properties(TYPE)                                                \
-  operator TYPE() const { return value(); }                                  \
-  [[nodiscard]] const TYPE& value() const { return m_value; }                \
-  std::string string() const override { return std::format("{}", m_value); } \
-  children_impl();
+using namespace revisited;
 
-struct keyword : visitable<keyword, node> {
-  using visitable<keyword, node>::visitable;
-  term_properties(keyword_t);
+template <typename... Visitable>
+using visitor = revisited::Visitor<std::add_lvalue_reference_t<Visitable>...>;
+template <typename... Visitable>
+using const_visitor = visitor<std::add_const_t<Visitable>...>;
 
-private:
-  keyword_t m_value;
-};
-static_assert(std::is_base_of_v<node, keyword>);
-
-struct literal : visitable<literal, node> {
-  using visitable<literal, node>::visitable;
-  literal(cmm::location l, std::string s)
-      : visitable<literal, node>(std::move(l)),
-        m_value(std::move(s)) {}
-
-  term_properties(std::string);
-
-private:
-  std::string m_value;
-};
-
-struct operator_ : visitable<operator_, node> {
-  operator_(const token& t)
-      : visitable<operator_, node>(t),
-        m_value(token_data(t.type).cast<operator_t>()) {}
-
-  operator_(const token& t, operator_t op)
-      : visitable<operator_, node>(t),
-        m_value(op) {}
-
-  std::string string() const override {
-    return std::format("operator{}", operator_data(m_value).repr);
+struct node : public revisited::Visitable<node>, displayable {
+  ~node() override = default;
+  node(std::optional<cmm::location> l = {})
+      : m_location(l) {}
+  node(const token& t)
+      : node(t.location()) {}
+  MOVABLE_CLS(node);
+  COPYABLE_CLS(node);
+  template <typename T = node>
+  T* get_parent() {
+    return dynamic_cast<T*>(m_parent);
+  }
+  template <typename T = node>
+  const T* get_parent() const {
+    return dynamic_cast<const T*>(m_parent);
+  }
+  virtual void set_parent(node* parent_) { m_parent = parent_; }
+  virtual void set_parent(node* parent_) const { m_parent = parent_; }
+  virtual std::optional<cmm::location> location() const { return m_location; };
+  operator node*() { return static_cast<node*>(this); }
+  std::string string() const override { return demangle(typeid(this).name()); }
+  virtual std::vector<node*> children() = 0;
+  void initialize() {
+    for (node* child : children()) {
+      if (child != nullptr) {
+        child->set_parent(this);
+        m_location = m_location + child->location();
+      }
+    }
   }
 
-  operator operator_t() const { return value(); }
-  [[nodiscard]] const operator_t& value() const { return m_value; }
-  std ::vector<node*> children() override { return {}; }
-
 private:
-  operator_t m_value;
+  mutable node* m_parent = nullptr;
+  std::optional<cmm::location> m_location;
 };
 
-struct storage : visitable<storage, node> {
-  storage() = default;
+template <typename T>
+concept ast_node = std::is_base_of_v<ast::node, T>;
 
-  storage(const token& t, storage_t l)
-      : visitable<storage, node>(t),
-        m_value(l) {}
+template <typename T>
+concept pointer_ast_node = std::is_assignable_v<T, ast::node*>;
 
-  term_properties(storage_t);
+struct identifier;
+struct literal;
 
-private:
-  storage_t m_value{};
-};
+#define children_impl(CHILDREN)                                                   \
+  std::vector<node*> children() override { return std::vector<node*>{CHILDREN}; }
 
-struct linkage : visitable<linkage, node> {
-  linkage() = default;
+#define to_node(OBJ) static_cast<node*>(OBJ)
+template <typename T>
+struct term : derived_visitable<term<T>, node> {
+  std::vector<node*> children() final { return {}; }
 
-  linkage(const token& t, linkage_t l)
-      : visitable<linkage, node>(t),
-        m_value(l) {}
-
-  term_properties(linkage_t);
-
-private:
-  linkage_t m_value{};
-};
-
-struct type : visitable<type, node> {
-  type(types::type_id t)
-      : m_value(t) {}
-
-  [[nodiscard]] type value() const { return m_value; }
-  std ::string string() const override { return std ::format("{}", m_value); }
-  std ::vector<node*> children() override { return std ::vector<node*>{}; };
+  term() = default;
+  term(T t_t)
+      : m_value(t_t) {}
+  term(const token& t_token, T t_t)
+      : derived_visitable<term<T>, node>(t_token.location()),
+        m_value(t_t) {}
+  term(const cmm::location& t_loc, T t_t)
+      : derived_visitable<term<T>, node>(t_loc),
+        m_value(t_t) {}
+  explicit operator const T&() const { return value(); }
+  const T& value() const { return m_value; }
+  std::string string() const override { return std::format("{}", m_value); }
 
 private:
-  type_id m_value;
+  T m_value{};
 };
 
-struct identifier : visitable<identifier, node> {
-  identifier() = default;
-
-  identifier(const token& t)
-      : visitable<identifier, node>(t),
-        m_value(t.value) {}
-
-  identifier(std::string name)
-      : m_value(std::move(name)) {}
-
-  identifier(const operator_& op)
-      : visitable<identifier, node>(op.location()),
-        m_value(std::format("operator{}", op.value())) {}
-
-  bool operator==(const identifier& other) const { return m_value == other.m_value; }
-  term_properties(std::string);
-  operator cstring() const { return value(); }
-
-private:
-  std::string m_value;
+struct keyword : public derived_visitable<keyword, term<keyword_t>> {
+  keyword(const token& t_token, keyword_t t_keyword)
+      : derived_visitable(t_token.location(), t_keyword) {}
+  using derived_visitable::derived_visitable;
 };
 
-struct statement : visitable<statement, node> {
-  using visitable<statement, node>::visitable;
+static_assert(std::is_assignable_v<keyword, node>);
+
+struct literal : public derived_visitable<literal, term<std::string_view>> {
+  literal(cmm::location l, std::string_view s)
+      : derived_visitable(std::move(l), s) {}
+};
+
+struct operator_ : public derived_visitable<operator_, term<operator_t>> {
+  operator_(const cmm::token& t)
+      : derived_visitable(t.location(), token_data(t.type).cast<operator_t>()) {}
+
+  operator_(const token& t, operator_t op)
+      : derived_visitable(t.location(), op) {}
+};
+
+struct storage_spec : derived_visitable<storage_spec, term<storage_t>> {
+  storage_spec() = default;
+  storage_spec(const token& t_token, storage_t t_storage)
+      : derived_visitable(t_token, t_storage) {}
+};
+
+struct linkage_spec : derived_visitable<linkage_spec, term<linkage_t>> {
+  linkage_spec() = default;
+  linkage_spec(const token& t_token, linkage_t t_linkage)
+      : derived_visitable(t_token, t_linkage) {}
+};
+struct type_spec : derived_visitable<type_spec, term<type_id>> {
+  type_spec(type_id t_type)
+      : derived_visitable(t_type) {}
+  type_spec(const token& t_token, type_id t_type)
+      : derived_visitable(t_token, t_type) {}
+};
+
+struct identifier : derived_visitable<identifier, term<std::string>> {
+  identifier(std::string t_ident)
+      : derived_visitable(t_ident) {}
+  identifier(const cmm::token& t)
+      : derived_visitable(t.location(), std::string(t.value)) {}
+};
+
+struct statement : derived_visitable<statement, node> {
+  using derived_visitable<statement, node>::derived_visitable;
   statement(statement&&) noexcept = default;
 
   statement& operator=(statement&& other) noexcept {
@@ -147,7 +164,7 @@ struct statement : visitable<statement, node> {
   COPYABLE_CLS(statement);
 };
 
-struct empty_statement_t : visitable<empty_statement_t, statement> {
+struct empty_statement_t : derived_visitable<empty_statement_t, statement> {
   empty_statement_t() = default;
 
   std::string string() const override { return "empty_statement"; }
@@ -160,7 +177,6 @@ struct identifier;
 struct unary_operator;
 struct call;
 struct binary_operator;
-struct arguments;
 struct implicit_type_conversion;
 }; // namespace expr
 
@@ -174,14 +190,14 @@ constexpr static auto EXTRACT_TYPE = [](const T& t) { return t.type(); };
 
 using mangled_key                  = std::string;
 
-struct anonymous_declaration : visitable<anonymous_declaration, statement> {
+struct anonymous_declaration : derived_visitable<anonymous_declaration, statement> {
   anonymous_declaration() = default;
-  using visitable<anonymous_declaration, statement>::DerivedVisitable;
+  using derived_visitable::derived_visitable;
 };
 
-struct declaration : visitable<declaration, anonymous_declaration> {
-  using visitable<declaration, anonymous_declaration>::anonymous_declaration;
-  identifier ident;
+struct declaration : derived_visitable<declaration, anonymous_declaration> {
+  using derived_visitable::anonymous_declaration;
+  ast::identifier ident;
 
   declaration() = delete;
   declaration(decltype(ident) t)
@@ -206,11 +222,14 @@ using variable_store_value = struct variable_store
 // dynamic_cast<node*>(elem); };
 
 template <typename T>
-struct siblings : public vector<T>, public visitable<siblings<T>, node> {
-  siblings() = default;
+struct siblings : public vector<T, cmm::memory::allocator<T>>,
+                  public derived_visitable<siblings<T>, node> {
+  using value_type     = T;
+  using allocator_type = cmm::memory::allocator<T>;
+  siblings()           = default;
 
   siblings(std::initializer_list<T> init)
-      : vector<T>(init) {}
+      : vector<T, allocator_type>(init) {}
 
   siblings(siblings<T>&&)                 = default;
   siblings& operator=(siblings<T>&&)      = default;
@@ -218,10 +237,10 @@ struct siblings : public vector<T>, public visitable<siblings<T>, node> {
 
   siblings& operator=(const siblings<T>&) = default;
   siblings(std::vector<T>&& s) noexcept
-      : vector<T>(std::move(s)) {}
+      : vector<T, allocator_type>(std::move(s)) {}
 
   siblings(const std::vector<T>& s) noexcept
-      : vector<T>(std::move(s)) {}
+      : vector<T, allocator_type>(std::move(s)) {}
 
   [[nodiscard]] std::string string() const override { return demangle(typeid(this).name()); }
   std ::vector<node*> children() override {
@@ -230,14 +249,17 @@ struct siblings : public vector<T>, public visitable<siblings<T>, node> {
     }) | std::ranges::to<std::vector>()};
   };
 };
+namespace expr {
+using arguments = siblings<expr::expression*>;
+}
 
 DERIVE_OK(node, statement);
 
 using global_declarations = siblings<declaration*>;
 using statements          = siblings<statement*>;
 
-struct scope : visitable<scope, anonymous_declaration> {
-  using visitable<scope, anonymous_declaration>::DerivedVisitable;
+struct scope : derived_visitable<scope, anonymous_declaration> {
+  using derived_visitable::derived_visitable;
   [[nodiscard]] virtual bool is_declared(const ast::identifier&) const;
   [[nodiscard]] virtual const variable_store::value_type& get_variable(
       const ast::identifier&) const;
@@ -257,7 +279,7 @@ struct executable_scope : scope, siblings<T> {};
 using label_store = std::unordered_map<std::string, const decl::label*>;
 
 namespace decl {
-struct block : visitable<block, scope> {
+struct block : derived_visitable<block, scope> {
   block(const statements& s)
       : stmts(s) {}
 
@@ -267,11 +289,11 @@ struct block : visitable<block, scope> {
   children_impl(stmts | TRANSFORM([](const auto& s) { return dynamic_cast<node*>(s); }) | TO_VEC);
 };
 
-struct specifiers : visitable<specifiers, node> {
-  ast::type type;
-  ast::linkage linkage;
-  ast::storage storage;
-  specifiers(ast::type&&, ast::linkage&&, ast::storage&&);
+struct specifiers : derived_visitable<specifiers, node> {
+  type_spec type;
+  linkage_spec linkage;
+  storage_spec storage;
+  specifiers(type_spec&&, linkage_spec&&, storage_spec&&);
 
   specifiers(types::type_id t, decltype(linkage) l = {}, decltype(storage) s = {})
       : type(std::move(t)),
@@ -280,10 +302,12 @@ struct specifiers : visitable<specifiers, node> {
   std::vector<node*> children() override {
     return {to_node(&type), dynamic_cast<node*>(&linkage), dynamic_cast<node*>(&storage)};
   };
+  std::string string() const override { return std::format("{} {} {}", type, linkage, storage); }
 };
+
 static_assert(std::is_base_of_v<node, ast::operator_>);
 
-struct rank : visitable<rank, node> {
+struct rank : derived_visitable<rank, node> {
   ast::operator_ open;
   expr::expression* number;
   ast::operator_ close;
@@ -293,12 +317,12 @@ struct rank : visitable<rank, node> {
   std ::vector<node*> children() override;
 };
 
-struct label : visitable<label, declaration> {
+struct label : derived_visitable<label, declaration> {
   label(const token&);
   std::vector<node*> children() override { return {&ident}; }
 };
 
-struct variable : visitable<variable, declaration> {
+struct variable : derived_visitable<variable, declaration> {
   specifiers specs;
   decl::rank* rank;
   expr::expression* init;
@@ -310,7 +334,7 @@ struct variable : visitable<variable, declaration> {
   std::vector<node*> children() override;
 };
 
-struct function : visitable<function, declaration>, public callable {
+struct function : derived_visitable<function, declaration>, public callable {
   using identifier_type = identifier;
   struct definition;
 
@@ -321,7 +345,7 @@ struct function : visitable<function, declaration>, public callable {
   function(decltype(specs)&&, decltype(ident)&&, decltype(params)&&, decltype(body));
 
   function(operator_& name, types::type_id ret, decltype(params)& p, decltype(body) b)
-      : visitable<function, declaration>(name),
+      : derived_visitable(std::format("operator{}", name)),
         specs(ret),
         params(p),
         body(b) {}
@@ -329,16 +353,17 @@ struct function : visitable<function, declaration>, public callable {
   callable_contract contract() const override;
   std::vector<parameter> parameters() const override {
     return params | std::views::transform([](const variable* param) -> parameter {
-             return {param->specs.type.value(), param->ident.value(), param->init, param};
+             return {
+                 param->specs.type.value(), std::string(param->ident.value()), param->init, param};
            }) |
            std::ranges::to<std::vector>();
   }
   std::vector<node*> children() override;
 };
 
-struct function::definition : visitable<definition, block> {
+struct function::definition : derived_visitable<definition, block> {
   definition(const siblings<statement*>& s)
-      : visitable<definition, block>(s) {}
+      : derived_visitable<definition, block>(s) {}
 
   struct {
     [[nodiscard]] size_t size() const { return stack_size; };
@@ -415,7 +440,7 @@ struct function_store : hashmap<callable_signature, const decl::function*> {
 };
 
 namespace selection {
-struct if_ : visitable<if_, statement> {
+struct if_ : derived_visitable<if_, statement> {
   ast::keyword keyword;
   expr::expression& condition;
   decl::block* block;
@@ -429,7 +454,7 @@ struct if_ : visitable<if_, statement> {
 
 namespace iteration {
 
-struct while_ : visitable<while_, statement> {
+struct while_ : derived_visitable<while_, statement> {
   ast::keyword keyword;
   expr::expression& condition;
   decl::block* body;
@@ -441,7 +466,7 @@ struct while_ : visitable<while_, statement> {
 DERIVE_OK(statement, while_);
 static_assert(!std::is_abstract_v<while_>);
 
-struct for_ : visitable<for_, statement> {
+struct for_ : derived_visitable<for_, statement> {
   ast::keyword keyword;
   decl::variable* start;
   expr::expression* condition;
@@ -458,34 +483,34 @@ struct for_ : visitable<for_, statement> {
 }; // namespace iteration
 
 namespace jump {
-struct goto_ : visitable<goto_, statement> {
+struct goto_ : derived_visitable<goto_, statement> {
   identifier term;
   goto_(const token&);
   std::vector<node*> children() override;
 };
 
-struct break_ : visitable<break_, statement> {
+struct break_ : derived_visitable<break_, statement> {
   ast::keyword keyword;
   explicit break_(const token& token);
   std::vector<node*> children() override;
 };
 
-struct continue_ : visitable<continue_, statement> {
+struct continue_ : derived_visitable<continue_, statement> {
   ast::keyword keyword;
   explicit continue_(const token& token);
   std::vector<node*> children() override;
 };
 
-struct return_ : visitable<return_, statement> {
+struct return_ : derived_visitable<return_, statement> {
   ast::keyword keyword;
   expr::expression* expr;
-  return_(ast::keyword&& k, expr::expression* expr_);
+  return_(const token& t, expr::expression* expr_);
   std::vector<node*> children() override;
 };
 
 } // namespace jump
 
-struct translation_unit : visitable<translation_unit, scope> {
+struct translation_unit : derived_visitable<translation_unit, scope> {
   translation_unit() = default;
 
   children_impl(stmts | TRANSFORM([](const auto& s) { return dynamic_cast<node*>(s); }) | TO_VEC);
@@ -540,8 +565,9 @@ using namespace_ = translation_unit;
 #define TRACE_VISITOR(OBJ)                                                                     \
   REGISTER_TRACE("{} visited {}", demangle(typeid(this).name()), demangle(typeid(OBJ).name()))
 
-#define TERM_TYPES \
-  ast::literal, ast::identifier, ast::keyword, ast::operator_, ast::storage, ast::linkage, ast::type
+#define TERM_TYPES                                                                \
+  ast::literal, ast::identifier, ast::keyword, ast::operator_, ast::storage_spec, \
+      ast::linkage_spec, ast::type_spec
 
 #define GLOBAL_TYPES ast::decl::function, ast::decl::variable
 
@@ -564,9 +590,9 @@ struct ast_visitor : public visitor<NODE_TYPES> {
   void visit(ast::decl::function::definition&) override;
   void visit(ast::literal&) override;
   void visit(ast::keyword&) override;
-  void visit(ast::storage&) override;
-  void visit(ast::type&) override;
-  void visit(ast::linkage&) override;
+  void visit(ast::storage_spec&) override;
+  void visit(ast::type_spec&) override;
+  void visit(ast::linkage_spec&) override;
   void visit(ast::expr::arguments&) override;
   void visit(ast::identifier&) override;
   void visit(ast::expr::unary_operator& c) override;
@@ -595,10 +621,10 @@ struct const_ast_visitor : const_visitor<NODE_TYPES> {
   void visit(const ast::decl::block&) override;
   void visit(const ast::literal&) override;
   void visit(const ast::keyword&) override;
-  void visit(const ast::storage&) override;
-  void visit(const ast::type&) override;
+  void visit(const ast::storage_spec&) override;
+  void visit(const ast::type_spec&) override;
   void visit(const ast::operator_&) override;
-  void visit(const ast::linkage&) override;
+  void visit(const ast::linkage_spec&) override;
   void visit(const ast::identifier&) override;
   void visit(const ast::expr::arguments&) override;
   void visit(const ast::expr::literal& c) override;

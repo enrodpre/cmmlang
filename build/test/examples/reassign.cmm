@@ -1,0 +1,7 @@
+int main()
+{
+  int a = 255;
+  int x;
+  x = a;
+  return x;
+}

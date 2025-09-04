@@ -3,7 +3,6 @@
 #include <type_traits>
 
 #include "ast.hpp"
-#include "visitor.hpp"
 
 #define SET_PARENT_AND_VISIT(node, member) \
   node.member.set_parent(&(node));         \

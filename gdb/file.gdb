@@ -1,1 +1,1 @@
-set args examples/plus_one.cmm
+set args examples/func1.cmm

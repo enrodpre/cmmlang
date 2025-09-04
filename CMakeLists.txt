@@ -23,16 +23,23 @@ if(PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
   )
 endif()
 
-set(WARNING_LEVEL SOME CACHE STRING "The level of the
-enabled warnings")
+set(WARNING_LEVEL SOME CACHE STRING "The level of the enabled warnings")
 set_property(CACHE WARNING_LEVEL PROPERTY STRINGS NONE SOME ALL ERROR)
-
+option(LOG_LEVEL "Log level")
 option(BUILD_TESTING "Build tests")
 option(WARNING_LEVEL "The set warning level")
 option(USE_ASAN "Compile address sanitizer into the binary")
 option(ENABLE_IWYU "Enable include-what-you-use analysis")
 option(IWYU_AUTOFIX "Automatically apply IWYU suggestions")
+option(BUILD_INTEGRATION "Build integration tests")
 
+set(LOG_LEVEL 5 CACHE STRING  "Log level")
+if(NOT LOG_LEVEL MATCHES "^[0-5]$")
+  message(FATAL_ERROR "LOG_LEVEL must be between 0 and 5, got: ${LOG_LEVEL}")
+endif()
+add_compile_definitions(-DLOG_LEVEL=${LOG_LEVEL})
+
+message(STATUS "Log level: ${LOG_LEVEL}")
 
 include(cotire)
 include(CPM)
@@ -46,10 +53,11 @@ endif()
 file(GLOB_RECURSE sources CONFIGURE_DEPENDS
      "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 find_package(magic_enum REQUIRED)
-find_package(Revisited REQUIRED)
-
 add_subdirectory(gdb)
-
+CPMAddPackage(
+  NAME Revisited
+  SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/Revisited"
+)
 # Apply warning flags depending on selection
 if(WARNING_LEVEL STREQUAL "NONE")
   message(STATUS "Building with no warnings")
@@ -66,13 +74,13 @@ else()
   message(FATAL_ERROR "Invalid value for WARNING_LEVEL: ${WARNING_LEVEL}")
 endif()
 
-add_compile_options(-fdiagnostics-color=always -O0 -g -fno-inline -Wno-switch -fdiagnostics-show-option)
+add_compile_options(-fdiagnostics-color=always -O0 -g -fno-inline -Wno-switch -fdiagnostics-show-option -ferror-limit=10)
 add_library(${LIBNAME} STATIC ${sources})
 
-target_compile_definitions(CmmLib PUBLIC LOG_LEVEL=1 SAVE_PREPROCESSED=0 SAVE_ASSEMBLY=1)
+target_compile_definitions(CmmLib PUBLIC SAVE_PREPROCESSED=0 SAVE_ASSEMBLY=1)
 target_link_libraries(
    ${LIBNAME} PUBLIC magic_enum::magic_enum
-                           Revisited)
+                           Revisited )
 target_include_directories(
   ${LIBNAME}
   PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
@@ -87,6 +95,9 @@ if(BUILD_TESTING)
   add_subdirectory(test)
 endif()
 
+if(BUILD_INTEGRATION)
+  add_subdirectory(test/integration)
+endif()
 # set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE
 # "include-what-you-use;-w;-Xiwyu;--verbose=7")
 #

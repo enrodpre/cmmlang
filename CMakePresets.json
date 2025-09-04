@@ -13,12 +13,15 @@
         "CMAKE_C_COMPILER": "/usr/bin/clang",
         "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
         "CMAKE_CXX_STANDARD": "26",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
         "CMAKE_CXX_EXTENSIONS ": "ON",
         "CMAKE_C_COMPILER_LAUNCHER": "ccache",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
-        "CMAKE_MODULE_PATH": "${sourceDir}/cmake"
+        "CMAKE_MODULE_PATH": "${sourceDir}/cmake",
+        "ENABLE_LOGGING": "ON",
+        "IWYU_AUTOFIX": "ON",
+        "LOG_LEVEL": "5"
       },
       "environment": {
         "WARNING_LEVEL": "SOME"
@@ -28,16 +31,31 @@
       "name": "dev-asan",
       "displayName": "dev build with sanitizers",
       "description": "Debug build with optimization disabled and address sanitizers",
-      "inherits": "dev"
+      "inherits": [
+        "dev"
+      ]
     },
     {
       "name": "test",
       "displayName": "dev with tests",
       "description": "Debug build with unit and integration tests enabled",
-      "inherits": "dev",
+      "inherits": [
+        "dev"
+      ],
       "binaryDir": "${sourceDir}/build/test",
       "cacheVariables": {
         "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "integration",
+      "displayName": "run integration tests with pytest",
+      "inherits": [
+        "dev"
+      ],
+      "binaryDir": "${sourceDir}/build/test/integration",
+      "cacheVariables": {
+        "BUILD_INTEGRATION": "ON"
       }
     }
   ],
@@ -47,11 +65,26 @@
       "displayName": "build for developing",
       "configurePreset": "dev",
       "jobs": 12
+    },
+    {
+      "name": "test",
+      "configurePreset": "test",
+      "displayName": "Build Test",
+      "description": "Configure/build test preset, and build targets in test/ if present.",
+      "jobs": 12
+    },
+    {
+      "name": "integration",
+      "displayName": "Run Integration Tests",
+      "configurePreset": "integration",
+      "targets": [
+        "integration"
+      ]
     }
   ],
   "testPresets": [
     {
-      "name": "test",
+      "name": "unit",
       "displayName": "Run Unit Tests",
       "description": "Run only unit tests",
       "configurePreset": "test",
@@ -70,34 +103,17 @@
       }
     },
     {
-      "name": "integration-tests",
+      "name": "integration",
       "displayName": "Run Integration Tests",
       "description": "Run integration/end-to-end tests with the built binary",
-      "configurePreset": "test",
+      "configurePreset": "dev",
       "filter": {
         "include": {
           "label": "e2e"
         }
       },
       "output": {
-        "outputOnFailure": true,
-        "verbosity": "default"
-      },
-      "execution": {
-        "noTestsAction": "error",
-        "stopOnFailure": false
-      }
-    },
-    {
-      "name": "all-tests",
-      "displayName": "Run All Tests",
-      "description": "Run both unit and integration tests",
-      "inherits": [
-        "test",
-        "integration-tests"
-      ],
-      "output": {
-        "outputOnFailure": true,
+        "outputOnFailure": false,
         "verbosity": "default"
       },
       "execution": {

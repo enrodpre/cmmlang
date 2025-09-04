@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/kike/dev/cmm/build/test/_deps/statictypeinfo-subbuild/CMakeFiles/statictypeinfo-populate"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/test/_deps/statictypeinfo-subbuild/CMakeFiles/statictypeinfo-populate.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/test/_deps/statictypeinfo-subbuild/CMakeFiles/statictypeinfo-populate-complete.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/test/_deps/statictypeinfo-subbuild/statictypeinfo-populate-prefix/src/statictypeinfo-populate-stamp/statictypeinfo-populate-build.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/test/_deps/statictypeinfo-subbuild/statictypeinfo-populate-prefix/src/statictypeinfo-populate-stamp/statictypeinfo-populate-configure.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/test/_deps/statictypeinfo-subbuild/statictypeinfo-populate-prefix/src/statictypeinfo-populate-stamp/statictypeinfo-populate-download.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/test/_deps/statictypeinfo-subbuild/statictypeinfo-populate-prefix/src/statictypeinfo-populate-stamp/statictypeinfo-populate-install.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/test/_deps/statictypeinfo-subbuild/statictypeinfo-populate-prefix/src/statictypeinfo-populate-stamp/statictypeinfo-populate-mkdir.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/test/_deps/statictypeinfo-subbuild/statictypeinfo-populate-prefix/src/statictypeinfo-populate-stamp/statictypeinfo-populate-patch.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/test/_deps/statictypeinfo-subbuild/statictypeinfo-populate-prefix/src/statictypeinfo-populate-stamp/statictypeinfo-populate-test.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/test/_deps/statictypeinfo-subbuild/statictypeinfo-populate-prefix/src/statictypeinfo-populate-stamp/statictypeinfo-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"statictypeinfo-populate"
+		],
+		"name" : "statictypeinfo-populate"
+	}
+}

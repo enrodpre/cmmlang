@@ -4,8 +4,6 @@
 #include <fstream>
 #include <iterator>
 
-#include "common.hpp"
-
 namespace cmm::fs {
 
 path executable() { return std::filesystem::canonical("/proc/self/exe"); }
@@ -32,7 +30,7 @@ ofile::ofile(const fs::path& p)
 ofile::ofile(fs::path&& p)
     : file<ofile>(std::move(p)) {}
 
-void ofile::write(cstring src) const {
+void ofile::write(std::string_view src) const {
   std::ofstream f(m_path, std::ios_base::out | std::ios_base::trunc);
   f.write(src.data(), static_cast<long>(src.size()));
   f.close();

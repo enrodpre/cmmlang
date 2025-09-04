@@ -1,9 +1,19 @@
+#pragma once
 
+#include "expr.h"
+#include <gtest/gtest.h>
+#include <ostream>
 
-#define EXPECT_NOTHROW_AND_RETURN(CAT, ARG, PARAM)                    \
-  EXPECT_NO_THROW(bind_argument(value_category_t::CAT, ARG, PARAM));  \
-  EXPECT_EQ(PARAM, bind_argument(value_category_t::CAT, ARG, PARAM));
+using namespace cmm;
+using namespace ast;
 
+#define create_token(TYPE)          token(token_t::TYPE, cmm::location(1, 2));
+#define create_token_val(TYPE, STR) token(token_t::TYPE, cmm::location(1, 2), STR);
+
+template <std::formattable<char> T>
+inline void PrintTo(const T& t, std::ostream* os) {
+  *os << std::format("{}", t);
+}
 #define PRINT(x)                                                 \
   do {                                                           \
     testing::internal::CaptureStdout();                          \

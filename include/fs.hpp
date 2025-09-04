@@ -36,7 +36,7 @@ public:
 
   void remove() const { std::filesystem::remove(m_path); }
 
-  template <StringLike Src>
+  template <stringish Src>
   operator Src() const {
     return path().string();
   }

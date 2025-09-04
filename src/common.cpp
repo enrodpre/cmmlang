@@ -51,10 +51,10 @@ string_buffer::reference_type string_buffer::active() noexcept { return m_active
 [[nodiscard]] const string_buffer::buffer_type& string_buffer::active() const noexcept {
   return m_actives.top();
 }
-cstring string_buffer::snapshot() const noexcept { return active().view(); }
+std::string_view string_buffer::snapshot() const noexcept { return active().view(); }
 
 namespace {
-auto cast_to_ins(operator_sign sign, comparison_t c, std::string str, std::string prefix) {
+auto cast_to_ins(operator_sign sign, comparison_t c, std::string_view str, std::string prefix) {
   if (sign == operator_sign::UNSIGNED && (c == comparison_t::U_LT || c == comparison_t::U_GT)) {
     str = str.substr(2);
   }

@@ -1,0 +1,222 @@
+import os
+import subprocess
+import sys
+from io import StringIO
+from pathlib import Path
+
+import pytest
+
+# TEST_BUILD_DIR = Path("@CMAKE_CURRENT_BINARY_DIR@")
+TEST_BUILD_DIR = Path("/home/kike/dev/cmm/build/test")
+BINARY_PATH = TEST_BUILD_DIR / "CmmLang"
+EXAMPLES_PATH = TEST_BUILD_DIR / "examples"
+GENERATED_PATH = TEST_BUILD_DIR / "generated"
+
+OPTION_EXAMPLE_FILE = "--example-file"
+OPTION_BINARY_PATH = "--binary-path"
+OPTION_EXAMPLES_PATH = "--examples-path"
+
+DEFAULT_OK_STATUS = 255
+
+
+test_results = []
+original_stdout = sys.stdout
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        OPTION_EXAMPLE_FILE,
+        action="store",
+        default=None,
+        help="Single example file to test",
+    )
+    parser.addoption(
+        OPTION_BINARY_PATH,
+        action="store",
+        default=BINARY_PATH,
+        help="Path to the binary executable",
+    )
+    parser.addoption(
+        "--examples-dir",
+        action="store",
+        default=EXAMPLES_PATH,
+        help="Directory containing example files",
+    )
+
+
+def pytest_configure(config):
+    """Configure pytest to suppress normal output for cleaner display"""
+    # Disable normal pytest output for a cleaner look
+    config.example_file = config.getoption(OPTION_EXAMPLE_FILE)
+    config.binary_path = config.getoption(OPTION_BINARY_PATH)
+    config.examples_path = config.getoption(OPTION_EXAMPLES_PATH)
+
+    config.option.quiet = 2
+    config.option.tb = "no"
+    config.option.disable_warnings = True
+    config.option.show_capture = "no"
+    sys.stdout = StringIO()
+
+
+def pytest_generate_tests(metafunc):
+    """Generate test parameters dynamically based on command line options"""
+    if "filename" in metafunc.fixturenames:
+        examples_dir: Path = Path(metafunc.config.getoption(OPTION_EXAMPLES_PATH))
+
+        example_file: Path = examples_dir / metafunc.config.getoption(
+            OPTION_EXAMPLE_FILE
+        )
+
+        if example_file:
+            # Single file specified via command line
+            metafunc.parametrize("cmm_file", [cmm_file(example_file)])
+        else:
+            # No specific file, read all files from examples directory
+            if examples_dir.exists() and examples_dir.is_dir():
+
+                def valid_file(t_path: Path):
+                    return t_path.is_file() and t_path.suffix == "cmm"
+
+                example_files = [
+                    cmm_file(filepath)
+                    for filepath in examples_dir.iterdir()
+                    if valid_file(filepath)
+                ]
+
+                metafunc.parametrize("cmm_file", example_files)
+            else:
+                # Directory doesn't exist, create a dummy parameter
+                metafunc.parametrize("cmm_file", [None])
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Override terminal summary to prevent default output"""
+    # This prevents the default summary from being printed
+    pass
+
+
+def pytest_runtest_setup(item):
+    if not (hasattr(item, "callspec") and "cmm_file" in item.callspec.params):
+        return
+
+    cmm_file = item.callspec.params["cmm_file"]
+    if cmm_file is None:
+        return
+
+    item._cmm_file = cmm_file
+    cmm_compiled = GENERATED_PATH / cmm_file.filename
+    compile_command = [binary_path, "-o", cmm_compiled, cmm_file.path]
+    print(f"Compiling with {" ".join(compile_command)}")
+    try:
+        result = subprocess.run(
+            compile_command,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(f"Binary timed out when processing {example_file}")
+    except Exception as e:
+        pytest.fail(f"Failed to execute binary with {example_file}: {e}")
+
+    # Check the return code
+    if result.returncode != 0:
+        error_msg = f"Binary failed with return code {result.returncode} "
+        f"for file {example_file}"
+        if result.stderr:
+            error_msg += f"\nStderr: {result.stderr}"
+        if result.stdout:
+            error_msg += f"\nStdout: {result.stdout}"
+        pytest.fail(error_msg)
+
+    item._cmm_compiled = cmm_compiled
+
+
+def pytest_runtest_call(item):
+    cmm_compiled = item._cmm_compiled
+    run_command = [f"./{cmm_compiled}"]
+    print(f"Running with {" ".join(run_command)}")
+    res = subprocess.run(run_command, capture_output=True, text=True, timeout=3)
+    item._result = res
+
+
+def pytest_runtest_teardown(item, nextitem):
+    pass
+
+
+def pytest_report_header(config):
+    """Suppress pytest header"""
+    return None
+
+
+def pytest_collection_modifyitems(config, items):
+    """Suppress collection output"""
+    pass
+
+
+@pytest.fixture
+def example_file(request):
+    """Fixture providing the example file to be tested"""
+    return request.config.getoption(OPTION_EXAMPLE_FILE)
+
+
+@pytest.fixture
+def binary_path(request):
+    """Fixture providing the path to the binary"""
+    return request.config.getoption(OPTION_BINARY_PATH)
+
+
+@pytest.fixture
+def examples_path(request):
+    """Fixture providing the examples directory path"""
+    return request.config.getoption(OPTION_EXAMPLES_PATH)
+
+
+class cmm_file:
+    path: Path
+    filename: str
+    return_code: int
+
+    def __init__(self, t_path: Path):
+        self.path = t_path
+        self.filename = t_path.name
+        self.return_code = self._parse_return_code(t_path)
+
+    def _parse_return_code(self, t_path: Path) -> int:
+        if len(t_path.suffixes) > 1:
+            return int(t_path.suffixes[0])
+
+        return DEFAULT_OK_STATUS
+
+    def __str__(self) -> str:
+        return self.filename
+
+
+def validate_case(example_file: cmm_file, status: int):
+    """Validate the output from the binary (customize as needed)"""
+    # Check that there's some output
+    assert example_file.return_code == status
+
+
+def pytest_runtest_logreport(report):
+    """Hook called for each test report (setup, call, teardown)"""
+    # Only process the 'call' phase (actual test execution)
+    if report.when == "call":
+        # Extract filename from test node id
+        if hasattr(report, "nodeid") and "[" in report.nodeid:
+            # Extract parameter from nodeid like "test_file.py::test_func[filename.txt]"
+            param_start = report.nodeid.find("[") + 1
+            param_end = report.nodeid.find("]")
+            filename = report.nodeid[param_start:param_end]
+
+            if report.passed:
+                status = Color.GREEN, "PASSED"
+            elif report.failed:
+                status = Color.RED, "FAILED"
+            elif report.skipped:
+                status = Color.YELLOW, "SKIPPED"
+
+            color, status_str = status
+            print(colorize(color, f"{status_str}: {filename}"))
+            # Store for summary
+            test_results.append((filename, report.outcome))

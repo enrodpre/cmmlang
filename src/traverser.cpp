@@ -2,7 +2,6 @@
 #include <cstdlib>
 #include <format>
 
-#include <traverser.hpp>
 #include <type_traits>
 
 #include "asm.hpp"
@@ -13,7 +12,6 @@
 #include "lang.hpp"
 #include "semantic.hpp"
 #include "types.hpp"
-#include "types.inl"
 
 namespace cmm::ir {
 
@@ -37,16 +35,16 @@ translation_unit& ast_completer::complete(translation_unit& t) {
 
 void ast_completer::conversions_visitor::visit(ast::expr::binary_operator& bin) {
   REGISTER_INFO("visited{}", bin);
-  if (bin.semantics()->original_type->category == category_t::bool_t) {
+  if (bin.semantics()->original_type->categorize() == types::core_t::bool_t) {
     // bin.left = *bool_wrap_if(&bin.left);
   }
-  if (bin.semantics()->original_type->categorize() == types::category_t::bool_t) {
+  if (bin.semantics()->original_type->categorize() == types::core_t::bool_t) {
     // bin.right = *bool_wrap_if(&bin.right);
   }
 }
 
 void ast_completer::conversions_visitor::visit(ast::expr::unary_operator& un) {
-  if (un.semantics()->original_type->categorize() == types::category_t::bool_t) {
+  if (un.semantics()->original_type->categorize() == types::core_t::bool_t) {
     // un.expr = *bool_wrap_if(&un.expr);
   }
 }
@@ -64,7 +62,7 @@ void ast_completer::conversions_visitor::visit(ast::selection::if_&) {
 }
 
 expr::expression* ast_completer::conversions_visitor::bool_wrap_if(expr::expression* e) {
-  if (e != nullptr && e->type()->categorize() != types::category_t::bool_t) {
+  if (e != nullptr && e->type()->categorize() != types::core_t::bool_t) {
     // return allocator.emplace<expr::implicit_type_conversion>(*e, conversions::any_to_bool);
   }
   return e;
@@ -87,12 +85,12 @@ void ast_traverser::generate_program(translation_unit& p) {
   }
 }
 
-operand* ast_traverser::generate_expr(expr::expression& expr, operand* reg_) {
+operand* ast_traverser::generate_expr(expr::expression& expr, operand* reg_, intent_t t_intent) {
   if (reg_ == nullptr) {
     reg_ = m_context.regs.get(register_t::ACCUMULATOR);
   }
 
-  auto visitor = expression_visitor{this, reg_};
+  auto visitor = expression_visitor{this, reg_, t_intent};
   expr.accept(visitor);
   return visitor.out;
 }
@@ -242,10 +240,11 @@ void global_visitor::visit(decl::function& func) {
   }
 }
 
-expression_visitor::expression_visitor(ast_traverser* t, operand* o)
+expression_visitor::expression_visitor(ast_traverser* t, operand* o, intent_t t_intent)
     : gen(t),
       in(o),
-      out(o) {}
+      out(o),
+      intent(t_intent) {}
 
 #define gen_op(IN) value_or(generate<operand*>(in))
 
@@ -293,7 +292,15 @@ void expression_visitor::visit(ast ::expr ::literal& c) {
 void expression_visitor::visit(expr::identifier& ident) {
   const auto& [var, addr] = gen->ast->get_variable(ident);
   auto b                  = gen->m_context.asmgen.begin_comment_block("loading {}", ident.value());
-  out                     = gen->m_context.lea(out, addr);
+  switch (intent) {
+    case intent_t::LOAD_VARIABLE_ADDRESS:
+      out = gen->m_context.lea(out, addr);
+      break;
+    case intent_t::LOAD_VARIABLE_VALUE:
+    case intent_t::MOVE_CONTENT:
+      out = gen->m_context.move(out, addr);
+      break;
+  }
 }
 
 statement_visitor::statement_visitor(ast_traverser* gen_)
@@ -380,7 +387,7 @@ void statement_visitor::visit(selection::if_& if_) {
   gen->generate_condition(if_.condition);
   a.end();
 
-  cstring after_if_label = "after_if";
+  std::string_view after_if_label = "after_if";
   if (auto* block = if_.block) {
     auto b = gen->m_context.asmgen.begin_comment_block("if block");
     gen->generate_statement(block);

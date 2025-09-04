@@ -1,0 +1,5 @@
+if(EXISTS "/home/kike/dev/cmm/build/test/test_token[1]_tests.cmake")
+  include("/home/kike/dev/cmm/build/test/test_token[1]_tests.cmake")
+else()
+  add_test(test_token_NOT_BUILT test_token_NOT_BUILT)
+endif()

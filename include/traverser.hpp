@@ -6,13 +6,12 @@
 #include <sys/types.h>
 #include <tuple>
 
-#include "allocator.hpp"
 #include "asm.hpp"
 #include "ast.hpp"
 #include "expr.h"
 #include "lang.hpp"
 #include "macros.hpp"
-#include "visitor.hpp"
+#include "memory.hpp"
 
 namespace cmm::ir {
 
@@ -20,9 +19,11 @@ using namespace ast;
 
 struct compilation_unit;
 
-namespace intents {
-enum class intent_t : uint8_t;
-}
+enum class intent_t : uint8_t {
+  MOVE_CONTENT,
+  LOAD_VARIABLE_VALUE,
+  LOAD_VARIABLE_ADDRESS,
+};
 
 struct expression_visitor;
 struct statement_visitor;
@@ -33,9 +34,9 @@ struct ast_completer {
 
   struct conversions_visitor : public ast_visitor {
     conversions_visitor()
-        : allocator(cmm::memory::Allocator::instance()) {}
+        : allocator(cmm::memory::arena::instance()) {}
 
-    cmm::memory::Allocator& allocator;
+    cmm::memory::arena& allocator;
     void visit(ast::expr::binary_operator&) override;
     void visit(ast::expr::unary_operator&) override;
     void visit(ast::iteration::for_&) override;
@@ -57,7 +58,9 @@ public:
   void generate_program(translation_unit&);
   void generate_statements(decl::block&);
   void generate_statement(ast::statement*);
-  assembly::operand* generate_expr(ast::expr::expression&, assembly::operand* = nullptr);
+  assembly::operand* generate_expr(ast::expr::expression&,
+                                   assembly::operand* = nullptr,
+                                   intent_t           = intent_t::LOAD_VARIABLE_ADDRESS);
 
 private:
   compilation_unit& m_context;
@@ -92,7 +95,8 @@ struct expression_visitor : public visitor<EXPRESSION_TYPES> {
   ast_traverser* gen;
   assembly::operand* in;
   assembly::operand* out;
-  expression_visitor(ast_traverser*, assembly::operand*);
+  intent_t intent;
+  expression_visitor(ast_traverser*, assembly::operand*, intent_t);
 
   void visit(ast::expr::call&) override;
   void visit(ast::expr::binary_operator&) override;
@@ -121,5 +125,3 @@ struct statement_visitor : public visitor<expr::expression, STATEMENT_TYPES, GLO
   void visit(ast::jump::return_&) override;
 };
 } // namespace cmm::ir
-
-#include <traverser.hpp>

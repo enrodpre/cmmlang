@@ -1,0 +1,2 @@
+/home/kike/dev/cmm/gdb/build/CMakeFiles/edit_cache.dir
+/home/kike/dev/cmm/gdb/build/CMakeFiles/rebuild_cache.dir

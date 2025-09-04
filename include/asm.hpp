@@ -14,7 +14,7 @@
 #include <vector>      // for vector
 
 #include "ast.hpp"    // for identifier, variable
-#include "common.hpp" // for cstring, formattable, DATASIZE, string_buffer
+#include "common.hpp" // for std::string_view, formattable, DATASIZE, string_buffer
 #include "macros.hpp" // for BUILD_ENUMERATION_DATA_CLASS, CTOR_ASSIGN_DATA_4
 #include "types.hpp"  // for type
 
@@ -40,7 +40,7 @@ enum class syscall_t : uint8_t {
 
 BUILD_ENUMERATION_DATA_CLASS(syscall, size_t, n_param, size_t, number)
 
-struct operand : public displayable {
+struct operand : displayable {
   using content_t = const ast::decl::variable*;
 
   struct symbol_container {
@@ -303,15 +303,15 @@ public:
   std::string end();
 
   // Main generators
-  void write_label(cstring);
-  void write_comment(cstring) noexcept;
+  void write_label(std::string_view);
+  void write_comment(std::string_view) noexcept;
   template <typename... Args>
   void write_instruction(const instruction_t&, Args&&...);
-  void add_data(cstring, cstring);
-  void add_bss(cstring, cstring, cstring);
-  void register_labeled_code_block(cstring, std::string&&);
-  [[nodiscard]] static bool exists_snippet(cstring);
-  void register_snippet(cstring);
+  void add_data(std::string_view, std::string_view);
+  void add_bss(std::string_view, std::string_view, std::string_view);
+  void register_labeled_code_block(std::string_view, std::string&&);
+  [[nodiscard]] static bool exists_snippet(std::string_view);
+  void register_snippet(std::string_view);
 
   // Helpers
   template <typename... Args>
@@ -366,9 +366,9 @@ comment_block asmgen::begin_comment_block(std::format_string<Args...> std, Args&
 }
 
 enum class Snippet : uint8_t { int_to_str, exit, print_str, print_nl, print_int };
-constexpr static const cstring PRINT_NL = ""
-                                          "syscall\n  ret";
-constexpr static const cstring INT_TO_FORMAT =
+constexpr static const std::string_view PRINT_NL = ""
+                                                   "syscall\n  ret";
+constexpr static const std::string_view INT_TO_FORMAT =
     R"(  mov rcx, 10                ; Base 10
   xor rbx, rbx               ; Clear rbx (used for digit count)
 
@@ -387,7 +387,7 @@ constexpr static const cstring INT_TO_FORMAT =
   jnz .convert_loop          ; Repeat if not zero
   mov rax, rdi               ; Return the pointer to the start  
 ret)";
-constexpr static const cstring PRINT_INT =
+constexpr static const std::string_view PRINT_INT =
     R"(  ;; Value to print should be in rax register
   lea rdi, [num + 10]         ;Pointer to the buffer
   call int_to_str

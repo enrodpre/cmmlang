@@ -1,5 +1,7 @@
 #pragma once
 
+#include "macros.hpp"
+#include "traits.hpp"
 #include <algorithm>
 #include <array>
 #include <bits/version.h>
@@ -10,7 +12,6 @@
 #include <exception>
 #include <format>
 #include <initializer_list>
-
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_all.hpp>
 #include <magic_enum/magic_enum_format.hpp>
@@ -24,19 +25,17 @@
 #include <string_view>
 #include <sys/types.h>
 #include <type_traits>
-#include <typeindex>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "macros.hpp"
-#include "traits.hpp"
-
 namespace cmm {
+using std::string_view;
+
 enum class compilation_error_t : uint8_t;
 struct location;
 
 namespace log {
+
 enum class style_t : uint8_t {
   HEADER,
   BOLD,
@@ -68,9 +67,15 @@ enum class Level : uint8_t { NONE = 0, ERROR, WARN, INFO, DEBUG, TRACE };
 #define ERROR_LEVEL 1
 #define NONE_LEVEL  0
 
-#define REGISTER_LOG(lvl, file, header_color, formatter_string, ...)                       \
-  std::print(file, "[{}:{} {}] ", __FILE_NAME__, __LINE__, log::apply(lvl, header_color)); \
-  std::println(file, formatter_string, ##__VA_ARGS__)
+#if LOG_LEVEL == 0
+#  define REGISTER_LOG(lvl, file, header_color, formatter_string, ...)
+#  define WRITE_STDOUT(fmt_string, ...)
+#else
+#  define WRITE_STDOUT(fmt_string, ...) std::print(stdout, fmt_string, ##__VA_ARGS__)
+#  define REGISTER_LOG(lvl, file, header_color, formatter_string, ...)                       \
+    std::print(file, "[{}:{} {}] ", __FILE_NAME__, __LINE__, log::apply(lvl, header_color)); \
+    std::println(file, formatter_string, ##__VA_ARGS__)
+#endif
 
 #if LOG_LEVEL >= ERROR_LEVEL
 #  define REGISTER_ERROR(std_string, ...)                                                     \
@@ -115,8 +120,6 @@ enum class Level : uint8_t { NONE = 0, ERROR, WARN, INFO, DEBUG, TRACE };
 #  define REGISTER_TRACE(std_string, ...)
 #endif
 
-#define WRITE_STDOUT(fmt_string, ...) std::print(stdout, fmt_string, ##__VA_ARGS__)
-
 #ifndef SAVE_PREPROCESSED
 #  define SAVE_PREPROCESSED 0
 #endif
@@ -129,78 +132,34 @@ constexpr static uint8_t MAX_ARGUMENTS = 6;
 constexpr static uint8_t WORD_LEN      = DATASIZE; // bytes
 constexpr static uint8_t MEM_ADDR_LEN  = WORD_LEN; // bytes
 
-using ushort                           = unsigned short;
-using cstring                          = std::string_view;
-using cr_string                        = const std::string&;
-
-struct hashable {
-  virtual ~hashable()                                = default;
-  bool operator==(const hashable&) const             = default;
-  [[nodiscard]] virtual size_t hash() const          = 0;
-  [[nodiscard]] virtual std::type_index type() const = 0;
-};
-
-struct TypeErasedHash {
-  size_t operator()(const std::unique_ptr<hashable>& obj) const { return obj ? obj->hash() : 0; }
-};
-
-// Custom equality function for type-erased objects
-
 struct displayable {
-  constexpr virtual ~displayable() = default;
+  virtual ~displayable() = default;
   [[nodiscard]] constexpr virtual std::string repr() const { return string(); }
   [[nodiscard]] constexpr virtual std::string string() const = 0;
   constexpr operator std::string() const { return string(); };
 };
 
-struct formattable {
-  constexpr virtual ~formattable() = default;
-  constexpr operator std::string() const;
-  [[nodiscard]] virtual std::string format() const = 0;
-  [[nodiscard]] virtual std::string repr(size_t = 0) const { return format(); }
-};
-
-template <typename T>
-struct cloneable {
-  constexpr virtual ~cloneable()        = default;
-  [[nodiscard]] virtual T clone() const = 0;
-};
-
-#define STRING_IMPL(TYPE, stdstr, ...)                                          \
-  std::string TYPE::format() const { return std::format(stdstr, __VA_ARGS__); }
-
-template <typename T>
-concept Formattable =
-    std::is_base_of_v<cmm::formattable, std::remove_cv_t<std::remove_reference_t<T>>>;
-
 template <typename T>
 concept Displayable = requires(T t) {
-  { t.string() } -> StringLike;
+  { t.string() } -> stringish;
 };
 
 template <typename T>
 concept DisplayablePtr = requires(T t) {
-  { t->string() } -> StringLike;
+  { t->string() } -> stringish;
 };
 
-template <typename T>
-concept FormattablePtr =
-    std::is_base_of_v<cmm::formattable, std::remove_cv_t<std::remove_pointer_t<T>>>;
+static_assert(stringish<std::string>);
+static_assert(stringish<std::string_view>);
 
-constexpr static inline auto format_func = [](const auto& _formattable) -> std::string {
-  if constexpr (std::is_pointer_v<decltype(_formattable)>) {
-    return _formattable->format();
-  } else {
-    return _formattable.format();
-  }
-};
+template <typename E>
+concept scoped_enum = std::is_scoped_enum_v<E>;
 
 template <std::ranges::range T>
 struct formattable_range {
   using value_type = std::ranges::range_value_t<T>;
 
   formattable_range(T*);
-  // static_assert(std::formattable<std::ranges::range_value_t<T>, char>);
 
   template <class Delim>
   [[nodiscard]] constexpr std::string join(Delim&&) const;
@@ -228,98 +187,26 @@ struct std::formatter<T, CharT> : std::formatter<string_view> {
     if (obj) {
       return std::formatter<string_view>::format(obj->string(), ctx);
     }
-    return "No contained value";
+    return std::formatter<string_view>::format("No contained value", ctx);
   }
 };
 
-// // Specialization for cmm::formattable itself
-// template <template <class...> class Wrapper, typename CharT, cmm::Displayable T, typename...
-// Args> struct std::formatter<Wrapper<T, Args...>, CharT> {
-//   std::formatter<T, CharT> inner;
-//   std::formatter<std::basic_string_view<CharT>, CharT> svf;
-//
-//   constexpr auto parte(std::basic_format_parse_context<CharT>& ctx) { return inner.parse(ctx); }
-//
-//   template <typename Ctx>
-//   auto format(const Wrapper<T, Args...>& obj, Ctx& ctx) const -> decltype(ctx.out()) {
-//     if (obj) {
-//       return svf.format(obj->string(), ctx);
-//     }
-//     return inner.format("No contained value", ctx);
-//   }
-// };
+template <cmm::scoped_enum T, typename CharT>
+struct std::formatter<T, CharT> : std::formatter<string_view> {
+  template <typename Ctx>
+  auto format(const T& obj, Ctx& ctx) const -> decltype(ctx.out()) {
+    return std::formatter<string_view>::format(magic_enum::enum_name(obj), ctx);
+  }
+};
 
 namespace cmm {
-struct dummy {
-  std::string string() const;
-};
-static_assert(std::formattable<dummy, char>);
-static_assert(std::formattable<std::unique_ptr<dummy>, char>);
-static_assert(std::formattable<std::optional<dummy>, char>);
-static_assert(std::formattable<std::shared_ptr<dummy>, char>);
-
-template <typename T>
-concept uint_comparable_t = std::convertible_to<T, uint8_t>;
-
-// Equality operator
-template <uint_comparable_t T>
-bool operator==(const T& one, const T& other) {
-  return (uint64_t)one == (uint64_t)other;
-}
-
-// Less than operator
-template <uint_comparable_t T>
-bool operator<(const T& one, const T& other) {
-  return (uint64_t)one < (uint64_t)other;
-}
-
-// Greater than operator
-template <uint_comparable_t T>
-bool operator>(const T& one, const T& other) {
-  return (uint64_t)one > (uint64_t)other;
-}
-
-// Less than or equal to operator
-template <uint_comparable_t T>
-bool operator<=(const T& one, const T& other) {
-  return !((uint64_t)one > (uint64_t)other);
-}
-
-// Greater than or equal to operator
-template <uint_comparable_t T>
-bool operator>=(const T& one, const T& other) {
-  return !((uint64_t)one > (uint64_t)other);
-}
-
-// Not equal operator
-template <uint_comparable_t T>
-bool operator!=(const T& one, const T& other) {
-  return !((uint64_t)one == (uint64_t)other);
-}
-
-template <typename T>
-concept ScopedEnum = requires { std::is_scoped_enum<T>(); };
-
-template <ScopedEnum>
-struct enumeration;
-
-template <typename E>
-concept Enumerable = DerivedFromTemplate<E, enumeration> && ScopedEnum<E>;
-
-template <typename From, typename To>
-concept Castable = magic_enum::enum_contains<To>(magic_enum::enum_type_name<From>());
-
-template <ScopedEnum From, ScopedEnum To>
-  requires(Castable<From, To>)
-constexpr To cast_enum(From);
-
-template <ScopedEnum E>
-struct enumeration : public formattable {
-  constexpr enumeration();
+template <scoped_enum E>
+struct enumeration : displayable {
+  using underlying_type = std::underlying_type_t<E>;
   constexpr enumeration(E e)
       : m_value(e) {};
-  template <typename From>
-    requires(Castable<From, E>)
+  constexpr enumeration();
+  template <scoped_enum From>
   constexpr explicit enumeration(From);
   constexpr enumeration& operator=(const enumeration&) = default;
   constexpr enumeration& operator=(enumeration&&)      = default;
@@ -328,20 +215,16 @@ struct enumeration : public formattable {
   constexpr ~enumeration() override                    = default;
 
   // Data
-  static constexpr auto type_name() noexcept;
+  static constexpr auto type_name() noexcept { return magic_enum::enum_type_name<E>(); }
   static constexpr auto count() noexcept { return magic_enum::enum_count<E>(); }
-  [[nodiscard]] constexpr auto name() const noexcept;
-  [[nodiscard]] constexpr E inner() const noexcept { return m_value; }
-  [[nodiscard]] constexpr auto value() const noexcept;
-  [[nodiscard]] constexpr std::string format() const override;
+  [[nodiscard]] constexpr auto name() const noexcept { return magic_enum::enum_name<E>(m_value); };
+  [[nodiscard]] constexpr auto value() const noexcept { return magic_enum::enum_integer(m_value); };
+  [[nodiscard]] constexpr std::string string() const override;
 
   // Conversion
-  constexpr operator E() const { return inner(); };
-  constexpr operator uint8_t() const { return (uint8_t)value(); };
+  constexpr operator underlying_type() const { return (underlying_type)value(); };
   template <typename To>
   constexpr To cast() const;
-
-  using value_type = E;
 
 protected:
   E m_value;
@@ -357,6 +240,7 @@ protected:
   using properties_map = magic_enum::containers::array<value_type, member_types>; \
   static_assert(std::is_constant_evaluated());                                    \
   [[nodiscard]] static constexpr const properties_map& properties_array();        \
+  operator value_type() const { return self; }                                    \
   constexpr TYPE(value_type e)                                                    \
       : enumeration<value_type>(e),                                               \
         CTOR_ASSIGN(__VA_ARGS__) {}
@@ -374,7 +258,6 @@ protected:
   DECLARE_VARS(__VA_ARGS__)                                                       \
   using member_types   = std::tuple<GET_TYPES(__VA_ARGS__)>;                      \
   using properties_map = magic_enum::containers::array<value_type, member_types>; \
-  static_assert(std::is_constant_evaluated());                                    \
   [[nodiscard]] static constexpr const properties_map& properties_array();        \
   constexpr TYPE(value_type e)                                                    \
       : enumeration<value_type>(e),                                               \
@@ -384,9 +267,6 @@ protected:
   struct TYPE : public cmm::enumeration<CONCAT(_, TYPE)> { \
     BUILD_ENUMERATION(TYPE, __VA_ARGS__)                   \
   };
-
-template <typename T, template <typename> class BaseTemplate>
-concept DerivedFromTemplate = std::is_base_of_v<BaseTemplate<typename T::value_type>, T>;
 
 template <class Range, class T>
 concept is_range_asignable = std::ranges::input_range<Range> &&
@@ -519,7 +399,7 @@ template <>
 struct std::formatter<std::optional<cmm::location>> : formatter<string_view> {
   auto format(const std::optional<cmm::location>& loc, format_context& ctx) const {
     if (loc) {
-      return formatter<string_view>::format(std::format("{}", loc.value()), ctx);
+      return formatter<string_view>::format(std::string(loc.value()), ctx);
     }
     return formatter<string_view>::format("<No location>", ctx);
   }
@@ -586,10 +466,11 @@ enum class compilation_error_t : uint8_t {
   INCOMPATIBLE_TOKEN,
   REQUIRED_TYPE,
   TOO_MANY_TYPES,
-  MISSING_ENTRY_POINT
+  MISSING_ENTRY_POINT,
+  NOT_BINDEABLE
 };
 
-BUILD_ENUMERATION_DATA_CLASS(compilation_error, cstring, fmt, bool, located);
+BUILD_ENUMERATION_DATA_CLASS(compilation_error, std ::string_view, fmt, bool, located);
 
 struct compilation_error : public cmm::error {
   std::optional<cmm::location> loc;
@@ -606,34 +487,30 @@ concept is_allocated = requires(T t) {
   { t.location() } -> std::same_as<std::optional<cmm::location>>;
 };
 
-template <compilation_error_t Err, typename T>
-[[noreturn]] void throw_error(T&& t) {
+template <compilation_error_t Err, typename First, typename... Args>
+[[noreturn]] void throw_error(First&& l, Args&&... args) {
   constexpr auto err = compilation_error_data(Err);
-  throw compilation_error(err, std::format(err.fmt, t));
+  if constexpr (is_allocated<First>) {
+    throw compilation_error(
+        err, std::format(err.fmt, l, std::forward<Args>(args)...), l.location());
+  } else {
+    throw compilation_error(err, std::format(err.fmt, l, std::forward<Args>(args)...));
+  }
 }
 
-template <compilation_error_t Err, typename L>
-  requires(is_allocated<L>)
-[[noreturn]] void throw_error(L&& l) {
-  constexpr auto err = compilation_error_data(Err);
-  auto msg           = std::format(err.fmt, l);
-  throw compilation_error(err, msg, l.location());
-}
-
-#define THROW(ERROR, PARAM)                                 \
+#define THROW(ERROR, ...)                                   \
   REGISTER_ERROR("Throwed {}", compilation_error_t::ERROR); \
-  throw_error<compilation_error_t::ERROR>(PARAM);
+  throw_error<compilation_error_t::ERROR>(__VA_ARGS__);
 
 template <typename T>
 struct default_singleton {
+  friend T;
   NOT_COPYABLE_CLS(default_singleton);
 
   static T& instance() {
     static T instance;
     return instance;
   }
-
-  friend T;
 
 protected:
   default_singleton()  = default;
@@ -721,7 +598,7 @@ public:
   void load();
   std::string dump();
   std::string flush();
-  [[nodiscard]] cstring snapshot() const noexcept;
+  [[nodiscard]] std::string_view snapshot() const noexcept;
 
 private:
   reference_type active() noexcept;
@@ -749,17 +626,18 @@ constexpr string_buffer& string_buffer::newline() noexcept {
   }
 }
 
-template <class T>
+template <class T, class Alloc = std::allocator<T>>
 class vector {
 public:
   using value_type             = T;
   using element_type           = T;
+  using allocator_type         = Alloc;
   using pointer_type           = std::add_pointer_t<value_type>;
   using const_pointer_type     = const pointer_type;
   using reference_type         = std::add_lvalue_reference_t<value_type>;
   using const_reference_type   = const reference_type;
   using rvalue_type            = std::add_rvalue_reference_t<value_type>;
-  using container_type         = std::vector<element_type, std::allocator<element_type>>;
+  using container_type         = std::vector<element_type, Alloc>;
   using iterator               = typename container_type::iterator;
   using const_iterator         = typename container_type::const_iterator;
   using reverse_iterator       = typename container_type::reverse_iterator;
@@ -850,7 +728,7 @@ private:
   container_type m_store;
 };
 
-static_assert(std::is_copy_constructible_v<vector<int>>);
+// static_assert(std::is_copy_constructible_v<vector<int>>);
 
 #define transform_vector(IN, FN) IN | std::views::transform(FN) | std::ranges::to<std::vector>()
 
@@ -1086,7 +964,7 @@ inline bool is_value_category(value_category_t lhs, value_category_t rhs) {
 
 enum class operator_sign : uint8_t { SIGNED, UNSIGNED };
 
-struct comparison_data : public enumeration<comparison_t>, public displayable {
+struct comparison_data : public enumeration<comparison_t> {
   BUILD_ENUMERATION_DATA(comparison,
                          comparison_t,
                          inverse,
@@ -1100,7 +978,7 @@ struct comparison_data : public enumeration<comparison_t>, public displayable {
 
 enum class associativity_t : uint8_t { Either, L2R, R2L };
 BUILD_ENUMERATION_DATA_CLASS(operator,
-                             cstring,
+                             std::string_view,
                              repr,
                              uint8_t,
                              precedence,

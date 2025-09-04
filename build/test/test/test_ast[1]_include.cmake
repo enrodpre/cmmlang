@@ -1,0 +1,5 @@
+if(EXISTS "/home/kike/dev/cmm/build/test/test/test_ast[1]_tests.cmake")
+  include("/home/kike/dev/cmm/build/test/test/test_ast[1]_tests.cmake")
+else()
+  add_test(test_ast_NOT_BUILT test_ast_NOT_BUILT)
+endif()

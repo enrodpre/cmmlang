@@ -1,0 +1,5 @@
+if(EXISTS "/home/kike/dev/cmm/build/test/test/test_modifier[1]_tests.cmake")
+  include("/home/kike/dev/cmm/build/test/test/test_modifier[1]_tests.cmake")
+else()
+  add_test(test_modifier_NOT_BUILT test_modifier_NOT_BUILT)
+endif()

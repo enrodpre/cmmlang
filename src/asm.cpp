@@ -17,11 +17,13 @@ enum class instruction_t : uint8_t;
 
 namespace cmm::assembly {
 
-std::string operand::format() const { return value(); }
+std::string operand::string() const { return value(); }
 
 [[nodiscard]] std::optional<operand::symbol_container> operand::content() const { return m_symbol; }
 
-[[nodiscard]] type operand::content_type() const { return content().value().content->specs.type; };
+[[nodiscard]] types::type_id operand::content_type() const {
+  return content().value().content->specs.type.value();
+};
 
 [[nodiscard]] operand::content_t operand::variable() const { return m_symbol.value().content; }
 
@@ -168,14 +170,12 @@ registers::registers()
 }
 
 const ast::decl::variable* registers::find_var(const ast::identifier& id) {
-  for (const auto* r : m_registers) {
-    if (const auto* var = r->variable()) {
-      if (var->ident == id) {
-        return var;
-      }
-    }
+  auto range = m_registers | TRANSFORM([](const auto* r) { return r->variable(); }) |
+               FILTER([id](const auto* var) { return var->ident.value() == id.value(); }) | TO_VEC;
+  if (range.empty()) {
+    return nullptr;
   }
-  return nullptr;
+  return range.front();
 }
 
 registers::parameters_transaction registers::parameters() { return {this}; }
@@ -238,13 +238,15 @@ std::string asmgen::end() {
   return res.dump();
 }
 
-void asmgen::add_data(cstring name, cstring value) { m_sections.data.emplace_back(name, value); }
+void asmgen::add_data(std::string_view name, std::string_view value) {
+  m_sections.data.emplace_back(name, value);
+}
 
-void asmgen::add_bss(cstring ident, cstring type, cstring size) {
+void asmgen::add_bss(std::string_view ident, std::string_view type, std::string_view size) {
   m_sections.bss.emplace_back(std::format("{} {} {}", ident, type, size));
 }
 
-void asmgen::register_labeled_code_block(cstring name, std::string&& asm_code) {
+void asmgen::register_labeled_code_block(std::string_view name, std::string&& asm_code) {
   m_sections.procedures.emplace_back(name, std::move(asm_code));
 }
 
@@ -259,16 +261,16 @@ void asmgen::stop_delay() {
 
 void asmgen::load_delayed() { m_text.load(); }
 
-void asmgen::write_label(cstring label) { m_text.newline().write("{}:\n", label); }
+void asmgen::write_label(std::string_view label) { m_text.newline().write("{}:\n", label); }
 
-void asmgen::write_comment(cstring comment) noexcept { m_text.write(";; {}\n", comment); }
+void asmgen::write_comment(std::string_view comment) noexcept { m_text.write(";; {}\n", comment); }
 
-[[nodiscard]] bool asmgen::exists_snippet(cstring name) {
+[[nodiscard]] bool asmgen::exists_snippet(std::string_view name) {
   return std::ranges::any_of(procedures_snippets,
                              [name](const auto& pair) { return pair.first == name; });
 }
 
-void asmgen::register_snippet(cstring name) {
+void asmgen::register_snippet(std::string_view name) {
   for (const auto& pair : procedures_snippets) {
     if (pair.first == name) {
       m_sections.procedures.emplace_back(pair);

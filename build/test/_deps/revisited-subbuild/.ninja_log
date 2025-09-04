@@ -1,0 +1,21 @@
+# ninja log v6
+0	14	1757016065056481849	revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-mkdir	945f90d24357d9fd
+0	14	1757016065056481849	/home/kike/dev/cmm/build/test/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-mkdir	945f90d24357d9fd
+14	39	1757016065079481849	revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-download	bc53f9c387ad8f88
+14	39	1757016065079481849	/home/kike/dev/cmm/build/test/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-download	bc53f9c387ad8f88
+39	57	1757016065098481849	revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-update	6146f05e8795c295
+39	57	1757016065098481849	/home/kike/dev/cmm/build/test/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-update	6146f05e8795c295
+57	80	1757016065121481850	revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-patch	8e8c42b213103e01
+57	80	1757016065121481850	/home/kike/dev/cmm/build/test/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-patch	8e8c42b213103e01
+80	102	1757016065143481850	revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-configure	529fbc8219ec8323
+80	102	1757016065143481850	/home/kike/dev/cmm/build/test/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-configure	529fbc8219ec8323
+102	119	1757016065160481850	revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-build	a66aae0e0e26b3ee
+102	119	1757016065160481850	/home/kike/dev/cmm/build/test/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-build	a66aae0e0e26b3ee
+119	139	1757016065180481851	revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-install	9d915d3a79e16e54
+119	139	1757016065180481851	/home/kike/dev/cmm/build/test/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-install	9d915d3a79e16e54
+139	163	1757016065204481851	revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-test	1a705ae054bc0af2
+139	163	1757016065204481851	/home/kike/dev/cmm/build/test/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-test	1a705ae054bc0af2
+163	193	1757016065234481851	CMakeFiles/revisited-populate-complete	d82726e1125556b1
+163	193	1757016065234481851	revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-done	d82726e1125556b1
+163	193	1757016065234481851	/home/kike/dev/cmm/build/test/_deps/revisited-subbuild/CMakeFiles/revisited-populate-complete	d82726e1125556b1
+163	193	1757016065234481851	/home/kike/dev/cmm/build/test/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-done	d82726e1125556b1

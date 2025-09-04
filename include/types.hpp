@@ -1,6 +1,8 @@
 #pragma once
 
+#include "common.hpp"
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -8,25 +10,41 @@
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_containers.hpp>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
-#include "common.hpp"
-#include "macros.hpp"
-#include "token.hpp"
 #include <cassert>
 #include <cstdint>
 #include <functional>
 #include <string>
 #include <utility>
-#include <vector>
 
-namespace cmm {
+#define BASIC_T(TYPE) cmm::types::global().make(cmm::types::core_t::TYPE)
+#define VOID_T        BASIC_T(void_t)
+#define BOOL_T        BASIC_T(bool_t)
+#define CHAR_T        BASIC_T(char_t)
+#define SINT_T        BASIC_T(sint_t)
+#define UINT_T        BASIC_T(uint_t)
+#define FLOAT_T       BASIC_T(float_t)
 
-namespace types {
-enum class qualification_t : uint8_t { NONE = 0, CONST = 1, VOLATILE = 2, CONST_VOLATILE = 3 };
+#define REF_T(TYPE) types::add_lvalue_reference(BASIC_T(TYPE))
 
-enum class group_t : uint8_t {
+#define UINTREF_T  REF_T(uint_t)
+#define SINTREF_T  REF_T(sint_t)
+#define FLOATREF_T REF_T(float_t)
+
+namespace cmm::types {
+
+using enum_type = uint16_t;
+enum class cv_qualification_t : uint8_t {
+  NONE           = 0,
+  CONST          = 1 << 0,
+  VOLATILE       = 1 << 1,
+  CONST_VOLATILE = (1 << 0) + (1 << 1)
+};
+
+enum class group_t : enum_type {
   any_t = 0,
   fundamental_t,
   arithmetic_t,
@@ -36,7 +54,7 @@ enum class group_t : uint8_t {
   reference_t,
   enum_t,
 };
-enum class core_t : uint8_t {
+enum class core_t : enum_type {
   void_t = magic_enum::enum_count<group_t>(),
   nullptr_t,
   bool_t,
@@ -48,7 +66,7 @@ enum class core_t : uint8_t {
   unscoped_enum_t,
   class_t
 };
-enum class layer_t : uint8_t {
+enum class layer_t : enum_type {
   lvalue_ref_t = magic_enum::enum_count<group_t>() + magic_enum::enum_count<core_t>(),
   rvalue_ref_t,
   pointer_t,
@@ -66,82 +84,207 @@ inline constexpr bool is_value_of_enum_v = std::is_enum_v<U> && std::same_as<dec
 template <auto V, typename... Enums>
 inline constexpr bool is_value_in_enums_v = (is_value_of_enum_v<V, Enums> || ...);
 
-#define ENUM_SIZE(ENUM) +magic_enum::enum_count<ENUM>()
-#define ENUMS_SIZE(...) FOR_EACH_1(ENUM_SIZE, __VA_ARGS__)
+template <auto V, typename... Es>
+struct enum_type_of {
+  using types = std::tuple<std::conditional_t<magic_enum::enum_contains<Es>(V), void, Es>...>;
+  static_assert(std::tuple_size_v<types>() == 1);
+  using type = std::tuple_element_t<0, types>();
+};
 
-#define TO_UNDERLYING(ENUM)
-#define CHECK_SAME_UNDERLYING_TYPES(FIRST, ...) FOR_EACH_1(TO_UNDERLYING, __VA_ARGS__)
+template <auto V, typename... Es>
+using enum_type_of_t = enum_type_of<V, Es...>::type;
 
-#define ENUM_UNION(NAME, CONCEPT, ...)                                                             \
-  struct category_data;                                                                            \
-  template <typename T>                                                                            \
-  concept CONCEPT = is_any<T, __VA_ARGS__>;                                                        \
-  template <auto V>                                                                                \
-  concept CONCAT(Value, CONCEPT) = is_value_in_enums_v<V, __VA_ARGS__>;                            \
-  struct NAME {                                                                                    \
-    USING_ENUMS(__VA_ARGS__)                                                                       \
-    using value_type                                = std::variant<__VA_ARGS__>;                   \
-    using underlying_type                           = uint8_t;                                     \
-    constexpr NAME()                                = default;                                     \
-    constexpr ~NAME()                               = default;                                     \
-    constexpr NAME(const NAME&)                     = default;                                     \
-    constexpr NAME& operator=(const NAME&) noexcept = default;                                     \
-    constexpr NAME& operator=(NAME&&) noexcept      = default;                                     \
-                                                                                                   \
-    template <CONCEPT Enum>                                                                        \
-    constexpr NAME(Enum e)                                                                         \
-        : m_value(e) {}                                                                            \
-    template <CONCEPT Enum>                                                                        \
-    constexpr NAME& operator=(Enum e) {                                                            \
-      m_value = e;                                                                                 \
-      return *this;                                                                                \
-    }                                                                                              \
-    constexpr category_data operator->() const;                                                    \
-    constexpr operator underlying_type() const {                                                   \
-      return m_value.visit([](auto held) -> magic_enum::underlying_type_t<decltype(held)> {        \
-        return magic_enum::enum_integer(held);                                                     \
-      });                                                                                          \
-    }                                                                                              \
-    constexpr bool operator==(NAME other) const noexcept {                                         \
-      if (m_value.index() != other.m_value.index()) {                                              \
-        return false;                                                                              \
-      }                                                                                            \
-      return std::visit(                                                                           \
-          [](auto a, auto b) {                                                                     \
-            if constexpr (std::is_same_v<std::decay_t<decltype(a)>, std::decay_t<decltype(b)>>) {  \
-              return a == b;                                                                       \
-            } else {                                                                               \
-              return false;                                                                        \
-            }                                                                                      \
-          },                                                                                       \
-          m_value,                                                                                 \
-          other.m_value);                                                                          \
-    }                                                                                              \
-                                                                                                   \
-    constexpr auto string() const {                                                                \
-      return m_value.visit([](auto held) { return magic_enum::enum_name<decltype(held)>(held); }); \
-    }                                                                                              \
-    constexpr static auto size() { return ENUMS_SIZE(__VA_ARGS__); }                               \
-                                                                                                   \
-  private:                                                                                         \
-    value_type m_value;                                                                            \
-  }; // namespace types
+template <typename... Es, typename U>
+constexpr bool value_in_any_enum(U v) {
+  return (
+      (magic_enum::enum_cast<Es>(static_cast<magic_enum::underlying_type_t<Es>>(v)).has_value()) ||
+      ...);
+}
+template <typename... Enums>
+consteval std::string_view available_enum_names() {
+  // Return first one; real diagnostic will list all in assert below.
+  return ((magic_enum::enum_type_name<Enums>()), ...);
+}
 
-ENUM_UNION(category_t, Category, group_t, core_t, layer_t);
+template <typename T>
+concept uint_comparable_t = std::convertible_to<T, uint64_t>;
 
+struct category_data;
+
+template <typename... Ts>
+  requires(sizeof...(Ts) > 0)
+using first_of = std::tuple_element_t<0, std::tuple<Ts...>>;
+
+template <typename... Enums>
+concept similar_enums = requires {
+  typename first_of<Enums...>;
+  requires(scoped_enum<Enums> && ...);
+  (std::same_as<magic_enum::underlying_type_t<first_of<Enums>>,
+                magic_enum::underlying_type_t<Enums>> &&
+   ...);
+};
+
+template <typename L, typename R>
+concept Comparable = (std::convertible_to<L, uint64_t> && std::convertible_to<R, uint64_t>);
+
+template <typename T>
+using rm_ref = std::remove_reference<T>;
+
+template <similar_enums... Enums>
+struct enum_union {
+  using enum_types      = std::tuple<Enums...>;
+  using first_enum      = std::tuple_element_t<0, std::tuple<Enums...>>;
+  using underlying_type = std::common_type_t<std::underlying_type_t<Enums>...>;
+
+  template <underlying_type V>
+  struct enum_type {
+    using maybe = typename enum_type_of<V, Enums...>::type;
+    static_assert(!std::is_void_v<maybe>,
+                  "enum_union::enum_type_t_strict: constant value does not belong to any provided"
+                  " enum types");
+    using type = maybe;
+  };
+
+  template <underlying_type V>
+  using enum_type_t = typename enum_type<V>::type;
+
+  DEFAULT_CLASS(enum_union);
+  template <typename Enum>
+    requires(std::same_as<Enum, Enums> || ...)
+  constexpr enum_union(Enum e)
+      : m_value(magic_enum::enum_integer(e)) {}
+  constexpr enum_union(underlying_type e)
+      : m_value(e) {}
+  template <typename Enum>
+    requires is_any<Enum, Enums...>
+  constexpr enum_union& operator=(Enum e) {
+    m_value = magic_enum::enum_integer(e);
+    return *this;
+  }
+
+  template <underlying_type V>
+  consteval enum_union(std::integral_constant<underlying_type, V>) {
+    // using T = enum_type_t_strict<V>; // enforce valid enum type
+    // m_value = V;
+  }
+
+  constexpr const category_data* operator->() const;
+  constexpr underlying_type value() const noexcept { return m_value; } // validity / membership
+  // constexpr explicit operator underlying_type() const noexcept { return value(); }
+  constexpr bool valid() const noexcept { return value_in_any_enum<Enums...>(m_value); }
+  template <scoped_enum T>
+    requires(std::is_same_v<T, Enums> || ...)
+  operator T() const {
+    return magic_enum::enum_cast<enum_type_t>(m_value);
+  }
+  constexpr auto operator<=>(const enum_union& other) const = default;
+  constexpr bool operator==(const enum_union& other) const  = default;
+  constexpr std::string_view enum_type_name() const noexcept {
+    return magic_enum::enum_type_name<enum_type_t>();
+  }
+  template <scoped_enum E>
+  constexpr std::optional<E> as() const noexcept {
+    return magic_enum::enum_cast<E>(m_value);
+  }
+
+  // enumerator name (if you need it)
+  constexpr auto repr() const noexcept { return magic_enum::enum_name<enum_type_t>(m_value); }
+  constexpr auto string() const noexcept { return magic_enum::enum_name<enum_type_t>(m_value); }
+
+  constexpr static size_t size() noexcept { return ((magic_enum::enum_count<Enums>()) + ...); }
+
+private:
+  const underlying_type m_value{};
+};
+
+template <typename EnumType, typename... EnumTypes>
+constexpr auto operator<=>(EnumType e, const enum_union<EnumTypes...>& eu) {
+  return std::to_underlying(e) <=> eu.value();
+}
+
+template <typename EnumType, typename... EnumTypes>
+constexpr bool operator==(EnumType e, const enum_union<EnumTypes...>& eu) {
+  return std::to_underlying(e) == eu.value();
+}
+using category_t = enum_union<group_t, core_t, layer_t>;
+static_assert(std::convertible_to<category_t, group_t>);
+static_assert(std::convertible_to<core_t, category_t>);
+static_assert(std::equality_comparable<category_t::underlying_type>);
+template <auto V>
+concept CategoryValue = is_value_in_enums_v<V, group_t, core_t, layer_t>;
+
+template <auto V, typename... Enums>
+concept EnumValue = ((magic_enum::enum_contains<Enums>(V) || ...));
+
+static_assert(CategoryValue<layer_t::lvalue_ref_t>);
+// helper to test if an integral value matches any enum in Union
 struct category_data {
-  using value_type = category_t::value_type;
-  value_type self;
-  value_type parent;
-  std::array<value_type, 4> children;
+  using UT = category_t::underlying_type; // Replace with category_t::underlying_type
+  UT self{};
+  UT parent{};
+  std::array<UT, 4> children{};
 
-  using datatypes  = std::tuple<value_type, value_type, std::array<value_type, 4>>;
-  using properties = std::array<datatypes, category_t::size()>;
-  static constexpr const properties& get_properties();
-  constexpr category_data(const category_t::underlying_type i)
-      : self(std::get<0>(get_properties()[i])),
-        parent(std::get<1>(get_properties()[i])),
-        children(std::get<2>(get_properties()[i])) {}
+  constexpr category_data()                                    = default;
+  constexpr category_data(const category_data&)                = default;
+  constexpr category_data& operator=(const category_data&)     = delete;
+  constexpr category_data(category_data&&) noexcept            = default;
+  constexpr category_data& operator=(category_data&&) noexcept = default;
+  constexpr category_data(UT s, UT p, std::array<UT, 4> c) noexcept
+      : self(s),
+        parent(p),
+        children(c) {}
+  // remove/avoid the template ctors unless you need them
+};
+
+template <auto Self, auto Parent, auto... Children>
+consteval category_data MakeData() {
+  // build children array from Children... (pad with zeros)
+  constexpr std::size_t N = sizeof...(Children);
+
+  // pack children into a constexpr array of UT
+  constexpr std::array<typename category_data::UT, N> packed = {
+      static_cast<typename category_data::UT>(Children)...};
+
+  std::array<typename category_data::UT, 4> arr{};
+  for (std::size_t i = 0; i < 4 && i < N; ++i) {
+    arr[i] = packed[i];
+    arr[i] = static_cast<category_data::UT>(packed[i]);
+  }
+  return category_data{static_cast<typename category_data::UT>(Self),
+                       static_cast<typename category_data::UT>(Parent),
+                       arr};
+}
+template <auto... Vs>
+struct builder {
+  static consteval auto make() { return category_data{Vs...}; } // namespace types
+};
+
+// ---------------------- standalone dense table builder that takes the functor NTTP
+template <typename Union,
+          typename Data,
+          auto InitFunctor /* class-type NTTP with operator()(underlying) */>
+struct enum_union_dense_table {
+  using underlying_type                                = typename Union::underlying_type;
+  static constexpr size_t Size                         = Union::size();
+
+  inline static constexpr std::array<Data, Size> table = [] {
+    std::array<Data, Size> out{};
+    for (size_t i = 0; i < Size; ++i) {
+      out[i] = InitFunctor(static_cast<underlying_type>(i));
+    }
+    return out;
+  }();
+
+  static constexpr const Data* get(underlying_type v) noexcept {
+    if (v >= 0 && static_cast<std::size_t>(v) < Size) {
+      return &table[static_cast<std::size_t>(v)];
+    }
+    return nullptr;
+  }
+
+  static constexpr const Data& at(underlying_type v) noexcept {
+    return table[static_cast<std::size_t>(v)];
+  }
 };
 
 // static_assert(std::is_assignable_v<category_t, category_t>);
@@ -155,33 +298,21 @@ static_assert(std::is_constructible_v<category_t, core_t>);
 static_assert(std::is_assignable_v<category_t, layer_t>);
 static_assert(std::is_assignable_v<category_t, layer_t>);
 static_assert(std::is_assignable_v<category_t, layer_t>);
-static_assert(std::formattable<category_t, char>);
-static_assert(std::formattable<std::unique_ptr<category_t>, char>);
-static_assert(std::formattable<std::optional<category_t>, char>);
-static_assert(std::formattable<std::shared_ptr<category_t>, char>);
-constexpr category_t c = core_t::unscoped_enum_t;
-static_assert(Displayable<category_t>);
+// static_assert(std::formattable<category_t, char>);
+// static_assert(std::formattable<std::unique_ptr<category_t>, char>);
+// static_assert(std::formattable<std::optional<category_t>, char>);
+// static_assert(std::formattable<std::shared_ptr<category_t>, char>);
+// static_assert(Displayable<category_t>);
 static_assert(std::is_assignable_v<category_t, layer_t>);
-static_assert(!std::is_assignable_v<category_t, token_t>);
+// static_assert(!std::is_assignable_v<category_t, token_t>);
 static_assert(std::is_trivially_copy_constructible_v<category_t>);
-void a() {
-  category_t::size();
-  constexpr category_t cat = category_t::scoped_enum_t;
-  static_assert(cat == core_t::scoped_enum_t);
-  constexpr category_t category = layer_t::function_t;
-  static_assert(category != core_t::scoped_enum_t);
-  static_assert(ValueCategory<category_t::any_t>);
-  static_assert(!ValueCategory<token_t::neq>);
-  static_assert(sizeof(category_t) == 2);
-}
 
 using namespace magic_enum::bitwise_operators;
 
-} // namespace types
-} // namespace cmm
+} // namespace cmm::types
 
 template <>
-struct magic_enum::customize::enum_range<cmm::types::qualification_t> {
+struct magic_enum::customize::enum_range<cmm::types::cv_qualification_t> {
   static constexpr bool is_flags = true;
 };
 
@@ -193,48 +324,62 @@ struct core {
   std::string name; // "int", "float", "Mytype", ...
 
   core(core_t);
-  core(core_t, category_t);
   bool operator==(const core& o) const noexcept { return kind == o.kind && name == o.name; }
 };
 
 struct layer {
-  layer(layer_t l)
-      : tag(l) {}
+  layer(layer_t t_layer, cv_qualification_t t_cv = {})
+      : tag(t_layer),
+        cv_qualifiers(t_cv) {}
   layer_t tag;
-  qualification_t cv_qualifiers;
+  cv_qualification_t cv_qualifiers{};
   size_t rank{};
   // Payload (only used by Array for now)
-  bool operator==(const layer& o) const noexcept { return tag == o.tag && rank == o.rank; }
+  bool operator==(const layer& o) const noexcept {
+    return tag == o.tag && rank == o.rank && cv_qualifiers == o.cv_qualifiers;
+  }
 };
 
 struct info;
 
 struct type_id {
-  uint32_t id = 0;
+  using id_type       = uint32_t;
+  constexpr type_id() = default;
+  explicit constexpr type_id(id_type t_id)
+      : m_id(t_id) {}
   const info* operator->() const;
-  bool operator==(type_id other) const noexcept { return id == other.id; }
-  types::info info() const;
-  bool is_valid() const { return id != 0; }
-}; // 0 reserved for invalid
 
-category_t categorize(type_id);
+  bool operator==(types::type_id other) const noexcept { return m_id == other.m_id; }
+  constexpr bool is_valid() const { return m_id > 0; }
+
+  id_type value() const { return m_id; }
+  operator const info&() const;
+
+private:
+  id_type m_id = 0;
+}; // 0 reserved for invalid
 
 // Topmost layer first (index 0). Example: const int& => LRef, Const
 struct info : displayable {
-  using key_type = std::pair<core, stack<layer>>;
+  using key_type = std::tuple<core, cv_qualification_t, cmm::stack<layer>>;
 
-  info(const core&, qualification_t, stack<layer>);
+  info(const core&, cv_qualification_t, cmm::stack<layer>);
   // Base type
-  core core;
-  qualification_t cv_qualifiers;
+  types::core core;
+  cv_qualification_t cv_qualifiers;
 
   // Indirections
   stack<layer> layers;
 
   // Helpers
   category_t categorize() const;
-  std::string string() const override { return core.name; }
-  type_id id() const;
+  std::string string() const override;
+  cv_qualification_t& cvqual();
+  const cv_qualification_t& cvqual() const;
+
+  bool operator==(const info& other) const noexcept {
+    return core == other.core && cv_qualifiers == other.cv_qualifiers && layers == other.layers;
+  }
 };
 
 struct core_keyhash {
@@ -245,56 +390,54 @@ struct core_keyeq {
   bool operator()(const info::key_type&, const info::key_type&) const noexcept;
 };
 
+using modifier_t = std::function<type_id(type_id)>;
+
+struct modifier;
 class manager {
 public:
-  manager() {
-    // m_nodes.push_back(info(core(core_t::, category_t::dummy_t), qualification_t::NONE, {}));
+  types::type_id make(const types::core& c,
+                      const stack<layer>& = {},
+                      cv_qualification_t  = cv_qualification_t::NONE);
+  const types::info& info(types::type_id) const;
+
+  friend types::type_id;
+
+  static const std::array<category_data, category_t::size()> s_category_data;
+
+  inline static manager& instance() {
+    static manager i;
+    return i;
   }
 
-  type_id make(const core& c,
-               const stack<layer>& layers,
-               qualification_t qual = qualification_t::NONE) {
-    auto key = std::make_pair(c, layers);
-    auto it  = m_idx.find(key);
-    if (it != m_idx.end())
-      return type_id{it->second};
-    uint32_t id = static_cast<uint32_t>(m_nodes.size());
-    m_nodes.emplace_back(c, qual, layers);
-    m_idx.emplace(std::move(key), id);
-    return type_id{id};
-  }
+  size_t types_size() const;
 
-  type_id get(info i) { return make(i.core, i.layers, i.cv_qualifiers); }
-
-  const info& id(type_id t) const {
-    assert(t.id < m_nodes.size());
-    return m_nodes[t.id];
-  }
-
-  friend type_id;
+  // Makers of modifiers
+  template <layer_t L>
+  modifier make_layer_adder();
+  template <auto L>
+    requires(CategoryValue<L>)
+  modifier make_layer_remover();
+  template <cv_qualification_t L>
+  modifier make_cv_adder();
+  template <cv_qualification_t L>
+  modifier make_cv_remover();
 
 private:
-  std::vector<info> m_nodes; // id -> node (id==index)
+  manager() = default;
+
+  std::vector<types::info> m_nodes; // id -> node (id==index)
   std::unordered_map<info::key_type, uint32_t, core_keyhash, core_keyeq> m_idx;
+
+  types::type_id get(types::info);
 };
 
-inline manager& arena() {
-  static manager A;
-  return A;
+inline manager& global() { return manager::instance(); }
+
+inline types::type_id make(const types::core& c,
+                           std::initializer_list<layer> layers = {},
+                           cv_qualification_t qual             = {}) {
+  return global().make(c, stack<layer>(layers));
 }
-
-inline type_id make(const core& c,
-                    std::initializer_list<layer> layers = {},
-                    qualification_t qual                = {}) {
-  return arena().make(c, stack<layer>(layers));
-}
-
-// ---------- Helpers to push/peel layers & normalize ----------
-
-template <ScopedEnum Enum>
-constexpr std::string enum_strip_t(Enum);
-template <auto E>
-constexpr std::string enum_strip_t();
 
 // Strip leading refs (LRef/RRef) and optionally leading top-level cv
 struct StripPolicy {
@@ -302,32 +445,21 @@ struct StripPolicy {
   bool drop_top_cv = true;
 };
 
-template <core_t CoreT, auto Cat, qualification_t Cv, layer_t... Layers>
-  requires(ValueCategory<Cat>)
-struct builder {
-  static type_id build() {
-    core c(CoreT, Cat);
-    stack<layer_t> layers;
-    (layers.push(Layers), ...);
-    return arena().make(c, layers, Cv);
-  }
-};
-
 struct pattern;
-struct matcher;
+struct unary_matcher;
 struct modifier;
-struct conversor;
 
 struct match_result {
+  match_result(bool r)
+      : ok(r) {}
   bool ok  = false;
   int cost = 0;
-  type_id canonical{};
-  match_result& operator&&(const match_result&);
-  match_result& operator||(const match_result&);
-  match_result& operator!();
+  // types::type_id canonical{};
+  // match_result& operator&&(const match_result&);
+  // match_result& operator||(const match_result&);
+  // match_result& operator!();
   operator bool() const { return ok; }
 };
-struct pattern;
 
 template <typename... Args>
 struct pattern_provider {
@@ -335,191 +467,126 @@ struct pattern_provider {
 };
 
 template <typename... Args>
-constexpr matcher provide(Args&&...);
+constexpr unary_matcher provide(Args&&...);
 
-struct matcher : displayable {
-  using matcher_t = std::function<bool(type_id)>;
-  matcher(std::string, matcher_t);
-  matcher(const matcher&)            = default;
-  matcher& operator=(const matcher&) = default;
-  match_result operator()(type_id) const;
+struct unary_matcher : displayable {
+  using unary_matcher_t = std::function<match_result(types::type_id)>;
+  unary_matcher(std::string_view, unary_matcher_t);
+  unary_matcher(const unary_matcher&)            = default;
+  unary_matcher& operator=(const unary_matcher&) = default;
+  match_result operator()(types::type_id) const;
   std::string string() const override;
-  matcher operator&&(const matcher&) const;
-  matcher operator||(const matcher&) const;
-  matcher operator!() const;
+  unary_matcher operator&&(const unary_matcher&) const;
+  unary_matcher operator||(const unary_matcher&) const;
+  unary_matcher operator!() const;
 
 private:
   std::string m_desc;
-  matcher_t m_matcher;
+  unary_matcher_t m_unary_matcher;
 };
 
-template <auto Cat>
-  requires(ValueCategory<Cat>)
-constexpr matcher is_category();
-template <auto Cat>
-  requires(ValueCategory<Cat>)
-constexpr match_result is_category(type_id);
+template <cv_qualification_t Cv>
+constexpr unary_matcher is_cv_qualified();
 
-inline matcher is_const     = {"is const", [](type_id t) {
-                             qualification_t qual = t->layers.empty()
-                                                            ? t->cv_qualifiers
-                                                            : t->layers.top().cv_qualifiers;
-                             return qual == qualification_t::CONST ||
-                                    qual == qualification_t::CONST_VOLATILE;
-                           }};
-inline matcher is_pointer   = is_category<category_t::pointer_t>();
-inline matcher is_lvalue    = is_category<category_t::lvalue_ref_t>();
-inline matcher is_rvalue    = is_category<category_t::lvalue_ref_t>();
-inline matcher is_reference = is_lvalue || is_rvalue;
+template <auto V>
+  requires CategoryValue<V>
+constexpr unary_matcher is_category();
 
-using children_t            = std::array<category_t, 4>;
+using unary_matcher_provider = std::function<unary_matcher(type_id)>;
+inline unary_matcher any{"any", [](types::type_id) { return true; }};
+inline unary_matcher is_nullptr      = is_category<core_t::nullptr_t>();
+inline unary_matcher is_bool         = is_category<core_t::bool_t>();
+inline unary_matcher is_floating     = is_category<core_t::float_t>();
+inline unary_matcher is_unscoped     = is_category<core_t::unscoped_enum_t>();
+inline unary_matcher is_integral     = is_category<group_t::integral_t>();
+inline unary_matcher is_arithmetic   = is_category<group_t::arithmetic_t>();
+inline unary_matcher is_compound     = is_category<group_t::compound_t>();
+inline unary_matcher is_pointer      = is_category<layer_t::pointer_t>();
+inline unary_matcher is_array        = is_category<layer_t::array_t>();
+inline unary_matcher is_const        = is_cv_qualified<cv_qualification_t::CONST>();
+inline unary_matcher is_volatile     = is_cv_qualified<cv_qualification_t::VOLATILE>();
+inline unary_matcher is_lvalue       = is_category<layer_t::lvalue_ref_t>();
+inline unary_matcher is_const_lvalue = is_lvalue && is_const;
+inline unary_matcher is_rvalue       = is_category<layer_t::rvalue_ref_t>();
+inline unary_matcher is_const_rvalue = is_rvalue && is_const;
+inline unary_matcher is_reference    = is_lvalue || is_rvalue;
+inline unary_matcher is_direct       = {"is_direct ",
+                                        [](type_id t) -> match_result { return t->layers.empty(); }};
 
-// BUILD_ENUMERATION_DATA_CLASS(category, category_t, parent, children_t, child);
+struct binary_matcher : displayable {
+  using binary_matcher_t = std::function<match_result(types::type_id, type_id)>;
+  binary_matcher(std::string_view, binary_matcher_t);
+  binary_matcher(const binary_matcher&)            = default;
+  binary_matcher& operator=(const binary_matcher&) = default;
+  unary_matcher operator()(type_id) const;
+  match_result operator()(type_id, type_id) const;
+  std::string string() const override;
 
-#define GROUP_TYPES                                                                   \
-  type_t::fundamental_t, type_t::void_t, type_t::arithmetic_t, type_t::integral_t,    \
-      type_t::compound_t, type_t::indirection_t, type_t::reference_t, type_t::enum_t,
+private:
+  std::string m_desc;
+  binary_matcher_t m_matcher;
+};
 
-#define INSTANCIABLE_TYPES()                                                          \
-  type_t::nullptr_t, type_t::bool_t, type_t::char_t, type_t::uint_t, type_t::sint_t,  \
-      type_t::float_t, type_t::lvalue_ref_t, type_t::rvalue_ref_t, type_t::pointer_t, \
-      type_t::arrayinstance_data_t, type_t::function_t, type_t::scoped_enum_t,        \
-      type_t::unscoped_enum_t, type_t::class_t
+inline unary_matcher_provider is_same = [](type_id lhs) -> unary_matcher {
+  return {std::format("is same to {}", lhs->string()), [lhs](type_id rhs) { return lhs == rhs; }};
+};
 
 bool belongs_to(category_t, category_t);
 
 struct modifier : cmm::displayable {
-private:
-  using modifier_t = std::function<info(info)>;
-
 public:
-  inline static modifier_t identity = [](info t) -> info { return t; };
-  modifier()
-      : m_desc("Identity"),
-        m_modifier(identity) {}
-  modifier(std::string desc, modifier_t mod)
+  modifier(std::string_view desc, modifier_t mod)
       : m_desc(desc),
         m_modifier(mod) {}
   std::string string() const override { return m_desc; }
-  type_id operator()(type_id) const;
-  info operator()(info) const;
+  bool is_modifiable(types::type_id) const;
+  types::type_id operator()(types::type_id) const;
+
+  //  m1 | m2 | m3  pipes the return of the last to the input of the next
+  //  no matter what
   modifier operator|(const modifier&) const;
+  // m1 ^ m2 ^ m3   feeds the specific type as the input of the first modifier
+  // that can modify
+  // modifier operator^(const modifier&) const;
 
 protected:
   std::string m_desc;
   modifier_t m_modifier;
 };
 
-template <layer_t L>
-modifier make_wrapper();
-template <layer_t L>
-modifier make_peeler();
-template <qualification_t L>
-modifier make_qualifier();
+inline modifier operator&&(const types::unary_matcher&, const modifier&);
 
-inline modifier add_lvalue_reference = make_wrapper<layer_t::lvalue_ref_t>();
-inline modifier add_rvalue_reference = make_wrapper<layer_t::rvalue_ref_t>();
-inline modifier add_const            = make_qualifier<qualification_t::CONST>();
-inline modifier remove_lvalue        = make_peeler<layer_t::lvalue_ref_t>();
-inline modifier remove_rvalue        = make_peeler<layer_t::rvalue_ref_t>();
-inline modifier remove_reference     = make_peeler<layer_t::lvalue_ref_t>();
+inline modifier type_identity        = {"type_identity", std::identity{}};
+inline modifier add_lvalue_reference = global().make_layer_adder<layer_t::lvalue_ref_t>();
+inline modifier add_rvalue_reference = global().make_layer_adder<layer_t::rvalue_ref_t>();
+inline modifier add_pointer          = global().make_layer_adder<layer_t::pointer_t>();
+inline modifier add_const            = global().make_cv_adder<cv_qualification_t::CONST>();
+inline modifier add_volatile         = global().make_cv_adder<cv_qualification_t::VOLATILE>();
+inline modifier add_cv               = add_const | add_volatile;
 
-struct converter : public modifier {
-  struct builder;
+inline modifier remove_volatile      = global().make_cv_remover<cv_qualification_t::VOLATILE>();
+inline modifier remove_const         = global().make_cv_remover<cv_qualification_t::CONST>();
+inline modifier remove_cv            = remove_const | remove_volatile;
+inline modifier remove_lvalue        = global().make_layer_remover<layer_t::lvalue_ref_t>();
+inline modifier remove_rvalue        = global().make_layer_remover<layer_t::rvalue_ref_t>();
+inline modifier remove_reference     = global().make_layer_remover<group_t::reference_t>();
+inline modifier remove_cvref         = remove_cv | remove_reference;
+inline modifier remove_extent        = global().make_layer_remover<layer_t::array_t>();
 
-  type_id operator()(type_id) const;
-  [[nodiscard]] bool is_convertible(type_id) const;
+inline modifier decay                = {"decay", [](type_id t) -> type_id {
+                           if (is_array(t)) {
+                             return remove_extent(t);
+                           }
+                           return remove_cvref(t);
+                         }};
 
-  [[nodiscard]] std::string string() const override { return m_desc; }
+inline constexpr modifier replace(type_id c) {
+  return {"convert to", [c](type_id) -> type_id { return c; }};
+}
 
-  friend builder;
-
-private:
-  type_id m_from;
-  std::string m_desc;
-};
-extern std::vector<type_id> get_convertible_types(type_id);
-extern bool is_convertible(type_id, type_id);
-
-// #define make_belongs(NAME, CAT)                                                               \
-//   inline static const matcher NAME(                                                           \
-//       #NAME, [](type t) -> bool { return t && belongs_to(t->category, category_t::CAT); })
-//
-// #define make_is(NAME, CAT)                                                          \
-//   inline static const matcher NAME(                                                 \
-//       #NAME, [](type t) -> bool { return t && category_t::CAT == t->category; })
-//
-// #define make_matcher(NAME, COND)                                                      \
-//   inline static const matcher NAME(#NAME, [](type lhs) -> bool { return (COND); })
-//
-// #define make_combined(NAME, COMBINED) inline static const matcher NAME(#NAME, COMBINED)
-//
-// namespace matchers {
-// inline static const matcher any("any", [](type) { return true; });
-// make_belongs(is_arithmetic, arithmetic_t);
-// make_belongs(is_integral, integral_t);
-// make_is(is_lvalue, lvalue_ref_t);
-// make_is(is_rvalue, rvalue_ref_t);
-// make_combined(is_ref, is_lvalue || is_rvalue);
-// make_is(is_pointer, pointer_t);
-// make_is(is_floating, float_t);
-// make_is(is_unscoped, unscoped_enum_t);
-// make_is(is_array, array_t);
-// make_matcher(is_const, lhs->c);
-// make_matcher(is_volatile, lhs->v);
-// make_combined(is_const_lvalue, is_const&& is_lvalue);
-//
-// } // namespace matchers
-//
-// // A converter is just a restricter modifier
-//
-// struct type_comparer {};
-//
-// DECLARE_BUILDER(type_converter)
-// BUILDER_STEP(name, std::string, m_desc)
-// BUILDER_STEP_SETTER(from, type_matcher, m_from, std::make_shared<const type_matcher>(value))
-// BUILDER_STEP(from, type, m_from)
-// BUILDER_STEP_SETTER(to,
-//                     type,
-//                     m_modifier,
-//                     type_modifier(std::format("to {}", value), [value](type) { return value;
-//                     }))
-// BUILDER_STEP(with, type_modifier, m_modifier)
-// END_BUILDER()
-//
-// #define BINDING_CONVERSION(NAME, COND, WITH) \
-//   inline const auto& NAME = type_converter::builder().name(#NAME).from(COND).with(WITH).build()
-// #define NORMAL_CONVERSION(NAME, COND, TO)                                                   \
-//   inline const auto& NAME = type_converter::builder().name(#NAME).from(COND).to(TO).build()
-//
-// namespace conversions {
-// BINDING_CONVERSION(lvalue_to_rvalue,
-//                    matchers::is_lvalue,
-//                    modifiers::remove_reference | modifiers::add_rvalue_reference);
-// // extern const type_converter nullptr_to_ptr;
-// NORMAL_CONVERSION(any_to_bool,
-//                   matchers::is_integral || matchers::is_pointer || matchers::is_unscoped ||
-//                       matchers::is_floating,
-//                   BOOL_T);
-// // extern const type_converter bool_to_any;
-// BINDING_CONVERSION(array_to_pointer, matchers::is_array, modifiers::decay);
-//
-// inline const std::array standard = {&any_to_bool, &lvalue_to_rvalue};
-//
-// }; // namespace conversions
-//
 } // namespace types
-
-using type_id = types::type_id;
+using types::type_id;
 } // namespace cmm
-
-// template <>
-// struct std::hash<cmm::type> {
-//   size_t operator()(const cmm::type& t) const noexcept {
-//     return cmm::hash_combine(t.category, t.rank, t.underlying, t.c, t.v);
-//   }
-// };
-
 template <>
 struct std::formatter<cmm::types::type_id, char> : std::formatter<string_view> {
   template <typename Ctx>
@@ -527,7 +594,5 @@ struct std::formatter<cmm::types::type_id, char> : std::formatter<string_view> {
     return std::formatter<string_view>::format(t->string(), ctx);
   }
 };
-
-#define VOID_T cmm::types::arena().
 
 #include "types.inl"

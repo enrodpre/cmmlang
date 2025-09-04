@@ -6,7 +6,6 @@
 
 #include <optional>
 #include <string>
-#include <type_traits>
 
 #include "asm.hpp"
 #include "ast.hpp"
@@ -25,17 +24,8 @@ namespace cmm::ir {
 
 using assembly::operand;
 
-namespace intents {
 enum class address_intent_t : uint8_t { HAVING_VALUE = 0, HAVING_ADDRESS, CARENT };
 enum class address_mode_intent_t : uint8_t { COPY = 0, ADDRESS_MEMORY, LOAD_ADDRESS };
-
-enum class intent_t : uint8_t {
-  MOVE_CONTENT,
-  LOAD_VARIABLE_VALUE,
-  LOAD_VARIABLE_ADDRESS,
-  SAVE_VARIABLE_VALUE
-};
-} // namespace intents
 
 enum class Phase : uint8_t {
   STOPPED = 0,
@@ -76,36 +66,36 @@ public:
 
   std::string compile(translation_unit&, const source_code*);
 
-  void reserve_static_var(cstring);
-  void reserve_memory(cstring, cstring, cstring);
-  assembly::label_literal* reserve_constant(cstring);
+  void reserve_static_var(std::string_view);
+  void reserve_memory(std::string_view, std::string_view, std::string_view);
+  assembly::label_literal* reserve_constant(std::string_view);
   std::optional<operand*> call_function(const identifier& id,
                                         const ast::expr::arguments&,
                                         bool = false);
   template <typename T, typename Id = T::identifier_t>
-  const T* get_callable(Id id, const std::vector<expr::expression*>&) const;
+  const T* get_callable(Id id, const expr::arguments&) const;
   operand* call_builtin_operator(const operator_&, const ast::expr::arguments&);
 
   template <assembly::Operand... Args>
   void instruction(const instruction_t&, Args&&...);
   operand* move(operand*, operand*);
   operand* lea(operand*, operand*);
-  operand* move_immediate(operand*, cstring);
+  operand* move_immediate(operand*, std::string_view);
   operand* return_reg(operand*);
   void push(operand*);
   void pop(operand*);
   operand* zero(operand*);
-  void jump(cstring);
-  void jump(const instruction_t&, cstring);
-  void cmp(cstring, cstring);
+  void jump(std::string_view);
+  void jump(const instruction_t&, std::string_view);
+  void cmp(std::string_view, std::string_view);
   void exit(operand*);
-  void call(cstring);
+  void call(std::string_view);
   void exit_successfully();
   void syscall();
-  void syscall(cstring);
+  void syscall(std::string_view);
   void ret();
-  void label(cstring);
-  void comment(cstring);
+  void label(std::string_view);
+  void comment(std::string_view);
 
   friend default_singleton<compilation_unit>;
 
@@ -116,23 +106,14 @@ private:
   void start();
   std::string end();
 
-  [[nodiscard]] std::vector<bound_argument> bind_parameters(
-      const std::vector<parameter>&,
-      const std::vector<ast::expr::expression*>&) const;
+  [[nodiscard]] std::vector<bound_argument> bind_parameters(const std::vector<parameter>&,
+                                                            const expr::arguments&) const;
   std::vector<operand*> load_arguments(const std::vector<bound_argument>&);
 
   template <typename T, typename Id = typename T::identifier_t>
-  const T* resolve_overloads(Id,
-                             std::vector<const T*> candidates,
-                             std::vector<expr::expression*>) const;
+  const T* resolve_overloads(Id, std::vector<const T*>, const expr::arguments&) const;
   [[nodiscard]] static bool match_arguments(const std::vector<types::type_id>&,
                                             const std::vector<types::type_id>&);
-  template <typename T>
-    requires(std::is_same_v<T, const ast::decl::function*> ||
-             std::is_same_v<T, const builtin_operator_data*>)
-  [[nodiscard]] std::vector<T> progressive_prefix_match(
-      const std::vector<types::type_id>& argument_types,
-      const std::vector<T>& possible_fns) const;
 };
 
 } // namespace cmm::ir

@@ -1,0 +1,84 @@
+{
+	"archive" : {},
+	"artifacts" : 
+	[
+		{
+			"path" : "_deps/statictypeinfo-build/libStaticTypeInfoHeaders.a"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library"
+		],
+		"files" : 
+		[
+			"build/_deps/statictypeinfo-src/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 39,
+				"parent" : 0
+			}
+		]
+	},
+	"id" : "StaticTypeInfoHeaders::@89021fe381b4ce39f276",
+	"name" : "StaticTypeInfoHeaders",
+	"nameOnDisk" : "libStaticTypeInfoHeaders.a",
+	"paths" : 
+	{
+		"build" : "_deps/statictypeinfo-build",
+		"source" : "build/_deps/statictypeinfo-src"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Header Files",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"path" : "build/_deps/statictypeinfo-src/include/static_type_info.h",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "build/_deps/statictypeinfo-src/include/static_type_info/hash.h",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "build/_deps/statictypeinfo-src/include/static_type_info/type_id.h",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "build/_deps/statictypeinfo-src/include/static_type_info/type_index.h",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"path" : "build/_deps/statictypeinfo-src/include/static_type_info/type_name.h",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "STATIC_LIBRARY"
+}

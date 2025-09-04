@@ -1,23 +1,19 @@
 #include "lexer.hpp"
 
-#include <ctype.h>
-#include <stdlib.h>
-#include <magic_enum/magic_enum_containers.hpp>
 #include <algorithm>
+#include <ctype.h>
+#include <format>
 #include <ranges>
 #include <regex>
+#include <stdlib.h>
 #include <string>
 #include <string_view>
-#include <compare>
-#include <format>
 #include <tuple>
 #include <utility>
 
-#include "token.inl"
-
 namespace cmm {
 
-lexer::lexer(cmm::cstring src)
+lexer::lexer(std::string_view src)
     : m_src(src),
       m_pointer(0) {};
 
@@ -25,9 +21,9 @@ bool lexer::has_next() const { return m_pointer < m_src.size(); }
 
 char lexer::peek() const { return m_src[m_pointer]; }
 
-cmm::cstring lexer::peek(size_t size) const { return m_src.substr(m_pointer, size); }
+std::string_view lexer::peek(size_t size) const { return m_src.substr(m_pointer, size); }
 
-cmm::cstring lexer::peek(int size) const {
+std::string_view lexer::peek(int size) const {
   if (size < 0) {
     return m_src.substr(m_pointer);
   }
@@ -43,7 +39,6 @@ tokens lexer::tokenize() {
 
   while (has_next()) {
     if (isspace(peek()) != 0) {
-      if (peek() == '\n') {}
       advance();
     } else {
       parse_token();
@@ -112,8 +107,9 @@ void lexer::parse_token() {
     std::regex re(std::format("^{}", pattern));
     auto next_token = peek(-1);
     if (std::regex_search(next_token.cbegin(), next_token.cend(), match, re)) {
+      size_t length = match[1].str().size();
       m_tokens.emplace_back(
-          tokenType, location(m_pointer, m_pointer + match[1].str().size()), match[1].str());
+          tokenType, location(m_pointer, m_pointer + length), m_src.substr(m_pointer, length));
       // Consume ditched matched chars
       // as colon in label
       advance(match[0].length());

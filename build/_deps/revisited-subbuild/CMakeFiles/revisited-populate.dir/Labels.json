@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/kike/dev/cmm/build/_deps/revisited-subbuild/CMakeFiles/revisited-populate"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/_deps/revisited-subbuild/CMakeFiles/revisited-populate.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/_deps/revisited-subbuild/CMakeFiles/revisited-populate-complete.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-build.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-configure.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-download.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-install.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-mkdir.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-patch.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-test.rule"
+		},
+		{
+			"file" : "/home/kike/dev/cmm/build/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"revisited-populate"
+		],
+		"name" : "revisited-populate"
+	}
+}

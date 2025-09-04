@@ -58,6 +58,7 @@ enum class token_t : uint8_t {
   modifier_end,
 
   operator_begin,
+  binary_begin,
   dot,
   arrow,
   and_,
@@ -73,15 +74,18 @@ enum class token_t : uint8_t {
   le,
   gt,
   ge,
+  fslash,
+  unary_begin,
   plus,
   minus,
   star,
-  fslash,
-  expr_end,
   ampersand,
+  expr_end,
+  binary_end,
   not_,
   inc,
   dec,
+  unary_end,
   bslash,
   operator_end,
   comma,
@@ -140,12 +144,13 @@ enum class token_t : uint8_t {
 struct token_data : public cmm::enumeration<token_t> {
   enum class pattern_t : uint8_t { SINGLE_CHAR, MULTI_CHAR, REGEX };
   const pattern_t pattern_type{};
-  const cstring pattern;
+  const std::string_view pattern;
   using value_type = token_t;
-  using enumeration<value_type>::enumeration;
   using enum value_type;
-  using member_types   = std::tuple<value_type, pattern_t, cstring>;
+  using enumeration<value_type>::enumeration;
+  using member_types   = std::tuple<value_type, pattern_t, std::string_view>;
   using properties_map = magic_enum::containers::array<value_type, member_types>;
+  operator token_t() const { return m_value; }
   constexpr token_data(token_t t)
       : enumeration(t),
         pattern_type(std::get<1>(token_data::properties_array().at(t))),
@@ -155,10 +160,12 @@ struct token_data : public cmm::enumeration<token_t> {
   [[nodiscard]] bool is(const token_t& t) const { return m_value == t; }
 
   IS_GROUP(is_type, types)
-  IS_GROUP(is_operator, operator)
   IS_GROUP(is_storage, storage);
   IS_GROUP(is_modifier, modifier);
   IS_GROUP(is_literal, literal);
+  IS_GROUP(is_operator, operator)
+  IS_GROUP(is_unary_operator, unary)
+  IS_GROUP(is_binary_operator, binary)
 
   [[nodiscard]] bool is_specifier() const { return is_storage() || is_modifier() || is_type(); }
 
@@ -167,19 +174,19 @@ struct token_data : public cmm::enumeration<token_t> {
   }
 };
 
-struct token : public displayable, public self_allocated {
+struct token : public displayable {
   token_t type;
-  std::string value;
-
-  token(const token_t& t, cmm::location&& loc)
-      : self_allocated(std::move(loc)),
-        type(t) {}
-  token(const token_t& t, cmm::location&& loc, std::string v)
-      : self_allocated(std::move(loc)),
-        type(t),
-        value(std::move(v)) {}
+  std::string_view value;
+  token(token_t t, cmm::location&& t_location, std::string_view t_sv = {})
+      : type(t),
+        value(t_sv),
+        m_location(std::move(t_location)) {}
   bool operator==(const token& other) const { return value == other.value && type == other.type; }
+  const cmm::location& location() const { return m_location; }
   [[nodiscard]] std::string string() const override;
+
+private:
+  cmm::location m_location;
 };
 
 class tokens : public formattable_range<std::vector<token>> {
@@ -204,7 +211,7 @@ public:
   void pointer(size_t) noexcept;
   [[nodiscard]] size_t pointer() const noexcept;
   void reserve(size_t);
-  void emplace(cmm::token_t&&, location&&, cstring = "");
+  void emplace(cmm::token_t&&, location&&, std::string_view = "");
 
   [[nodiscard]] const_iterator cbegin() const noexcept;
   [[nodiscard]] const_iterator cend() const noexcept;

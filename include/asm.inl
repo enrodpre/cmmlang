@@ -10,7 +10,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "allocator.hpp"
+#include "memory.hpp"
 
 namespace cmm::assembly {
 enum class syscall_t : uint8_t;
@@ -19,9 +19,6 @@ struct label_literal;
 struct label_memory;
 struct reg;
 struct stack_memory;
-} // namespace cmm::assembly
-
-namespace cmm::assembly {
 
 [[nodiscard]] constexpr const syscall_data::properties_map& syscall_data::properties_array() {
   using enum syscall_t;
@@ -61,7 +58,7 @@ constexpr std::string registers::to_realname(register_t r) {
 [[nodiscard]] constexpr reg* registers::parameter_at(const int i_) const {
   auto* reg_ = get(m_parameters.at(i_));
   if (!reg_->is_writtable()) {
-    REGISTER_WARN("Overwriting not writtable register {}", reg_->format());
+    REGISTER_WARN("Overwriting not writtable register {}", reg_->string());
   }
   reg_->release();
   return reg_;
@@ -93,7 +90,7 @@ constexpr registers::store_type registers::initialize_registers() {
 template <typename V, typename... Args>
   requires std::is_constructible_v<V, Args...>
 V* operand_factory::create(Args&&... args) {
-  return ::cmm::memory::Allocator::instance().emplace<V>(std::forward<Args>(args)...);
+  return ::cmm::memory::arena::instance().emplace<V>(std::forward<Args>(args)...);
 }
 
 namespace {

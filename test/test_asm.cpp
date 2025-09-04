@@ -14,8 +14,7 @@ class ParametersTest : public ::testing::Test {
 protected:
   void SetUp() override {
     regs = std::make_unique<assembly::registers>();
-    var  = std::make_unique<decl::variable>(
-        cmm::type::create(category_t::bool_t), identifier("a"), nullptr);
+    var  = std::make_unique<decl::variable>(BOOL_T, identifier("a"), nullptr);
   }
   void TearDown() override {
     regs.reset();
@@ -48,7 +47,7 @@ TEST_F(ParametersTest, initial_state) {
 }
 #define REGISTER(NUMBER) registers::to_realname(registers::m_parameters[NUMBER])
 
-#define REG_EQ(REG, TYPE) EXPECT_EQ(REG->format(), regs->get(assembly::register_t::TYPE)->format())
+#define REG_EQ(REG, TYPE) EXPECT_EQ(REG->string(), regs->get(assembly::register_t::TYPE)->string())
 #define NEXT_AND_FILL()   transaction.next()->hold_value(var.get())
 
 TEST_F(ParametersTest, order_correctness) {
@@ -118,7 +117,7 @@ TEST_F(ParametersTest, SingleTransactionExhaustAllRegisters) {
 
   for (assembly::register_t r : expected_order) {
     auto* reg = NEXT_AND_FILL();
-    EXPECT_EQ(reg->format(), regs->get(r)->format());
+    EXPECT_EQ(reg->string(), regs->get(r)->string());
   }
 
   EXPECT_ANY_THROW(transaction.next());

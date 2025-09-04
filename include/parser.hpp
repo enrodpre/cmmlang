@@ -1,13 +1,11 @@
 #pragma once
 
-#include <cstdint>
-#include <type_traits>
-#include <vector>
-
-#include "allocator.hpp"
 #include "ast.hpp"
 #include "macros.hpp"
+#include "memory.hpp"
 #include "token.hpp"
+#include <cstdint>
+#include <type_traits>
 
 namespace cmm::ast::expr {
 enum class literal_t : uint8_t;
@@ -44,11 +42,12 @@ public:
   ast::declaration* parse_declaration();
 
   // EXPRESSIONS
-  ast::expr::expression* parse_primary();
-  ast::expr::expression* parse_condition();
-  ast::expr::expression* parse_unary_expr();
-  ast::expr::expression* parse_call(ast::identifier&& ident);
-  ast::expr::expression* parse_expr(uint8_t = 255);
+  ast::expr::expression& parse_primary();
+  ast::expr::expression& parse_condition();
+  ast::expr::expression& parse_unary_expr();
+  ast::expr::expression& parse_call(ast::identifier&& ident);
+  ast::expr::expression& parse_expr(uint8_t = 255);
+  ast::expr::expression& parse_lhs_expr();
 
   // Terms
   ast::decl::specifiers parse_specifiers();
@@ -57,7 +56,7 @@ public:
 
 private:
   tokens m_tokens;
-  memory::Allocator m_arena;
+  memory::arena m_arena;
   std::vector<ast::declaration*> m_global;
 
   // Helpers
@@ -65,7 +64,6 @@ private:
   ast::siblings<T> parse_varargs(Func&&, const token_t&, const token_t&, const token_t&);
   ast::decl::variable* parse_variable(ast::decl::specifiers&&, ast::identifier&&);
   ast::decl::function* parse_function(ast::decl::specifiers&&, ast::identifier&&);
-  ast::expr::expression* parse_lhs_expr();
   template <typename T, typename... Args>
     requires(std::is_constructible_v<T, Args...>)
   T* create_node(Args&&...);

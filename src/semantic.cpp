@@ -29,26 +29,29 @@ void semantics::load_semantics(ast::expr::expression* e) {
 semantics::visitor::visitor()
     : v(ir::compilation_unit::instance()) {}
 
+#define create_fundamental(CORE) types::make(types::core_t::CORE, {}, {})
+
 void semantics::visitor::visit(const ast::expr::literal& lit) {
   switch (lit.category) {
     case ast::expr::literal_t::CHAR:
-      lit.semantics()->original_type = cmm::type::create_fundamental(category_t::char_t);
+      lit.semantics()->original_type = create_fundamental(char_t);
       break;
     case ast::expr::literal_t::STRING:
-      lit.semantics()->original_type = cmm::type::create_string(lit.value().size());
+      lit.semantics()->original_type =
+          types::make(types::core_t::char_t, {types::layer_t::array_t});
       break;
     case ast::expr::literal_t::SINT:
-      lit.semantics()->original_type = cmm::type::create_fundamental(category_t::sint_t);
+      lit.semantics()->original_type = create_fundamental(sint_t);
       break;
     case ast::expr::literal_t::UINT:
-      lit.semantics()->original_type = cmm::type::create_fundamental(category_t::uint_t);
+      lit.semantics()->original_type = create_fundamental(uint_t);
       break;
     case ast::expr::literal_t::FALSE:
     case ast::expr::literal_t::TRUE:
-      lit.semantics()->original_type = cmm::type::create_fundamental(category_t::bool_t);
+      lit.semantics()->original_type = create_fundamental(bool_t);
       break;
     case ast::expr::literal_t::FLOAT:
-      lit.semantics()->original_type = cmm::type::create_fundamental(category_t::float_t);
+      lit.semantics()->original_type = create_fundamental(float_t);
       break;
   }
 

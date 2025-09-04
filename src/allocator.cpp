@@ -1,13 +1,13 @@
-#include "allocator.hpp"
+#include "memory.hpp"
 
 namespace cmm::memory {
 
-Allocator::Allocator(size_t capacity, std::byte* buffer, std::byte* offset)
+arena::arena(size_t capacity, std::byte* buffer, std::byte* offset)
     : m_capacity(capacity),
       m_buffer(buffer),
       m_offset(offset) {}
 
-void Allocator::report_statistics() const noexcept {
+void arena::report_statistics() const noexcept {
   // auto accumulate_stat = [](const register_& a, const register_& b) -> register_ {
   //   return {.size = a.size + b.size, .times = a.times + b.times};
   // };

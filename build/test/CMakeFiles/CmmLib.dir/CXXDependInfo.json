@@ -1,0 +1,117 @@
+{
+	"bmi-installation" : null,
+	"compiler-frontend-variant" : "GNU",
+	"compiler-id" : "Clang",
+	"compiler-simulate-id" : "",
+	"config" : "Debug",
+	"cxx-modules" : {},
+	"database-info" : null,
+	"dir-cur-bld" : "/home/kike/dev/cmm/build/test",
+	"dir-cur-src" : "/home/kike/dev/cmm",
+	"dir-top-bld" : "/home/kike/dev/cmm/build/test",
+	"dir-top-src" : "/home/kike/dev/cmm",
+	"exports" : [],
+	"forward-modules-from-target-dirs" : [],
+	"include-dirs" : 
+	[
+		"/home/kike/dev/cmm/include",
+		"/home/kike/dev/cmm/deps/Revisited/include",
+		"_deps/statictypeinfo-src/include"
+	],
+	"language" : "CXX",
+	"linked-target-dirs" : [],
+	"module-dir" : "/home/kike/dev/cmm/build/test/CMakeFiles/CmmLib.dir",
+	"sources" : 
+	{
+		"CMakeFiles/CmmLib.dir/src/allocator.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/allocator.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/asm.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/asm.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/ast.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/ast.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/common.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/common.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/compiler.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/compiler.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/expr.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/expr.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/fs.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/fs.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/ir.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/ir.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/lang.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/lang.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/lexer.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/lexer.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/memory.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/memory.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/os.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/os.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/parser.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/parser.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/preprocessor.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/preprocessor.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/semantic.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/semantic.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/token.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/token.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/traverser.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/traverser.cpp"
+		},
+		"CMakeFiles/CmmLib.dir/src/types.cpp.o" : 
+		{
+			"language" : "CXX",
+			"source" : "/home/kike/dev/cmm/src/types.cpp"
+		}
+	}
+}

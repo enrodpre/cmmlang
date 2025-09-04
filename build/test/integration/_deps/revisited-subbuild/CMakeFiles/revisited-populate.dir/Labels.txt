@@ -1,0 +1,14 @@
+# Target labels
+ revisited-populate
+# Source files and their labels
+/home/kike/dev/cmm/build/test/integration/_deps/revisited-subbuild/CMakeFiles/revisited-populate
+/home/kike/dev/cmm/build/test/integration/_deps/revisited-subbuild/CMakeFiles/revisited-populate.rule
+/home/kike/dev/cmm/build/test/integration/_deps/revisited-subbuild/CMakeFiles/revisited-populate-complete.rule
+/home/kike/dev/cmm/build/test/integration/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-build.rule
+/home/kike/dev/cmm/build/test/integration/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-configure.rule
+/home/kike/dev/cmm/build/test/integration/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-download.rule
+/home/kike/dev/cmm/build/test/integration/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-install.rule
+/home/kike/dev/cmm/build/test/integration/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-mkdir.rule
+/home/kike/dev/cmm/build/test/integration/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-patch.rule
+/home/kike/dev/cmm/build/test/integration/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-test.rule
+/home/kike/dev/cmm/build/test/integration/_deps/revisited-subbuild/revisited-populate-prefix/src/revisited-populate-stamp/revisited-populate-update.rule

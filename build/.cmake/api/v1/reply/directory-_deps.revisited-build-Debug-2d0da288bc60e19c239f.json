@@ -1,0 +1,95 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"packageProject"
+		],
+		"files" : 
+		[
+			"build/_deps/packageproject.cmake-src/CMakeLists.txt",
+			"deps/Revisited/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 65,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 39,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 44,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 52,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 2,
+			"component" : "Unspecified",
+			"destination" : "lib/cmake/Revisited-2.3.1",
+			"exportName" : "RevisitedTargets",
+			"exportTargets" : 
+			[
+				{
+					"id" : "Revisited::@e34c86df20ef204470c3",
+					"index" : 0
+				}
+			],
+			"paths" : 
+			[
+				"_deps/revisited-build/CMakeFiles/Export/57e2e3096315c7179b655b42e555337b/RevisitedTargets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 3,
+			"component" : "Unspecified",
+			"destination" : "lib/cmake/Revisited-2.3.1",
+			"paths" : 
+			[
+				"build/_deps/revisited-build/RevisitedConfigVersion.cmake",
+				"build/_deps/revisited-build/RevisitedConfig.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "Unspecified",
+			"destination" : "include/Revisited-2.3.1",
+			"paths" : 
+			[
+				{
+					"from" : "deps/Revisited/include",
+					"to" : "."
+				}
+			],
+			"type" : "directory"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "_deps/revisited-build",
+		"source" : "deps/Revisited"
+	}
+}
