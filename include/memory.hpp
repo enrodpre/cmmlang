@@ -1,6 +1,5 @@
 #pragma once
 
-#include "common.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -10,10 +9,11 @@
 #include <utility>
 #include <vector> // for vector
 
+#include "common.hpp"
+
 namespace cmm::memory {
 
 struct register_;
-
 struct arena;
 
 template <typename T>
@@ -137,4 +137,7 @@ template <typename T>
 T* allocator<T>::allocate(std::size_t n) {
   return static_cast<T*>(m_region.allocate<T>(sizeof(T) * n));
 }
+
+template <typename T>
+using vector = std::vector<T, cmm::memory::allocator<T>>;
 } // namespace cmm::memory

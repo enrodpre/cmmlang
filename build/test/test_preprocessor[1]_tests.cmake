@@ -1,5 +1,0 @@
-add_test([=[TestPreprocessor.SingleLineComments]=]  /home/kike/dev/cmm/build/test/test_preprocessor [==[--gtest_filter=TestPreprocessor.SingleLineComments]==] --gtest_also_run_disabled_tests)
-set_tests_properties([=[TestPreprocessor.SingleLineComments]=]  PROPERTIES WORKING_DIRECTORY /home/kike/dev/cmm/build/test SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==] LABELS unit)
-add_test([=[TestPreprocessor.MultiBlockComments]=]  /home/kike/dev/cmm/build/test/test_preprocessor [==[--gtest_filter=TestPreprocessor.MultiBlockComments]==] --gtest_also_run_disabled_tests)
-set_tests_properties([=[TestPreprocessor.MultiBlockComments]=]  PROPERTIES WORKING_DIRECTORY /home/kike/dev/cmm/build/test SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==] LABELS unit)
-set(  test_preprocessor_TESTS TestPreprocessor.SingleLineComments TestPreprocessor.MultiBlockComments)

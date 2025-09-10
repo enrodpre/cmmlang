@@ -1,4 +1,7 @@
 #include "os.hpp"
+
+#include <stdlib.h>
+
 #include "common.hpp"
 
 namespace cmm::os {

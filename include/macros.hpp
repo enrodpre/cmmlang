@@ -238,9 +238,12 @@
       : self(e),                                                                        \
         CTOR_ASSIGN_DATA(__VA_ARGS__) {}
 
-#define TO_VEC          std::ranges::to<std::vector>()
-#define TRANSFORM(FUNC) std::views::transform(FUNC)
-#define FILTER(FUNC)    std::views::filter(FUNC)
+#define TO_VEC                std::ranges::to<std::vector>()
+#define TRANSFORM(FUNC)       std::views::transform(FUNC)
+#define FILTER(FUNC)          std::views::filter(FUNC)
+#define MAP_RANGE(TYPE, FUNC) TRANSFORM([](TYPE elem) { return FUNC; })
+#define CAST_RANGE(RANGE, TYPE)                                                           \
+  RANGE | TRANSFORM([](const auto* elem) { return dynamic_cast<TYPE*>(elem); }) | TO_VEC;
 
 #define CREATE_ENUM_EXTENSION_BODY(TYPE, ...)                                     \
   using value_type   = CONCAT(TYPE, _t);                                          \

@@ -1,8 +1,11 @@
 #include "types.hpp"
 
-#include <format>
 #include <magic_enum/magic_enum.hpp>
+#include <assert.h>
+#include <format>
 #include <utility>
+
+#include "types.inl"
 
 namespace cmm::types {
 

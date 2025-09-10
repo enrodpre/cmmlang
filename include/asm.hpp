@@ -1,13 +1,14 @@
 #pragma once
 
-#include <algorithm>   // for __count_if_fn, count_if
-#include <array>       // for array
-#include <cstddef>     // for size_t
-#include <cstdint>     // for uint8_t, int64_t, uint64_t
-#include <format>      // for format_string, format
-#include <memory>      // for unique_ptr
-#include <optional>    // for optional
-#include <string>      // for basic_string, string, char_traits
+#include <algorithm> // for __count_if_fn, count_if
+#include <array>     // for array
+#include <cstddef>   // for size_t
+#include <cstdint>   // for uint8_t, int64_t, uint64_t
+#include <format>    // for format_string, format
+#include <memory>    // for unique_ptr
+#include <optional>  // for optional
+#include <string>    // for basic_string, string, char_traits
+#include <string_view>
 #include <type_traits> // for remove_cvref_t, is_abstract_v, remove_cvref
 #include <utility>     // for pair, make_pair, forward
 #include <variant>     // for variant
@@ -73,8 +74,7 @@ struct operand : displayable {
   //   QWORD = 64, // 64-bit
   // };
 
-  [[nodiscard]] virtual type_t type() const = 0;
-  // [[nodiscard]] virtual size size() const         = 0;
+  [[nodiscard]] virtual type_t type() const       = 0;
   [[nodiscard]] virtual std::string value() const = 0;
   [[nodiscard]] std::string string() const override;
 
@@ -309,31 +309,29 @@ public:
   void write_instruction(const instruction_t&, Args&&...);
   void add_data(std::string_view, std::string_view);
   void add_bss(std::string_view, std::string_view, std::string_view);
-  void register_labeled_code_block(std::string_view, std::string&&);
+  void save_current_procedure();
+  void load_new_procedure(std::string_view);
   [[nodiscard]] static bool exists_snippet(std::string_view);
-  void register_snippet(std::string_view);
+  void include_snippet(std::string_view);
 
   // Helpers
   template <typename... Args>
   [[nodiscard]] comment_block begin_comment_block(std::format_string<Args...> std, Args&&... args);
-  void register_exit_block() noexcept;
 
   // Dynamic buffer
-  void create_delay();
-  [[nodiscard]] std::string dump_delayed();
-  void stop_delay();
-  void load_delayed();
+  // void create_delay();
+  // [[nodiscard]] std::string dump_delayed();
+  // void stop_delay();
+  // void load_delayed();
 
 private:
-  string_buffer m_text;
-  // line_store_t m_instructions;
+  std::unique_ptr<std::pair<std::string, std::string>> m_current_procedure;
   std::vector<std::string> m_comment_blocks;
 
   struct {
-    // std::unordered_map<std::string, string_buffer> procedurers;
-    std::vector<std::pair<std::string, std::string>> procedures;
+    std::unordered_map<std::string, std::string> procedures;
     std::vector<std::string> bss;
-    std::vector<std::pair<std::string, std::string>> data;
+    std::unordered_map<std::string, std::string> data;
   } m_sections;
 
   constexpr static std::array procedures_snippets = {

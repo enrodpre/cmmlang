@@ -99,8 +99,8 @@ inline std::unique_ptr<ast_matcher> Literal(std::string v) {
 inline std::unique_ptr<ast_matcher> Unary(operator_t op, std::unique_ptr<ast_matcher> sub) {
   return std::make_unique<unary_matcher>(op, std::move(sub));
 }
-inline std::unique_ptr<ast_matcher> Binary(operator_t op,
-                                           std::unique_ptr<ast_matcher> lhs,
+inline std::unique_ptr<ast_matcher> Binary(std::unique_ptr<ast_matcher> lhs,
+                                           operator_t op,
                                            std::unique_ptr<ast_matcher> rhs) {
   return std::make_unique<binary_matcher>(op, std::move(lhs), std::move(rhs));
 }
@@ -146,8 +146,6 @@ protected:
   token true_      = create_token(true_lit);
   token else_      = create_token(else_);
 
-  size_t row;
-
   template <typename To, typename From>
   To cast(From from) {
     auto* to = dynamic_cast<To>(from);
@@ -158,28 +156,10 @@ protected:
     return to;
   }
 
-#define CAST(FROM, TO_T, TO)                                                                     \
-  auto* TO = dynamic_cast<TO_T>(FROM);                                                           \
-  EXPECT_TRUE(TO != nullptr) << std::format(                                                     \
-      "Type {} assumed to be {}", demangle(typeid(FROM).name()), demangle(typeid(TO_T).name()));
-
   static void check_literal(const expr::expression& expr, const std::string& value) {
     const auto* lit = dynamic_cast<const expr::literal*>(&expr);
     EXPECT_FALSE(lit == nullptr);
     EXPECT_EQ(value, lit->value());
-  }
-
-  static void require_identifier(const expr::expression& expr, const std::string& value) {
-    const auto* lit = dynamic_cast<const expr::identifier*>(&expr);
-    EXPECT_FALSE(lit == nullptr);
-    EXPECT_EQ(value, lit->value());
-  }
-
-  template <typename T>
-  static T* unfold_expression(expr::expression* expr) {
-    auto res = dynamic_cast<T*>(expr);
-    EXPECT_TRUE(res != nullptr);
-    return res;
   }
 };
 
@@ -215,63 +195,32 @@ TEST_F(ParserTest, Vardecl) {
 }
 
 TEST_F(ParserTest, binop_expression) {
-  // TODO terminar
-
   parser::parser p({diez, plus, doce, star, ocho, plus, dos, star, quince});
   auto& top_expr = p.parse_expr();
 
   EXPECT_AST_EQ(top_expr,
-                Binary(operator_t::plus,
-
-                       Binary(operator_t::star,
-                              Literal("10"),
-                              Binary(operator_t::star, Literal("12"), Literal("8"))),
-                       Binary(operator_t::star, Literal("2"), Literal("15"))));
+                Binary(Binary(Literal("10"),
+                              operator_t::star,
+                              Binary(Literal("12"), operator_t::star, Literal("8"))),
+                       operator_t::plus,
+                       Binary(Literal("2"), operator_t::star, Literal("15"))));
 }
 
 TEST_F(ParserTest, unary_operator) {
-  auto& expr   = parser::parser({inc, ident}).parse_expr();
-  auto* preinc = cast<expr::unary_operator*>(&expr);
-  EXPECT_EQ(operator_t::pre_inc, preinc->operator_.value());
+  auto& expr = parser::parser({inc, ident}).parse_expr();
+  EXPECT_AST_EQ(expr, Unary(operator_t::pre_inc, Literal("var")));
 
-  expr          = parser::parser({ident, dec}).parse_expr();
-  auto* postdec = cast<expr::unary_operator*>(&expr);
-  EXPECT_EQ(operator_t::post_dec, postdec->operator_.value());
+  expr = parser::parser({ident, dec}).parse_expr();
+  EXPECT_AST_EQ(expr, Unary(operator_t::post_dec, Literal("var")));
 }
 
 TEST_F(ParserTest, multi_operator) {
   auto& expr = parser::parser({inc, exit, plus, doce, star, ident, dec}).parse_expr();
-
-  // Root must be a BinaryOp "+"
-  auto* plus = dynamic_cast<binary_operator*>(&expr);
-  ASSERT_NE(plus, nullptr);
-  EXPECT_EQ(plus->operator_.value(), operator_t::plus);
-
-  // Left side: ++x
-  auto* unary = dynamic_cast<unary_operator*>(&plus->left);
-  ASSERT_NE(unary, nullptr);
-  EXPECT_EQ(unary->operator_.value(), operator_t::pre_inc);
-
-  auto* varX = dynamic_cast<expr::identifier*>(&unary->expr);
-  ASSERT_NE(varX, nullptr);
-  EXPECT_EQ(varX->value(), "x");
-
-  // Right side: 12 * y--
-  auto* mult = dynamic_cast<binary_operator*>(&plus->right);
-  ASSERT_NE(mult, nullptr);
-  EXPECT_EQ(mult->operator_.value(), operator_t::star);
-
-  auto* lit12 = dynamic_cast<expr::literal*>(&mult->left);
-  ASSERT_NE(lit12, nullptr);
-  EXPECT_EQ(lit12->value(), "12");
-
-  auto* postdec = dynamic_cast<unary_operator*>(&mult->right);
-  ASSERT_NE(postdec, nullptr);
-  EXPECT_EQ(postdec->operator_.value(), operator_t::post_dec);
-
-  auto* varY = dynamic_cast<expr::identifier*>(&postdec->expr);
-  ASSERT_NE(varY, nullptr);
-  EXPECT_EQ(varY->value(), "y");
+  EXPECT_AST_EQ(
+      expr,
+      Binary(Unary(operator_t::pre_dec, Literal("x")),
+             operator_t::plus,
+             Binary(Literal("12"), operator_t::star, Unary(operator_t::post_inc, Literal("y")))));
 }
 
 TEST_F(ParserTest, IfElse) {
@@ -311,61 +260,10 @@ TEST_F(ParserTest, Block) {
   EXPECT_EQ(0, comp->stmts.size());
 }
 
-#if 0
-TEST_F(ParserTest, specifiers)
-{
-  std::vector<token> tokens_{
-      int_t,
-      static_,
-      inline_,
-      constexpr_,
-      x,
-  };
-  tokens tokens{tokens_};
-  Parser parser{tokens};
-
-  auto specs = parser.parse_specifiers();
-
-  EXPECT_TRUE(specs.is_inline);
-  EXPECT_TRUE(specs.is_constexpr);
-  EXPECT_EQ(specs.type, Specifier::int_t);
-  EXPECT_EQ(specs.storage, Specifier::static_);
-
-  std::vector<token> tokens_2{
-      int_t,
-      x,
-      static_,
-      inline_,
-      constexpr_,
-  };
-
-  tokens tokens2{tokens_2};
-  Parser parser2{tokens2};
-
-  auto specs2 = parser2.parse_specifiers();
-
-  EXPECT_FALSE(specs2.is_inline);
-  EXPECT_FALSE(specs2.is_constexpr);
-  EXPECT_EQ(specs2.type, Specifier::int_t);
-  EXPECT_EQ(specs2.storage, Specifier::no_specifier);
-
-  std::vector<token> tokens_3{
-      x,
-      int_t,
-      static_,
-      inline_,
-      constexpr_,
-  };
-  tokens tokens3{tokens_3};
-  Parser parser3{tokens3};
-
-  EXPECT_THROW(parser3.parse_specifiers(), SpecifierParserException);
-
-  std::vector<token> tokens_4({static_, inline_, constexpr_, zero});
-
-  tokens tokens4{tokens_4};
-  Parser parser4{tokens4};
-
-  EXPECT_THROW(parser4.parse_specifiers(), SpecifierParserException);
+TEST_F(ParserTest, operator_precedence) {
+  parser::parser expr({x, assign, x, plus, ocho, semi});
+  EXPECT_AST_EQ(expr.parse_expr(),
+                Binary(Literal("x"),
+                       operator_t::assign,
+                       Binary(Literal("x"), operator_t::plus, Literal("8"))));
 }
-#endif

@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/home/kike/dev/cmm/build/test/_deps/packageproject.cmake-subbuild/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

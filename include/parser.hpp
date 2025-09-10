@@ -1,11 +1,13 @@
 #pragma once
 
+#include <cstdint>
+#include <type_traits>
+#include <vector>
+
 #include "ast.hpp"
 #include "macros.hpp"
 #include "memory.hpp"
 #include "token.hpp"
-#include <cstdint>
-#include <type_traits>
 
 namespace cmm::ast::expr {
 enum class literal_t : uint8_t;
@@ -45,13 +47,12 @@ public:
   ast::expr::expression& parse_primary();
   ast::expr::expression& parse_condition();
   ast::expr::expression& parse_unary_expr();
-  ast::expr::expression& parse_call(ast::identifier&& ident);
+  ast::expr::expression& parse_call(const token&);
   ast::expr::expression& parse_expr(uint8_t = 255);
   ast::expr::expression& parse_lhs_expr();
 
   // Terms
   ast::decl::specifiers parse_specifiers();
-  ast::identifier parse_identifier();
   ast::decl::rank* parse_rank();
 
 private:
@@ -62,17 +63,14 @@ private:
   // Helpers
   template <typename Func, typename T = std::invoke_result_t<Func>>
   ast::siblings<T> parse_varargs(Func&&, const token_t&, const token_t&, const token_t&);
-  ast::decl::variable* parse_variable(ast::decl::specifiers&&, ast::identifier&&);
-  ast::decl::function* parse_function(ast::decl::specifiers&&, ast::identifier&&);
+  ast::decl::variable* parse_variable(ast::decl::specifiers&&, const token&);
+  ast::decl::function* parse_function(ast::decl::specifiers&&, const token&);
   template <typename T, typename... Args>
-    requires(std::is_constructible_v<T, Args...>)
   T* create_node(Args&&...);
 
   // Checkers
   [[nodiscard]] token_data peek_data() const;
   [[nodiscard]] bool next_is(token_t) const;
-  static void want(const token&, const token_t&, bool = false);
-  token want(const token_t&, bool = false);
   void want_semicolon();
   struct semicolon_consumer {
     parser& p;

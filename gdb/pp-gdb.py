@@ -15,18 +15,19 @@ class displayable_pp(gdb.ValuePrinter):
 
             try:
                 repr = gdb.parse_and_eval(
-                    f"({self.val.address})->repr()"
+                    f"({self.val.address})->string()"
                 ).format_string()
             except gdb.error:
-                print("shit")
-                return f"<cannot call repr() on {self.val.type}>"
+                print("error calling ->string()")
+                return f"<cannot call string() on {self.val.type}>"
 
         try:
-            repr = gdb.parse_and_eval(
-                f"(({self.val.type}*){self.val.address})->repr()"
-            ).format_string()
+            a = int(self.val["start"])
+            b = int(self.val["node"])
+            s = self.val["s"].string()  # gdb knows how to pretty-print std::string
+            return f"{a}:{b}:{s}"
         except gdb.error:
-            print("shit")
+            # print("shit")
             return f"{self.val.type}(...)"
 
         return repr[1 : len(repr) - 1]

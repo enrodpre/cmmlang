@@ -1,19 +1,25 @@
 #pragma once
 
-#include "compiler.hpp"
 #include <cstddef>
 #include <cstdint>
-
 #include <optional>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "asm.hpp"
 #include "ast.hpp"
 #include "common.hpp"
+#include "compiler.hpp"
 #include "lang.hpp"
 #include "traverser.hpp"
 
 namespace cmm {
+class source_code;
+namespace types {
+struct type_id;
+} // namespace types
+
 namespace ast {
 struct identifier;
 struct translation_unit;
@@ -29,8 +35,7 @@ enum class address_mode_intent_t : uint8_t { COPY = 0, ADDRESS_MEMORY, LOAD_ADDR
 
 enum class Phase : uint8_t {
   STOPPED = 0,
-  GLOBAL,
-  EXECUTING,
+  GENERATING,
   PRUNING_FULL,  // Full prune of current branch
   PRUNING_LABEL, // Prune until last.pruning_branch label found
   EXITING
@@ -69,12 +74,10 @@ public:
   void reserve_static_var(std::string_view);
   void reserve_memory(std::string_view, std::string_view, std::string_view);
   assembly::label_literal* reserve_constant(std::string_view);
-  std::optional<operand*> call_function(const identifier& id,
-                                        const ast::expr::arguments&,
-                                        bool = false);
   template <typename T, typename Id = T::identifier_t>
   const T* get_callable(Id id, const expr::arguments&) const;
   operand* call_builtin_operator(const operator_&, const ast::expr::arguments&);
+  std::optional<operand*> call_function(const identifier&, const ast::expr::arguments&);
 
   template <assembly::Operand... Args>
   void instruction(const instruction_t&, Args&&...);
@@ -106,12 +109,11 @@ private:
   void start();
   std::string end();
 
-  [[nodiscard]] std::vector<bound_argument> bind_parameters(const std::vector<parameter>&,
-                                                            const expr::arguments&) const;
-  std::vector<operand*> load_arguments(const std::vector<bound_argument>&);
-
-  template <typename T, typename Id = typename T::identifier_t>
-  const T* resolve_overloads(Id, std::vector<const T*>, const expr::arguments&) const;
+  void load_arguments(const parameters&, const expr::arguments&);
+  template <typename T, typename Id>
+  std::vector<const callable*> get_candidates(Id, const expr::arguments&) const;
+  template <typename Id>
+  const callable* resolve_overloads(Id, std::vector<const callable*>, const expr::arguments&) const;
   [[nodiscard]] static bool match_arguments(const std::vector<types::type_id>&,
                                             const std::vector<types::type_id>&);
 };

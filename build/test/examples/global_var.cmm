@@ -1,6 +1,0 @@
-int a = 255;
-
-int main()
-{
-  return a;
-}

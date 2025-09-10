@@ -3,6 +3,8 @@
 #include <magic_enum/magic_enum.hpp>
 #include <string>
 
+#include "common.inl"
+
 namespace cmm {
 
 self_allocated::self_allocated(cmm::location&& loc)

@@ -1,9 +1,0 @@
-int fn(int i)
-{
-  return i;
-}
-
-int main()
-{
-  return fn(255);
-}

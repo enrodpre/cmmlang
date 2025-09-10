@@ -2,6 +2,7 @@
 
 #include "token.hpp"
 
+#include <stdint.h>
 #include <tuple>
 
 namespace cmm {

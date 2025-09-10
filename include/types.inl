@@ -1,7 +1,22 @@
 #pragma once
 
 #include "types.hpp"
+
 #include <magic_enum/magic_enum_flags.hpp>
+#include <magic_enum/magic_enum.hpp>
+#include <array>
+#include <format>
+#include <string_view>
+
+namespace cmm {
+namespace types {
+enum class core_t : enum_type;
+enum class cv_qualification_t : uint8_t;
+struct category_data;
+struct match_result;
+struct type_id;
+}  // namespace types
+}  // namespace cmm
 
 namespace cmm::types {
 

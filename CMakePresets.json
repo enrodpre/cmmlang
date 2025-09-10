@@ -4,23 +4,22 @@
   "configurePresets": [
     {
       "name": "dev",
-      "displayName": "dev build",
-      "description": "Debug build with optimization disabled",
-      "binaryDir": "${sourceDir}/build",
+      "displayName": "Debug config",
+      "description": "Debug config with optimization disabled",
+      "binaryDir": "${sourceDir}/build/${presetName}",
       "generator": "Ninja",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_C_COMPILER": "/usr/bin/clang",
         "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_CXX_STANDARD": "26",
         "CMAKE_CXX_STANDARD_REQUIRED": "ON",
         "CMAKE_CXX_EXTENSIONS ": "ON",
-        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
         "CMAKE_MODULE_PATH": "${sourceDir}/cmake",
-        "ENABLE_LOGGING": "ON",
-        "IWYU_AUTOFIX": "ON",
+        "CMAKE_UNITY_BUILD": "ON",
+        "ENABLE_IWYU": "OFF",
+        "IWYU_AUTOFIX": "OFF",
         "LOG_LEVEL": "5"
       },
       "environment": {
@@ -29,33 +28,26 @@
     },
     {
       "name": "dev-asan",
-      "displayName": "dev build with sanitizers",
-      "description": "Debug build with optimization disabled and address sanitizers",
-      "inherits": [
-        "dev"
-      ]
-    },
-    {
-      "name": "test",
-      "displayName": "dev with tests",
-      "description": "Debug build with unit and integration tests enabled",
+      "displayName": "Debug config with sanitizers",
+      "description": "Debug config with optimization disabled and address sanitizers",
       "inherits": [
         "dev"
       ],
-      "binaryDir": "${sourceDir}/build/test",
       "cacheVariables": {
-        "BUILD_TESTING": "ON"
+        "USE_ASAN": "ON"
       }
     },
     {
-      "name": "integration",
-      "displayName": "run integration tests with pytest",
+      "name": "dev-test",
+      "displayName": "Debug config with tests",
+      "description": "Debug config with unit and integration tests enabled",
       "inherits": [
-        "dev"
+        "dev-asan"
       ],
-      "binaryDir": "${sourceDir}/build/test/integration",
       "cacheVariables": {
-        "BUILD_INTEGRATION": "ON"
+        "BUILD_TESTING": "ON",
+        "BUILD_INTEGRATION": "ON",
+        "ENABLE_TEST_COVERAGE": "ON"
       }
     }
   ],
@@ -67,19 +59,11 @@
       "jobs": 12
     },
     {
-      "name": "test",
-      "configurePreset": "test",
+      "name": "dev-test",
+      "configurePreset": "dev-test",
       "displayName": "Build Test",
       "description": "Configure/build test preset, and build targets in test/ if present.",
       "jobs": 12
-    },
-    {
-      "name": "integration",
-      "displayName": "Run Integration Tests",
-      "configurePreset": "integration",
-      "targets": [
-        "integration"
-      ]
     }
   ],
   "testPresets": [
@@ -87,7 +71,7 @@
       "name": "unit",
       "displayName": "Run Unit Tests",
       "description": "Run only unit tests",
-      "configurePreset": "test",
+      "configurePreset": "dev-test",
       "filter": {
         "include": {
           "label": "unit"

@@ -1,9 +1,0 @@
-int main() {
-  int x = 254;
-  while (x != 255) {
-    x++;
-    continue;
-    return 1;
-  }
-  return x;
-}

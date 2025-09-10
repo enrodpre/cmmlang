@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 message(STATUS "CWD: ${CMAKE_CURRENT_SOURCE_DIR}")
 project(CmmTests LANGUAGES CXX)
 
-find_package(GTest)
+find_package(GTest REQUIRED)
 include(GoogleTest)
 target_link_libraries(GTest::gtest INTERFACE gtest_main)
 
@@ -20,9 +20,6 @@ foreach(TESTFILE ${TEST_SOURCES})
         -O0                     # No optimization
         -fno-omit-frame-pointer # Better stack traces
     )
-  target_link_options(${NAME} PRIVATE
-    -fsanitize=address
-    -fsanitize=undefined)
 
   gtest_discover_tests(${NAME}  DISCOVERY_TIMEOUT 10 PROPERTIES LABELS "unit")
 
@@ -34,16 +31,12 @@ foreach(TESTFILE ${TEST_SOURCES})
 )
 endforeach()
 
-include(sanitizers)
-add_sanitizer_support(address)
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
 include_directories(${GTEST_INCLUDE_DIRS})
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
-
 # ---- code coverage ----
 if(ENABLE_TEST_COVERAGE)
-  target_compile_options(${LIBRARY} PUBLIC -O0 -g -fprofile-arcs
+  target_compile_options(CmmLang PRIVATE -O0 -g -fprofile-arcs
                                            -ftest-coverage)
-  target_link_options(${LIBRARY} PUBLIC -fprofile-arcs -ftest-coverage)
+  target_link_options(CmmLang PRIVATE -fprofile-arcs -ftest-coverage)
 endif()

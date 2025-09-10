@@ -4,23 +4,28 @@
 
 #include <algorithm>
 #include <cassert>
-#include <concepts>
 #include <cstddef>
 #include <format>
-#include <initializer_list>
 #include <iterator>
-
 #include <magic_enum/magic_enum.hpp>
+#include <optional>
 #include <ranges>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <typeinfo>
 #include <utility>
-#include <vector>
 
 #include "traits.hpp"
 
 namespace cmm {
+enum class associativity_t : uint8_t;
+namespace assembly {
+enum class flag_t : uint16_t;
+} // namespace assembly
+namespace log {
+enum class style_t : uint8_t;
+} // namespace log
 
 [[nodiscard]] constexpr const compilation_error_data::properties_map&
 compilation_error_data::properties_array() {
@@ -33,6 +38,7 @@ compilation_error_data::properties_array() {
         {UNDECLARED_SYMBOL, "{} not declared", true},
         {ALREADY_DECLARED_SYMBOL, "{} already declared", true},
         {UNDEFINED_FUNCTION, "Function {} is not defined", true},
+        {ALREADY_DEFINED_FUNCTION, "Function {} is already defined", true},
         {LABEL_IN_GLOBAL, "Label {} in global scope", true},
         {RETURN_IN_GLOBAL, "Return in global scope", true},
         {BAD_FUNCTION_CALL, "Label {} in global scope", true},
@@ -47,8 +53,8 @@ compilation_error_data::properties_array() {
 }; // namespace cmm
 
 namespace log {
-template <typename T>
-constexpr std::string apply(T&& t, style_t s) {
+template <std::formattable<char> T>
+constexpr std::string apply(const T& t, style_t s) {
   std::string pre;
   switch (s) {
     case style_t::HEADER:
@@ -81,7 +87,8 @@ constexpr std::string apply(T&& t, style_t s) {
     case style_t::WHITE_SMOKE:
     case style_t::DARK_RED:
     case style_t::NORMAL:
-      return t;
+      pre = "\033[0;37m";
+      break;
   };
 
   return std::format("{}{}{}", pre, t, "\033[0m");
@@ -295,149 +302,149 @@ template <typename T>
   return m_data.empty();
 }
 
-template <typename T, typename Alloc>
-vector<T, Alloc>::vector(std::initializer_list<vector<T, Alloc>::value_type> init)
-    : m_data(init) {}
+// template <typename T, typename Alloc>
+// vector<T, Alloc>::vector(std::initializer_list<vector<T, Alloc>::value_type> init)
+//     : m_data(init) {}
+//
+// template <typename T, typename Alloc>
+// vector<T, Alloc>::vector(const container_type& t)
+//     : m_data(t) {}
+//
+// template <typename T, typename Alloc>
+// vector<T, Alloc>::vector(container_type&& t)
+//     : m_data(std::move(t)) {}
 
-template <typename T, typename Alloc>
-vector<T, Alloc>::vector(const container_type& t)
-    : m_data(t) {}
+// template <typename T, typename Alloc>
+// inline T& vector<T, Alloc>::at(size_t i) {
+//   return m_data.at(i);
+// }
+//
+// template <typename T, typename Alloc>
+// inline const T& vector<T, Alloc>::at(size_t i) const {
+//   return m_data.at(i);
+// }
+//
+// template <typename T, typename Alloc>
+// const vector<T, Alloc>::container_type& vector<T, Alloc>::data() const {
+//   return m_data;
+// }
+//
+// template <typename T, typename Alloc>
+// vector<T, Alloc>::iterator vector<T, Alloc>::begin() {
+//   return m_data.begin();
+// }
+//
+// template <typename T, typename Alloc>
+// vector<T, Alloc>::iterator vector<T, Alloc>::end() {
+//   return m_data.end();
+// }
+// template <typename T, typename Alloc>
+// vector<T, Alloc>::const_iterator vector<T, Alloc>::begin() const {
+//   return m_data.begin();
+// }
+//
+// template <typename T, typename Alloc>
+// vector<T, Alloc>::const_iterator vector<T, Alloc>::end() const {
+//   return m_data.end();
+// }
+//
+// template <typename T, typename Alloc>
+// vector<T, Alloc>::const_iterator vector<T, Alloc>::cbegin() const {
+//   return m_data.cbegin();
+// }
+//
+// template <typename T, typename Alloc>
+// vector<T, Alloc>::const_iterator vector<T, Alloc>::cend() const {
+//   return m_data.cend();
+// }
+//
+// template <typename T, typename Alloc>
+// vector<T, Alloc>::reverse_iterator vector<T, Alloc>::rbegin() {
+//   return m_data.rbegin();
+// }
+// template <typename T, typename Alloc>
+// vector<T, Alloc>::reverse_iterator vector<T, Alloc>::rend() {
+//   return m_data.rend();
+// }
+// template <typename T, typename Alloc>
+// vector<T, Alloc>::const_reverse_iterator vector<T, Alloc>::rbegin() const {
+//   return m_data.rbegin();
+// }
+// template <typename T, typename Alloc>
+// vector<T, Alloc>::const_reverse_iterator vector<T, Alloc>::rend() const {
+//   return m_data.rend();
+// }
 
-template <typename T, typename Alloc>
-vector<T, Alloc>::vector(container_type&& t)
-    : m_data(std::move(t)) {}
-
-template <typename T, typename Alloc>
-inline T& vector<T, Alloc>::at(size_t i) {
-  return m_data.at(i);
-}
-
-template <typename T, typename Alloc>
-inline const T& vector<T, Alloc>::at(size_t i) const {
-  return m_data.at(i);
-}
-
-template <typename T, typename Alloc>
-const vector<T, Alloc>::container_type& vector<T, Alloc>::data() const {
-  return m_data;
-}
-
-template <typename T, typename Alloc>
-vector<T, Alloc>::iterator vector<T, Alloc>::begin() {
-  return m_data.begin();
-}
-
-template <typename T, typename Alloc>
-vector<T, Alloc>::iterator vector<T, Alloc>::end() {
-  return m_data.end();
-}
-template <typename T, typename Alloc>
-vector<T, Alloc>::const_iterator vector<T, Alloc>::begin() const {
-  return m_data.begin();
-}
-
-template <typename T, typename Alloc>
-vector<T, Alloc>::const_iterator vector<T, Alloc>::end() const {
-  return m_data.end();
-}
-
-template <typename T, typename Alloc>
-vector<T, Alloc>::const_iterator vector<T, Alloc>::cbegin() const {
-  return m_data.cbegin();
-}
-
-template <typename T, typename Alloc>
-vector<T, Alloc>::const_iterator vector<T, Alloc>::cend() const {
-  return m_data.cend();
-}
-
-template <typename T, typename Alloc>
-vector<T, Alloc>::reverse_iterator vector<T, Alloc>::rbegin() {
-  return m_data.rbegin();
-}
-template <typename T, typename Alloc>
-vector<T, Alloc>::reverse_iterator vector<T, Alloc>::rend() {
-  return m_data.rend();
-}
-template <typename T, typename Alloc>
-vector<T, Alloc>::const_reverse_iterator vector<T, Alloc>::rbegin() const {
-  return m_data.rbegin();
-}
-template <typename T, typename Alloc>
-vector<T, Alloc>::const_reverse_iterator vector<T, Alloc>::rend() const {
-  return m_data.rend();
-}
-
-template <typename T, typename Alloc>
-[[nodiscard]] bool vector<T, Alloc>::empty() const {
-  return m_data.empty();
-}
-
-template <typename T, typename Alloc>
-[[nodiscard]] size_t vector<T, Alloc>::size() const {
-  return m_data.size();
-}
-template <typename T, typename Alloc>
-void vector<T, Alloc>::push_back(const T& t) {
-  m_data.push_back(t);
-}
-template <typename T, typename Alloc>
-void vector<T, Alloc>::push_back(T&& t) {
-  m_data.push_back(std::move(t));
-}
-template <typename T, typename Alloc>
-template <typename Fn>
-vector<T, Alloc>::pointer_type vector<T, Alloc>::find(Fn fn) {
-  return *(m_data | std::ranges::find_if(fn));
-}
-
-template <typename T, typename Alloc>
-template <typename Fn>
-vector<T, Alloc>::const_pointer_type vector<T, Alloc>::find(Fn fn) const {
-  return *(m_data | std::ranges::find_if(fn));
-}
-
-template <typename T, typename Alloc>
-template <typename Fn>
-auto vector<T, Alloc>::transform(Fn&& fn) const {
-  return m_data | std::views::transform(fn) | std::ranges::to<std::vector>();
-}
-template <typename T, typename Alloc>
-[[nodiscard]] std::string vector<T, Alloc>::join(char delim, size_t lvl) const {
-  return data() | std::views::transform([lvl](const auto& elem) {
-           if constexpr (requires { elem.operator->(); }) {
-             return elem->repr(lvl + 1);
-           } else if constexpr (std::is_pointer_v<std::remove_cvref_t<decltype(elem)>>) {
-             return elem->repr(lvl + 1);
-           } else {
-             return elem.repr(lvl + 1);
-           }
-         }) |
-         std::views::join_with(delim) | std::ranges::to<std::string>();
-}
-
-template <typename T, typename Alloc>
-template <std::ranges::forward_range Pattern>
-  requires(std::ranges::view<Pattern>)
-std::string vector<T, Alloc>::join(Pattern&& p, size_t lvl) const {
-  return data() | std::views::transform([lvl](const auto& elem) {
-           if constexpr (requires { elem.operator->(); }) {
-             return elem->repr(lvl + 1);
-           } else if constexpr (std::is_pointer_v<std::remove_cvref_t<decltype(elem)>>) {
-             return elem->repr(lvl + 1);
-           } else {
-             return elem.repr(lvl + 1);
-           }
-         }) |
-         std::views::join_with(p) | std::ranges::to<std::string>();
-}
-template <typename T, typename Alloc>
-template <std::move_constructible Func, std::ranges::forward_range Pattern>
-  requires(std::ranges::view<Pattern>)
-std::string vector<T, Alloc>::join(Func&& fn, Pattern&& p, size_t) const {
-  return data() | std::views::transform(fn) | std::views::join_with(p) |
-         std::ranges::to<std::string>();
-}
+// template <typename T, typename Alloc>
+// [[nodiscard]] bool vector<T, Alloc>::empty() const {
+//   return m_data.empty();
+// }
+//
+// template <typename T, typename Alloc>
+// [[nodiscard]] size_t vector<T, Alloc>::size() const {
+//   return m_data.size();
+// }
+// template <typename T, typename Alloc>
+// void vector<T, Alloc>::push_back(const T& t) {
+//   m_data.push_back(t);
+// }
+// template <typename T, typename Alloc>
+// void vector<T, Alloc>::push_back(T&& t) {
+//   m_data.push_back(std::move(t));
+// }
+// template <typename T, typename Alloc>
+// template <typename Fn>
+// vector<T, Alloc>::pointer_type vector<T, Alloc>::find(Fn fn) {
+//   return *(m_data | std::ranges::find_if(fn));
+// }
+//
+// template <typename T, typename Alloc>
+// template <typename Fn>
+// vector<T, Alloc>::const_pointer_type vector<T, Alloc>::find(Fn fn) const {
+//   return *(m_data | std::ranges::find_if(fn));
+// }
+//
+// template <typename T, typename Alloc>
+// template <typename Fn>
+// auto vector<T, Alloc>::transform(Fn&& fn) const {
+//   return m_data | std::views::transform(fn) | std::ranges::to<std::vector>();
+// }
+// template <typename T, typename Alloc>
+// [[nodiscard]] std::string vector<T, Alloc>::join(char delim, size_t lvl) const {
+//   return data() | std::views::transform([lvl](const auto& elem) {
+//            if constexpr (requires { elem.operator->(); }) {
+//              return elem->repr(lvl + 1);
+//            } else if constexpr (std::is_pointer_v<std::remove_cvref_t<decltype(elem)>>) {
+//              return elem->repr(lvl + 1);
+//            } else {
+//              return elem.repr(lvl + 1);
+//            }
+//          }) |
+//          std::views::join_with(delim) | std::ranges::to<std::string>();
+// }
+//
+// template <typename T, typename Alloc>
+// template <std::ranges::forward_range Pattern>
+//   requires(std::ranges::view<Pattern>)
+// std::string vector<T, Alloc>::join(Pattern&& p, size_t lvl) const {
+//   return data() | std::views::transform([lvl](const auto& elem) {
+//            if constexpr (requires { elem.operator->(); }) {
+//              return elem->repr(lvl + 1);
+//            } else if constexpr (std::is_pointer_v<std::remove_cvref_t<decltype(elem)>>) {
+//              return elem->repr(lvl + 1);
+//            } else {
+//              return elem.repr(lvl + 1);
+//            }
+//          }) |
+//          std::views::join_with(p) | std::ranges::to<std::string>();
+// }
+// template <typename T, typename Alloc>
+// template <std::move_constructible Func, std::ranges::forward_range Pattern>
+//   requires(std::ranges::view<Pattern>)
+// std::string vector<T, Alloc>::join(Func&& fn, Pattern&& p, size_t) const {
+//   return data() | std::views::transform(fn) | std::views::join_with(p) |
+//          std::ranges::to<std::string>();
+// }
 
 template <typename K, typename V>
 hashmap<K, V>::hashmap()

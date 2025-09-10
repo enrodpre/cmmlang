@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <vector>
+#include <string_view>
 
 #include "token.hpp"
 

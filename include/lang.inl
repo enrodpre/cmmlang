@@ -2,8 +2,11 @@
 
 #include "lang.hpp"
 
+#include <stdint.h>
+
 namespace cmm {
 enum class associativity_t : uint8_t;
+enum class builtin_signature_t : uint8_t;
 } // namespace cmm
 
 #define TYPE_FORMAT_IMPL(TYPE, stdstr, ...)                                   \
@@ -22,18 +25,3 @@ enum class associativity_t : uint8_t;
 #  define GET_TYPE(TYPE, CONST, VOLATILE, ...)                       \
     store::instance().get_type<TYPE>(CONST, VOLATILE, ##__VA_ARGS__)
 #endif
-
-namespace cmm {
-
-[[nodiscard]] constexpr const builtin_signature_data::properties_map&
-builtin_signature_data::properties_array() {
-  using enum builtin_signature_t;
-  static properties_map MAP{{{
-      {MAIN, "main", {}}, {SYSCALL, "syscall", {}},
-      // {EXIT, "exit", {types::arena().make(types::category_t::uint_t, {})}},
-      // {PRINT, "print", {UINT_T, CHAR_T}}
-  }}};
-  return MAP;
-}
-
-} // namespace cmm

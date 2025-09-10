@@ -1,9 +1,0 @@
-{
-  "revision": 0,
-  "rules": [
-    {
-      "primary-output": "CMakeFiles/CmmLang.dir/main.cpp.o"
-    }
-  ],
-  "version": 1
-}

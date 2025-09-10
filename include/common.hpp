@@ -1,19 +1,20 @@
 #pragma once
 
-#include "macros.hpp"
-#include "traits.hpp"
 #include <algorithm>
 #include <array>
 #include <bits/version.h>
 #include <concepts>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cxxabi.h>
 #include <exception>
 #include <format>
+#include <functional>
 #include <initializer_list>
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_all.hpp>
+#include <magic_enum/magic_enum_flags.hpp>
 #include <magic_enum/magic_enum_format.hpp>
 #include <memory>
 #include <mutex>
@@ -25,10 +26,22 @@
 #include <string_view>
 #include <sys/types.h>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "macros.hpp"
+#include "traits.hpp"
+
 namespace cmm {
+enum class comparison_t : uint8_t;
+
+template <typename E>
+concept scoped_enum = std::is_scoped_enum_v<E>;
+
+template <scoped_enum E>
+struct enumeration;
+
 using std::string_view;
 
 enum class compilation_error_t : uint8_t;
@@ -51,8 +64,8 @@ enum class style_t : uint8_t {
   WHITE
 };
 
-template <typename T>
-constexpr std::string apply(T&&, style_t);
+template <std::formattable<char> T>
+constexpr std::string apply(const T&, style_t);
 
 enum class Level : uint8_t { NONE = 0, ERROR, WARN, INFO, DEBUG, TRACE };
 } // namespace log
@@ -136,7 +149,7 @@ struct displayable {
   virtual ~displayable() = default;
   [[nodiscard]] constexpr virtual std::string repr() const { return string(); }
   [[nodiscard]] constexpr virtual std::string string() const = 0;
-  constexpr operator std::string() const { return string(); };
+  explicit constexpr operator std::string() const { return string(); };
 };
 
 template <typename T>
@@ -148,12 +161,6 @@ template <typename T>
 concept DisplayablePtr = requires(T t) {
   { t->string() } -> stringish;
 };
-
-static_assert(stringish<std::string>);
-static_assert(stringish<std::string_view>);
-
-template <typename E>
-concept scoped_enum = std::is_scoped_enum_v<E>;
 
 template <std::ranges::range T>
 struct formattable_range {
@@ -200,6 +207,33 @@ struct std::formatter<T, CharT> : std::formatter<string_view> {
 };
 
 namespace cmm {
+
+template <typename T>
+class reference : public std::reference_wrapper<T> {
+public:
+  using base_type = std::reference_wrapper<T>;
+  using base_type::base_type;
+
+  operator T&() noexcept { return this->get(); }
+  operator const T&() const noexcept { return this->get(); }
+
+  T* operator&() noexcept { return &this->get(); }
+  const T* operator&() const noexcept { return &this->get(); }
+
+  T* operator->() noexcept { return &this->get(); }
+  const T* operator->() const noexcept { return &this->get(); }
+
+  reference& operator=(const reference& other) {
+    base_type::operator=(other);
+    return *this;
+  }
+
+  reference& swap(T& other) {
+    reference& stored = this->get();
+    this              = other;
+    return stored;
+  }
+};
 template <scoped_enum E>
 struct enumeration : displayable {
   using underlying_type = std::underlying_type_t<E>;
@@ -446,11 +480,6 @@ protected:
   std::string message;
 };
 
-template <typename Base, typename Derived>
-bool check_type(Base* ptr) {
-  return dynamic_cast<Derived*>(ptr);
-}
-
 enum class compilation_error_t : uint8_t {
   GENERIC,
   INVALID_CONTINUE,
@@ -458,6 +487,7 @@ enum class compilation_error_t : uint8_t {
   UNDECLARED_SYMBOL,
   ALREADY_DECLARED_SYMBOL,
   UNDEFINED_FUNCTION,
+  ALREADY_DEFINED_FUNCTION,
   LABEL_IN_GLOBAL,
   RETURN_IN_GLOBAL,
   BAD_FUNCTION_CALL,
@@ -626,71 +656,70 @@ constexpr string_buffer& string_buffer::newline() noexcept {
   }
 }
 
-template <class T, class Alloc = std::allocator<T>>
-class vector {
-public:
-  using value_type             = T;
-  using element_type           = T;
-  using allocator_type         = Alloc;
-  using pointer_type           = std::add_pointer_t<value_type>;
-  using const_pointer_type     = const pointer_type;
-  using reference_type         = std::add_lvalue_reference_t<value_type>;
-  using const_reference_type   = const reference_type;
-  using rvalue_type            = std::add_rvalue_reference_t<value_type>;
-  using container_type         = std::vector<element_type, Alloc>;
-  using iterator               = typename container_type::iterator;
-  using const_iterator         = typename container_type::const_iterator;
-  using reverse_iterator       = typename container_type::reverse_iterator;
-  using const_reverse_iterator = typename container_type::const_reverse_iterator;
-
-  vector()                     = default;
-  vector(std::initializer_list<value_type> init);
-  vector(const container_type&);
-  vector(container_type&&);
-  virtual ~vector() = default;
-
-  operator container_type() const { return m_data; }
-
-  operator const container_type&() const { return m_data; }
-
-  [[nodiscard]] const container_type& data() const;
-  T& at(size_t);
-  [[nodiscard]] const T& at(size_t) const;
-  reference_type front();
-  [[nodiscard]] const_reference_type front() const;
-  reference_type back();
-  [[nodiscard]] const_reference_type back() const;
-  iterator begin();
-  iterator end();
-  [[nodiscard]] const_iterator begin() const;
-  [[nodiscard]] const_iterator end() const;
-  [[nodiscard]] const_iterator cbegin() const;
-  [[nodiscard]] const_iterator cend() const;
-  reverse_iterator rbegin();
-  reverse_iterator rend();
-  [[nodiscard]] const_reverse_iterator rbegin() const;
-  [[nodiscard]] const_reverse_iterator rend() const;
-  [[nodiscard]] bool empty() const;
-  [[nodiscard]] size_t size() const;
-  void push_back(const T&);
-  void push_back(T&&);
-  template <typename Fn>
-  pointer_type find(Fn);
-  template <typename Fn>
-  const_pointer_type find(Fn) const;
-  template <typename Fn>
-  auto transform(Fn&&) const;
-  [[nodiscard]] std::string join(char, size_t) const;
-  template <std::ranges::forward_range Pattern>
-    requires(std::ranges::view<Pattern>)
-  std::string join(Pattern&&, size_t) const;
-  template <std::move_constructible Func, std::ranges::forward_range Pattern>
-    requires(std::ranges::view<Pattern>)
-  std::string join(Func&&, Pattern&&, size_t) const;
-
-private:
-  container_type m_data;
-};
+// template <class T, class Alloc = std::allocator<T>>
+// class vector {
+// public:
+//   using value_type             = T;
+//   using element_type           = T;
+//   using allocator_type         = Alloc;
+//   using pointer_type           = std::add_pointer_t<value_type>;
+//   using const_pointer_type     = const pointer_type;
+//   using reference_type         = std::add_lvalue_reference_t<value_type>;
+//   using const_reference_type   = const reference_type;
+//   using rvalue_type            = std::add_rvalue_reference_t<value_type>;
+//   using container_type         = std::vector<element_type, Alloc>;
+//   using iterator               = typename container_type::iterator;
+//   using const_iterator         = typename container_type::const_iterator;
+//   using reverse_iterator       = typename container_type::reverse_iterator;
+//   using const_reverse_iterator = typename container_type::const_reverse_iterator;
+//
+//   vector()                     = default;
+//   vector(std::initializer_list<value_type> init);
+//   vector(const container_type&);
+//   vector(container_type&&);
+//   virtual ~vector() = default;
+//
+//   operator container_type() const { return m_data; }
+//   operator const container_type&() const { return m_data; }
+//
+//   [[nodiscard]] const container_type& data() const;
+//   T& at(size_t);
+//   [[nodiscard]] const T& at(size_t) const;
+//   reference_type front();
+//   [[nodiscard]] const_reference_type front() const;
+//   reference_type back();
+//   [[nodiscard]] const_reference_type back() const;
+//   iterator begin();
+//   iterator end();
+//   [[nodiscard]] const_iterator begin() const;
+//   [[nodiscard]] const_iterator end() const;
+//   [[nodiscard]] const_iterator cbegin() const;
+//   [[nodiscard]] const_iterator cend() const;
+//   reverse_iterator rbegin();
+//   reverse_iterator rend();
+//   [[nodiscard]] const_reverse_iterator rbegin() const;
+//   [[nodiscard]] const_reverse_iterator rend() const;
+//   [[nodiscard]] bool empty() const;
+//   [[nodiscard]] size_t size() const;
+//   void push_back(const T&);
+//   void push_back(T&&);
+//   template <typename Fn>
+//   pointer_type find(Fn);
+//   template <typename Fn>
+//   const_pointer_type find(Fn) const;
+//   template <typename Fn>
+//   auto transform(Fn&&) const;
+//   [[nodiscard]] std::string join(char, size_t) const;
+//   template <std::ranges::forward_range Pattern>
+//     requires(std::ranges::view<Pattern>)
+//   std::string join(Pattern&&, size_t) const;
+//   template <std::move_constructible Func, std::ranges::forward_range Pattern>
+//     requires(std::ranges::view<Pattern>)
+//   std::string join(Func&&, Pattern&&, size_t) const;
+//
+// private:
+//   container_type m_data;
+// };
 
 template <typename K, typename V>
 class hashmap {
@@ -704,13 +733,9 @@ public:
 
   [[nodiscard]] bool contains(const key_type&) const;
   [[nodiscard]] size_t size() const noexcept;
-
   container_type::const_iterator begin() const { return m_store.begin(); }
-
   container_type::const_iterator end() const { return m_store.end(); }
-
   container_type::const_iterator cbegin() const { return m_store.begin(); }
-
   container_type::const_iterator cend() const { return m_store.cend(); }
 
   value_type& at(const key_type&);
@@ -1011,7 +1036,13 @@ enum class register_t : uint8_t {
 };
 }
 
-constexpr auto to_type       = [](const auto& v) { return v->type(); };
+constexpr auto to_type = [](const auto& v) {
+  if constexpr (std::is_pointer_v<decltype(v)>) {
+    return v->type;
+  } else {
+    return v.type;
+  }
+};
 constexpr auto to_location   = [](const auto& v) { return v->location(); };
 constexpr auto opt_to_value  = [](const auto& v) { return v.value(); };
 constexpr auto opt_has_value = [](const auto& v) { return v.has_value(); };
@@ -1098,5 +1129,32 @@ constexpr auto vector_to_location = [](std::vector<N> v) {
          TO_VEC;
 };
 
+enum class attribute : uint8_t {
+  no_return          = 1 << 1,
+  carries_dependency = 1 << 2,
+  deprecated         = 1 << 3,
+};
+
+enum class linkage_t : uint8_t { normal = 0, internal, external };
+enum class storage_t : uint8_t { normal = 0, static_, extern_, mutable_, register_ };
+
+enum class modifier_t : uint8_t {
+  friend_,
+  constexpr_,
+  const_,
+  volatile_,
+  ptr,
+  ref,
+  signed_,
+  unsigned_,
+  constinit_,
+  consteval_,
+};
+
+template <typename Args>
+std::string mangle_function(std::string id, Args args, char delim) {
+  auto format_args = args | std::views::join_with('_') | std::ranges::to<std::string>();
+  return std::format("{}{}", id, !format_args.empty() ? std::format("_{}", format_args) : "");
+}
 } // namespace cmm
 #include "common.inl"

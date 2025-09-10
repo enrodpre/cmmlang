@@ -1,4 +1,0 @@
-int main() {
-  char c[] = "asd";
-  return 255;
-}

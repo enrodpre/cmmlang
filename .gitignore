@@ -1,0 +1,13 @@
+.cache
+.env
+.gdb_history
+.git
+.mypy_cache
+.pytest_cache
+.ropeproject
+build
+CmmLang
+compile_comands.json
+current.cmm
+res
+res.asm

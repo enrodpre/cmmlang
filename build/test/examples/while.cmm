@@ -1,7 +1,0 @@
-int main() {
-  int x = 250;
-  while (x < 255) {
-    x = x + 1;
-  }
-  return x;
-}

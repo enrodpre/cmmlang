@@ -1,4 +1,10 @@
+#include <stdint.h>
+#include <cstddef>
+#include <string>
+#include <vector>
+
 #include "memory.hpp"
+#include "common.hpp"
 
 namespace cmm::memory {
 

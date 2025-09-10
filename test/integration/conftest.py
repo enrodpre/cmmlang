@@ -13,15 +13,16 @@ RESET = "\033[0m"
 
 # Store results for final summary
 test_results = []
-# original_stdout = sys.stdout
+original_stdout = sys.stdout
 
 
-def print_report(color, filename, outcome, message):
-    print(f"{color}{outcome}: {filename}. {message}{RESET}")
+def print_report(color, filename, duration, outcome, message=""):
+    print(f"{color}{outcome}: {duration:.3f} {filename}. {message}{RESET}")
 
 
 def pytest_runtest_logreport(report):
     """Hook called for each test report (setup, call, teardown)"""
+    sys.stdout = original_stdout
     # Only process the 'call' phase (actual test execution)
     if report.when == "call":
         # Extract filename from test node id
@@ -30,16 +31,20 @@ def pytest_runtest_logreport(report):
             param_start = report.nodeid.find("[") + 1
             param_end = report.nodeid.find("]")
             filename = report.nodeid[param_start:param_end]
+            prop = ""
+            if len(report.user_properties) > 0:
+                prop = report.user_properties[0][1]
 
             if report.passed:
-                print_report(GREEN, filename, "PASSED")
+                print_report(GREEN, filename, report.duration, "PASSED")
             elif report.failed:
-                print_report(RED, filename, "FAILED", report.capstderr)
+                print_report(ERROR, filename, report.duration, "FAILED", prop)
             elif report.skipped:
-                print_report(YELLOW, filename, "SKIPPED")
+                print_report(YELLOW, filename, report.duration, "SKIPPED")
 
             # Store for summary
             test_results.append((filename, report.outcome))
+    # sys.stdout = StringIO()
 
 
 def pytest_runtest_setup(item):
@@ -97,8 +102,8 @@ def pytest_configure(config):
     config.option.quiet = 2
     config.option.tb = "no"
     config.option.disable_warnings = True
-    config.option.show_capture = "no"
-    # sys.stdout = StringIO()
+    config.option.show_capture = "all"
+    sys.stdout = StringIO()
 
 
 def pytest_collection_modifyitems(config, items):

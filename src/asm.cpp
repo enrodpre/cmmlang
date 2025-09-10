@@ -1,7 +1,6 @@
 #include "asm.hpp"
 
 #include <algorithm>
-#include <cstdint>
 #include <magic_enum/magic_enum.hpp>
 #include <optional>
 #include <string_view>
@@ -10,10 +9,6 @@
 #include "asm.inl"
 #include "ast.hpp"
 #include "ir.hpp"
-
-namespace cmm {
-enum class instruction_t : uint8_t;
-} // namespace cmm
 
 namespace cmm::assembly {
 
@@ -200,15 +195,10 @@ void registers::parameters_transaction::reset() {
 static_assert(std::formattable<instruction_t, char>);
 
 asmgen::asmgen() {
-  std::string exit_code = "mov rax, 60\n  syscall";
-  register_labeled_code_block("exit", std::move(exit_code));
+  m_sections.procedures.emplace(std::make_pair("exit", "mov rax, 60\n  syscall"));
 }
 
-void asmgen::start() {
-  m_text.write("{}\n", "section .text").write<2>("{}\n", "global _start");
-
-  write_label("_start");
-}
+void asmgen::start() {}
 
 std::string asmgen::end() {
 
@@ -227,53 +217,65 @@ std::string asmgen::end() {
       res << std::format("  {} db \'{}\', 10", name, value) << "\n";
       res << std::format("  {}_len equ $ - {}", name, name) << "\n";
     }
-    res << "\n";
+    res.newline();
   }
 
-  res << m_text.flush();
+  res << "section .text\n  global _start\n\n";
+  res << "_start:\n";
   for (const auto& fn : m_sections.procedures) {
-    res << std::format("\n{}:\n  {}", fn.first, fn.second);
+    res << std::format("{}:\n  {}\n", fn.first, fn.second);
   }
 
   return res.dump();
 }
 
 void asmgen::add_data(std::string_view name, std::string_view value) {
-  m_sections.data.emplace_back(name, value);
+  m_sections.data.emplace(name, value);
 }
 
 void asmgen::add_bss(std::string_view ident, std::string_view type, std::string_view size) {
-  m_sections.bss.emplace_back(std::format("{} {} {}", ident, type, size));
+  m_sections.bss.push_back(std::format("{} {} {}", ident, type, size));
 }
 
-void asmgen::register_labeled_code_block(std::string_view name, std::string&& asm_code) {
-  m_sections.procedures.emplace_back(name, std::move(asm_code));
+void asmgen::save_current_procedure() {
+  assert(m_current_procedure);
+  m_sections.procedures.emplace(std::move(*m_current_procedure.release()));
 }
 
-void asmgen::create_delay() { m_text.create(); }
-
-[[nodiscard]] std::string asmgen::dump_delayed() { return m_text.dump(); }
-
-void asmgen::stop_delay() {
-  m_text.save();
-  m_text.create();
+void asmgen::load_new_procedure(std::string_view t_new_name) {
+  assert(!m_current_procedure);
+  m_current_procedure =
+      std::make_unique<std::pair<std::string, std::string>>(std::string(t_new_name), std::string());
 }
 
-void asmgen::load_delayed() { m_text.load(); }
+// void asmgen::create_delay() { m_current_procedure->create(); }
+//
+// [[nodiscard]] std::string asmgen::dump_delayed() { return m_current_procedure->dump(); }
+//
+// void asmgen::stop_delay() {
+//   m_current_procedure->save();
+//   m_current_procedure->create();
+// }
+//
+// void asmgen::load_delayed() { m_current_procedure->load(); }
+//
+void asmgen::write_label(std::string_view label) {
+  m_current_procedure->second.append(std::format("{}:\n", label));
+}
 
-void asmgen::write_label(std::string_view label) { m_text.newline().write("{}:\n", label); }
-
-void asmgen::write_comment(std::string_view comment) noexcept { m_text.write(";; {}\n", comment); }
+void asmgen::write_comment(std::string_view comment) noexcept {
+  m_current_procedure->second.append(std::format(";; {}:\n", comment));
+}
 
 [[nodiscard]] bool asmgen::exists_snippet(std::string_view name) {
   return std::ranges::any_of(procedures_snippets,
                              [name](const auto& pair) { return pair.first == name; });
 }
 
-void asmgen::register_snippet(std::string_view name) {
+void asmgen::include_snippet(std::string_view name) {
   for (const auto& pair : procedures_snippets) {
     if (pair.first == name) {
-      m_sections.procedures.emplace_back(pair);
+      // m_sections.procedures.emplace_back(pair);
     }
   }
 }

@@ -1,6 +1,9 @@
 #include "parser.hpp"
 
 #include <algorithm>
+#include <exception>
+#include <format>
+#include <functional>
 #include <magic_enum/magic_enum.hpp>
 #include <optional>
 #include <ranges>
@@ -20,6 +23,18 @@ namespace cmm::parser {
 using namespace ast;
 using namespace decl;
 
+#define want(TYPE, VALUE)                                                               \
+  if (!m_tokens.next_is(token_t::TYPE) || (!VALUE && !m_tokens.peek().value.empty())) { \
+    THROW(UNEXPECTED_TOKEN, m_tokens.next());                                           \
+  }                                                                                     \
+  m_tokens.advance();
+
+#define want_ident                                                            \
+  if (!m_tokens.next_is(token_t::ident) || (m_tokens.peek().value.empty())) { \
+    THROW(UNEXPECTED_TOKEN, m_tokens.next());                                 \
+  }                                                                           \
+  auto ident = m_tokens.next()
+
 parser::parser(tokens tokens)
     : m_tokens(std::move(tokens)) {}
 
@@ -31,15 +46,16 @@ ast::translation_unit parser::parser::parse_program() {
     auto* decl = parse_declaration();
     res.push_back(decl);
   }
-  return {res};
+  ast::translation_unit tu{res};
+  tu.initialize();
+  return tu;
 }
 
 template <typename T>
   requires(std::is_same_v<ast::decl::function::definition, T> ||
            std::is_same_v<ast::decl::block, T>)
 T* parser::parse_block() {
-  want(token_t::o_curly);
-  // TODO: Allocating this is leaking the statement* pointer
+  want(o_curly, false);
   ast::siblings<ast::statement*> b;
 
   while (m_tokens.has_next()) {
@@ -148,15 +164,15 @@ ast::declaration* parser::parse_declaration() {
   if (!peek_data().is_specifier()) {
     throw std::exception();
   }
-  auto mods  = parse_specifiers();
-  auto ident = parse_identifier();
+  auto mods = parse_specifiers();
+  want_ident;
   if (m_tokens.peek().type == token_t::o_paren) {
     // Function
-    auto* funcdecl = parse_function(std::move(mods), std::move(ident));
+    auto* funcdecl = parse_function(std::move(mods), ident);
     return funcdecl;
   }
 
-  auto* vardecl = parse_variable(std::move(mods), std::move(ident));
+  auto* vardecl = parse_variable(std::move(mods), ident);
   want_semicolon();
   return vardecl;
 }
@@ -187,9 +203,9 @@ ast::expr::expression& parser::parse_lhs_expr() {
   }
 
   if (peek_data().is(token_t::ident)) {
-    auto ident = parse_identifier();
+    want_ident;
     if (m_tokens.next_is(token_t::o_paren)) {
-      return parse_call(std::move(ident));
+      return parse_call(ident);
     }
 
     return *create_node<expr::identifier>(std::move(ident));
@@ -258,25 +274,18 @@ expr::expression& parser::parse_expr(uint8_t min_prec) {
   return lhs;
 }
 
-expr::expression& parser::parse_call(identifier&& ident) {
+expr::expression& parser::parse_call(const token& t_token) {
   auto p = [this]() -> expr::expression* { return &this->parse_expr(); };
   siblings<expr::expression*> args =
       parse_varargs(p, token_t::o_paren, token_t::comma, token_t::c_paren);
 
   // No more parameters
   // but dont capture semicolon just jet
-  return *create_node<expr::call>(std::move(ident), args);
+  return *create_node<expr::call>(ast::identifier{t_token.location(), std::string(t_token.value)},
+                                  args);
 }
 
-identifier parser::parse_identifier() {
-  if (m_tokens.next_is(token_t::ident)) {
-    return {m_tokens.next()};
-  }
-
-  throw_error<compilation_error_t::UNEXPECTED_TOKEN>(m_tokens.peek());
-}
-
-decl::variable* parser::parse_variable(ast::decl::specifiers&& mods, ast::identifier&& id) {
+decl::variable* parser::parse_variable(ast::decl::specifiers&& mods, const token& id) {
   decl::rank* rank       = parse_rank();
   expr::expression* init = nullptr;
   if (m_tokens.peek().type == cmm::token_t::assign) {
@@ -370,7 +379,8 @@ ast::decl::rank* parser::parse_rank() {
     if (r == nullptr && !m_tokens.next_is(token_t::c_bracket)) {
       throw_error<compilation_error_t::UNEXPECTED_TOKEN>(m_tokens.peek());
     }
-    const token& right = want(token_t::c_bracket);
+    want(c_bracket, false);
+    const token& right = m_tokens.next();
     res                = create_node<decl::rank>(left, r, right);
   }
   return res;
@@ -391,7 +401,10 @@ siblings<T> parser::parse_varargs(Func&& inner,
                                   const token_t& delim,
                                   const token_t& closer) {
   siblings<T> res;
-  want(opener);
+  auto open = m_tokens.next();
+  if (open.type != opener) {
+    THROW(UNEXPECTED_TOKEN, open)
+  }
   if (m_tokens.next_is(closer)) {
     m_tokens.advance();
     return res;
@@ -404,24 +417,27 @@ siblings<T> parser::parse_varargs(Func&& inner,
       break;
     }
 
-    want(delim);
+    auto tok_delim = m_tokens.next();
+    if (tok_delim.type != delim) {
+      THROW(UNEXPECTED_TOKEN, tok_delim)
+    }
   }
   m_tokens.advance();
 
   return res;
 }
 
-decl::function* parser::parse_function(decl::specifiers&& mods, identifier&& ident) {
-  auto p = [this]() -> variable* {
+decl::function* parser::parse_function(decl::specifiers&& mods, const token& ident) {
+  auto p = [this]() -> variable {
     decl::specifiers specs = parse_specifiers();
-    auto id                = parse_identifier();
-    auto* rank             = parse_rank();
-    expr::expression* e    = nullptr;
+    want_ident;
+    auto* rank          = parse_rank();
+    expr::expression* e = nullptr;
     if (m_tokens.next_is(token_t::eq)) {
       e = &parse_expr();
     }
 
-    return create_node<variable>(std::move(specs), rank, id, e);
+    return {std::move(specs), rank, ast::identifier(ident.location(), std::string(ident.value)), e};
   };
 
   auto params = parse_varargs(p, token_t::o_paren, token_t::comma, token_t::c_paren);
@@ -433,15 +449,13 @@ decl::function* parser::parse_function(decl::specifiers&& mods, identifier&& ide
     compound_ = parse_block<function::definition>();
   }
 
-  auto* func =
-      create_node<decl::function>(std::move(mods), std::move(ident), std::move(params), compound_);
-  return func;
+  return create_node<decl::function>(std::move(mods), ident, std::move(params), compound_);
 }
 
 expr::expression& parser::parser::parse_condition() {
-  want(cmm::token_t::o_paren);
+  want(o_paren, false);
   expr::expression& condition{parse_expr()};
-  want(cmm::token_t::c_paren);
+  want(c_paren, false);
   return condition;
 }
 
@@ -454,13 +468,13 @@ statement* parser::parser::parse_while() {
 
 statement* parser::parser::parse_for() {
   auto token = m_tokens.next();
-  want(token_t::o_paren);
+  want(o_paren, false);
   // If has start statement (var decl for now)
   decl::variable* start = nullptr;
   if (m_tokens.peek().type != token_t::semicolon) {
     auto specs = parse_specifiers();
-    auto ident = parse_identifier();
-    start      = parse_variable(std::move(specs), std::move(ident));
+    want_ident;
+    start = parse_variable(std::move(specs), std::move(ident));
   }
   want_semicolon();
 
@@ -468,13 +482,13 @@ statement* parser::parser::parse_for() {
   if (m_tokens.peek().type != token_t::semicolon) {
     condition = &parse_expr();
   }
-  want(token_t::semicolon);
+  want_semicolon();
 
   expr::expression* step = nullptr;
   if (m_tokens.peek().type != token_t::c_paren) {
     step = &parse_expr();
   }
-  want(token_t::c_paren);
+  want(c_paren, false);
 
   auto* for_stmt = parse_block();
   return create_node<iteration::for_>(token, start, condition, step, for_stmt);
@@ -495,29 +509,12 @@ statement* parser::parser::parse_if() {
   return create_node<selection::if_>(token, condition, if_block, else_block);
 }
 
-void parser::parser::want(const token& token, const cmm::token_t& type, bool needed_value) {
-  if (token.type != type) {
-    THROW(UNEXPECTED_TOKEN, token);
-  }
-
-  if (needed_value && !token.value.empty()) {
-    THROW(UNEXPECTED_TOKEN, token);
-    ;
-  }
-}
-
 [[nodiscard]] token_data parser::peek_data() const { return {m_tokens.peek().type}; }
 
 [[nodiscard]] bool parser::next_is(token_t t) const { return m_tokens.next_is(t); }
 
-token parser::parser::want(const cmm::token_t& type, bool needed_value) {
-  const auto& tok = m_tokens.next();
-  want(tok, type, needed_value);
-  return tok;
-}
-
 void parser::parser::want_semicolon() {
-  want(token_t::semicolon);
+  want(semicolon, false);
 
   while (m_tokens.has_next() && m_tokens.peek().type == token_t::semicolon) {
     m_tokens.advance();
@@ -525,7 +522,6 @@ void parser::parser::want_semicolon() {
 };
 
 template <typename T, typename... Args>
-  requires(std::is_constructible_v<T, Args...>)
 T* parser::create_node(Args&&... args) {
   T* obj = m_arena.emplace<T>(std::forward<Args>(args)...);
   obj->initialize();

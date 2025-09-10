@@ -5,7 +5,6 @@
 #include "token.hpp"
 #include "types.hpp"
 #include <cstdint>
-#include <type_traits>
 #include <utility>
 
 namespace cmm::ast {
@@ -14,13 +13,7 @@ struct statement;
 
 namespace expr {
 
-struct semantic_data {
-  bool loaded = false;
-  std::optional<value_category_t> value_category;
-  bool is_constant_evaluable{};
-  types::type_id original_type;
-  std::optional<types::type_id> casted_type;
-};
+struct conversion;
 
 struct expression : derived_visitable<expression, statement> {
   template <typename... Args>
@@ -29,32 +22,34 @@ struct expression : derived_visitable<expression, statement> {
   ~expression() override = default;
   using derived_visitable::derived_visitable;
 
-  semantic_data* semantics() const;
-  virtual types::type_id type() const {
-    const auto* sem = semantics();
-    return sem->casted_type.has_value() ? sem->casted_type.value() : sem->original_type;
-  }
+  types::type_id type() const;
+  value_category_t value_category() const;
+  virtual bool is_constant_evaluable() const = 0;
+
+protected:
+  virtual types::type_id type_impl() const             = 0;
+  virtual value_category_t value_category_impl() const = 0;
 
 private:
-  mutable expr::semantic_data m_semantics;
+  const conversion* get_conversion() const;
 };
 
-static_assert(std::is_base_of_v<statement, expression>);
+using expression_reference = reference<expression>;
+using expressions          = std::vector<expression_reference>;
 
 struct identifier : derived_visitable<identifier, expression> {
-  identifier(ast::identifier&& id);
+  identifier(const token&);
   std::string_view value() const { return m_term.value(); }
   operator ast::identifier() const { return m_term; }
 
   std::vector<node*> children() override { return {&m_term}; }
+  types::type_id type_impl() const override;
+  value_category_t value_category_impl() const override { return value_category_t::LVALUE; };
+  bool is_constant_evaluable() const override { return types::is_const(type()); }
 
 private:
   ast::identifier m_term;
 };
-
-static_assert(std::is_assignable_v<statement*&, expression*>);
-DERIVE_OK(statement, expression);
-DERIVE_OK(expression, identifier);
 
 enum class literal_t : uint8_t { CHAR, STRING, SINT, UINT, FALSE, TRUE, FLOAT };
 struct literal : derived_visitable<literal, expression> {
@@ -65,6 +60,9 @@ struct literal : derived_visitable<literal, expression> {
   operator ast::literal() const { return m_term; }
 
   std::vector<node*> children() override { return {&m_term}; }
+  bool is_constant_evaluable() const override { return true; };
+  types::type_id type_impl() const override;
+  value_category_t value_category_impl() const override { return value_category_t::PRVALUE; }
 
 protected:
   ast::literal m_term;
@@ -83,37 +81,49 @@ struct call : derived_visitable<call, expression> {
   }
 
   std::vector<node*> children() override { return {&ident, &args}; }
+  bool is_constant_evaluable() const override { return false; };
+  types::type_id type_impl() const override;
+  value_category_t value_category_impl() const override;
 };
 
 struct unary_operator : derived_visitable<unary_operator, expression> {
-  expression& expr;
+  reference<expression> expr;
   ast::operator_ operator_;
   unary_operator(expression& expression, ast::operator_&& op);
-  std ::vector<node*> children() override { return std ::vector<node*>{expr, &operator_}; }
+  std ::vector<node*> children() override { return std ::vector<node*>{&expr, &operator_}; }
+  bool is_constant_evaluable() const override { return true; };
+  types::type_id type_impl() const override;
+  value_category_t value_category_impl() const override;
 };
 
 struct binary_operator : derived_visitable<binary_operator, expression> {
-  expression& left;
-  expression& right;
+  reference<expression> left;
   ast::operator_ operator_;
+  reference<expression> right;
   binary_operator(expression& left, ast::operator_&& op, expression& right);
-  std ::vector<node*> children() override { return std ::vector<node*>{left, &operator_, right}; }
+
+  std ::vector<node*> children() override { return std ::vector<node*>{&left, &operator_, &right}; }
+  bool is_constant_evaluable() const override { return true; };
+  types::type_id type_impl() const override;
+  value_category_t value_category_impl() const override;
 };
 
 using conversion_function = std::function<expression&(expression&)>;
 
-struct type_conversion : derived_visitable<type_conversion, expression> {
+struct conversion : derived_visitable<conversion, expression> {
   expression& expr;
-  const conversor func;
+  const conversor* func;
 
-  type_conversion(expression& exp, conversor fn)
+  conversion(expression& exp, const conversor* fn)
       : expr(exp),
         func(std::move(fn)) {}
+  types::type_id type_impl() const override { return func->convert_type(expr.type()); };
+  value_category_t value_category_impl() const override {
+    return func->convert_value_category(expr.value_category());
+  };
+  bool is_constant_evaluable() const override { return expr.is_constant_evaluable(); };
+  std::vector<node*> children() override { return {expr}; }
 };
 
-struct implicit_type_conversion : derived_visitable<implicit_type_conversion, type_conversion> {
-  using derived_visitable<implicit_type_conversion, type_conversion>::derived_visitable;
-  children_impl(&expr);
-};
 }; // namespace expr
 } // namespace cmm::ast

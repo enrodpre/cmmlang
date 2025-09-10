@@ -1,8 +1,0 @@
-int main()
-{
-  if (true) {
-    return 255;
-  } else {
-    return 2;
-  }
-}

@@ -1,6 +1,0 @@
-int main() {
-  int x = 254;
-  int y = 254;
-  x     = y + 1;
-  return x;
-}

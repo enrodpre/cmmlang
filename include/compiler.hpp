@@ -1,15 +1,20 @@
 #pragma once
 
 #include <cstddef>
+#include <filesystem>
 #include <iterator>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "ast.hpp"
 #include "common.hpp"
 #include "fs.hpp"
 
 namespace cmm {
+struct location;
 
 class source_code {
 public:
@@ -47,12 +52,10 @@ public:
 
   [[nodiscard]] std::string_view get_code() const;
   [[nodiscard]] std::string get_filename() const;
-  [[nodiscard]] bool is_valid(const location&) const;
-  [[nodiscard]] std::string get_nth_line(const location&) const;
-  [[nodiscard]] std::pair<size_t, size_t> get_line(const location&) const;
-  [[nodiscard]] std::tuple<std::string, std::string, std::string> get_line_chunked(
+  [[nodiscard]] std::string_view get_nth_line(size_t) const;
+  [[nodiscard]] std::tuple<std::string_view, std::string_view, std::string_view> get_line_chunked(
       const location&) const;
-  std::pair<size_t, size_t> to_coordinates(cmm::location) const;
+  std::tuple<size_t, size_t, size_t> to_coordinates(const cmm::location&) const;
 
   std::vector<std::string> build_compilation_error(
       const std::vector<const ast::decl::function::definition*>&,

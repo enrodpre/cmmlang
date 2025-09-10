@@ -1,5 +1,0 @@
-int main() {
-  int x = 125;
-  int y = 4;
-  return x * 2 + ++y;
-}

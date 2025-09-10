@@ -1,14 +1,15 @@
 #pragma once
 
-#include <format>
-
 #include <magic_enum/magic_enum.hpp>
+#include <format>
 #include <tuple>
 #include <utility>
+#include <string>
 
 #include "asm.hpp"
 #include "common.hpp"
 #include "ir.hpp"
+#include "asm.inl"
 
 namespace cmm::ir {
 

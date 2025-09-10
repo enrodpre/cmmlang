@@ -24,7 +24,7 @@ std::vector<node*> concat_nodes(Args&&... args) {
   return lift_to_nodes(std::forward<Args>(args)...);
 }
 label::label(const token& label_)
-    : derived_visitable<label, declaration>(label_) {}
+    : derived_visitable(label_) {}
 
 specifiers::specifiers(ast::type_spec&& t, ast::linkage_spec&& l, ast::storage_spec&& s)
     : type(std::move(t)),
@@ -35,6 +35,8 @@ rank::rank(const token& l, decltype(number) e, const token& r)
     : open(l),
       number(e),
       close(r) {}
+
+std::string rank::string() const { return std::format("[{}]", number->string()); }
 
 decl::rank::rank(const token& l, const token& r)
     : rank(r, nullptr, l) {}
@@ -52,19 +54,32 @@ variable::variable(specifiers&& spec, decltype(rank) r, identifier id, decltype(
 variable::variable(types::type_id t, decltype(ident) id, decltype(init) init)
     : variable(specifiers(std::move(t)), nullptr, std::move(id), init) {}
 
+std::string variable::string() const {
+  return std::format("{} {}{} = {}", specs, *rank, ident, *init);
+}
+
 std::vector<node*> variable::children() { return concat_nodes(&specs, rank, init); }
 
 function::function(decltype(specs)&& s,
-                   decltype(ident)&& ident_,
+                   const token& ident_,
                    decltype(params)&& args,
                    decltype(body) body_)
-    : derived_visitable(std::move(ident_)),
+    : derived_visitable(ast::identifier{ident_.location(),
+                                        mangle_function(std::string(ident_.value),
+                                                        args | TRANSFORM([](const variable& v) {
+                                                          return v.specs.type.value()->string();
+                                                        }),
+                                                        '_')}),
       specs(std::move(s)),
       params(std::move(args)),
       body(body_) {}
+
 std::vector<node*> decl::function::children() {
   return {to_node(&ident), to_node(&specs), to_node(&params), to_node(body)};
 }
+
+std::string decl::function::repr() const { return std::format("{} {}", specs, ident); }
+std::string decl::function::string() const { return std::format("{}", ident); }
 
 assembly::operand* decl::conversion_function::operator()(assembly::operand* reg) const noexcept {
   // auto from = reg->content_type();
@@ -109,7 +124,7 @@ std::vector<node*> iteration::for_::children() {
 }
 
 jump::goto_::goto_(const token& token)
-    : term(token) {}
+    : term(token.location(), std::string(token.value)) {}
 std::vector<node*> jump::goto_::children() { return {&term}; }
 
 jump::break_::break_(const token& token)
@@ -153,14 +168,6 @@ std::vector<node*> jump::return_::children() { return concat_nodes(&keyword, exp
 //   return glob_range;
 // }
 
-callable_contract ast::decl::function::contract() const {
-  return {specs.type.value(),
-          ident.value(),
-          params | std::views::transform([](const auto& param) -> types::type_id {
-            return param->specs.type.value();
-          }) | std::ranges::to<std::vector>()};
-}
-
 void decl::function::definition::clear() noexcept {
   while (!local_scopes.empty()) {
     destroy_scope();
@@ -186,7 +193,7 @@ std::vector<function_store::value_type> function_store::get_by_name(const std::s
          std::ranges::to<std::vector>();
 }
 
-void function_store::insert(function* v) { hashmap::insert(v->signature(), v); }
+void function_store::insert(function* v) { hashmap::insert(v->ident.string(), v); }
 
 [[nodiscard]] bool scope::is_declared(const ast::identifier& id) const {
   return variables.contains(id);
@@ -204,7 +211,7 @@ void function_store::insert(function* v) { hashmap::insert(v->signature(), v); }
 }
 
 void variable_store::insert(const decl::variable* var, assembly::operand* op) {
-  hashmap::insert(var->string(), std::make_pair(var, op));
+  hashmap::insert(var->ident.string(), std::make_pair(var, op));
 }
 
 [[nodiscard]] const variable_store::value_type& decl::function::definition::get_variable(
@@ -222,7 +229,7 @@ void variable_store::insert(const decl::variable* var, assembly::operand* op) {
   THROW(UNDECLARED_SYMBOL, ident);
 }
 
-assembly::operand* function::definition::declare_parameter(const ast::decl::variable& var,
+assembly::operand* function::definition::declare_parameter(const parameter& var,
                                                            assembly::operand* op) {
   variables.insert(&var, op);
   return op->hold_value(&var);
@@ -248,15 +255,147 @@ size_t decl::function::definition::destroy_scope() noexcept {
   return ditched;
 }
 
+namespace {
+template <cmm::instruction_t Ins>
+cmm::instruction single_ins(cmm::arg_t l = cmm::arg_t::LEFT, cmm::arg_t r = cmm::arg_t::RIGHT) {
+  return cmm::instruction{.ins = Ins, .arg1 = l, .arg2 = r};
+} // namespace
+
+template <instruction_t Ins>
+std::vector<instruction> create_ins(arg_t l = arg_t::LEFT, arg_t r = arg_t::RIGHT) {
+  return {
+      instruction{.ins = Ins, .arg1 = l, .arg2 = r}
+  };
+}
+template <instruction_t Ins>
+constexpr builtin_callable create_same_args(const type_id& args) {
+  return {args, args, args, create_ins<Ins>()};
+}
+
+template <instruction_t Ins>
+constexpr builtin_callable create_same_args(type_id ret, const type_id& args) {
+  return {std::move(ret), args, args, create_ins<Ins>()};
+}
+
+constexpr auto create_overloaded_op(const std::vector<type_id>& types, std::vector<instruction> ins)
+    -> std::vector<std::tuple<type_id, std::vector<type_id>, std::vector<instruction>>> {
+  return types | std::views::transform([ins](type_id t) {
+           return std::make_tuple(t, std::vector<type_id>{t, t}, ins);
+         }) |
+         TO_VEC;
+}
+
+template <instruction_t Ins>
+constexpr auto create_overloaded_op(type_id ret, const std::vector<type_id>& types)
+    -> std::vector<std::tuple<type_id, std::vector<type_id>, std::vector<instruction>>> {
+
+  return types | std::views::transform([ret](type_id t) {
+           return std::make_tuple(ret, std::vector<type_id>{t, t}, create_ins<Ins>());
+         }) |
+         TO_VEC;
+}
+
+constexpr auto provide_operator_overloads(
+    operator_t op,
+    std::vector<std::tuple<type_id, std::vector<type_id>, std::vector<instruction>>> ovs)
+    -> std::pair<operator_t,
+                 std::vector<std::tuple<type_id, std::vector<type_id>, std::vector<instruction>>>> {
+  return std::make_pair(op, ovs);
+}
+
+using builtin_data = std::vector<
+    std::pair<operator_t,
+              std::vector<std::tuple<type_id, std::vector<type_id>, std::vector<instruction>>>>>;
+auto provide_builtin_callables() {
+  builtin_data data = {
+      {
+       provide_operator_overloads(
+              operator_t::assign,
+       {{SINTREF_T, {SINTREF_T, SINT_T}, create_ins<instruction_t::mov>()},
+               {UINTREF_T, {UINTREF_T, UINT_T}, create_ins<instruction_t::mov>()},
+               {FLOATREF_T, {FLOATREF_T, FLOAT_T}, create_ins<instruction_t::mov>()}}),
+
+       // Unary
+          provide_operator_overloads(operator_t::pre_inc,
+       {{SINTREF_T, {SINTREF_T}, create_ins<instruction_t::inc>()}}),
+       provide_operator_overloads(operator_t::pre_dec,
+       {{SINTREF_T, {SINTREF_T}, create_ins<instruction_t::dec>()}}),
+       provide_operator_overloads(
+              operator_t::post_inc,
+       {{SINT_T, {SINTREF_T, SINT_T}, create_ins<instruction_t::inc>()}}),
+       provide_operator_overloads(
+              operator_t::post_dec,
+       {{SINT_T, {SINTREF_T, SINT_T}, create_ins<instruction_t::dec>()}}),
+       // Comparisons
+          provide_operator_overloads(operator_t::eq,
+       create_overloaded_op<instruction_t::mov>(
+                                         BOOL_T, {BOOL_T, SINT_T, UINT_T, FLOAT_T, CHAR_T})),
+       provide_operator_overloads(operator_t::neq,
+       create_overloaded_op<instruction_t::mov>(
+                                         BOOL_T, {BOOL_T, SINT_T, UINT_T, FLOAT_T, CHAR_T})),
+       provide_operator_overloads(operator_t::gt,
+       create_overloaded_op<instruction_t::mov>(
+                                         BOOL_T, {BOOL_T, SINT_T, UINT_T, FLOAT_T, CHAR_T})),
+       provide_operator_overloads(operator_t::ge,
+       create_overloaded_op<instruction_t::mov>(
+                                         BOOL_T, {BOOL_T, SINT_T, UINT_T, FLOAT_T, CHAR_T})),
+       provide_operator_overloads(operator_t::lt,
+       create_overloaded_op<instruction_t::mov>(
+                                         BOOL_T, {BOOL_T, SINT_T, UINT_T, FLOAT_T, CHAR_T})),
+       provide_operator_overloads(operator_t::le,
+       create_overloaded_op<instruction_t::mov>(
+                                         BOOL_T, {BOOL_T, SINT_T, UINT_T, FLOAT_T, CHAR_T})),
+       // Arithmetic
+          provide_operator_overloads(operator_t::plus,
+       create_overloaded_op({BOOL_T, SINT_T, UINT_T, FLOAT_T},
+       create_ins<instruction_t::add>())),
+       provide_operator_overloads(
+              operator_t::minus,
+       create_overloaded_op({SINT_T, UINT_T, FLOAT_T}, create_ins<instruction_t::sub>())),
+       provide_operator_overloads(
+              operator_t::star,
+       create_overloaded_op({SINT_T, UINT_T, FLOAT_T},
+       {single_ins<instruction_t::mov>(arg_t::ACC, arg_t::LEFT),
+                                    single_ins<instruction_t::mul>(arg_t::RIGHT),
+                                    single_ins<instruction_t::mov>(arg_t::LEFT, arg_t::ACC)})),
+       provide_operator_overloads(
+              operator_t::fslash,
+       create_overloaded_op({SINT_T, UINT_T, FLOAT_T},
+       {single_ins<instruction_t::mov>(arg_t::ACC, arg_t::LEFT),
+                                    single_ins<instruction_t::mul>(arg_t::RIGHT),
+                                    single_ins<instruction_t::mov>(arg_t::LEFT, arg_t::ACC)})),
+       // {operator_t::or_, {{unary_matchers::any, {}, {}, create_ins<instruction_t::or_>()}}},
+          // {operator_t::xor_, {{unary_matchers::any, {}, {},
+          // create_ins<instruction_t::xor_>()}}}, {operator_t::and_, {{unary_matchers::any, {},
+          // {}, create_ins<instruction_t::and_>()}}}, {operator_t::not_, {unary_matchers::any,
+          // {}, VOID_T, create_ins<instruction_t::not_>()}}}
+      }
+  };
+  return data | std::views::transform([](const auto& pair) {
+           operator_t op = pair.first;
+           std::vector<std::tuple<type_id, std::vector<type_id>, std::vector<instruction>>>
+               overloads = pair.second;
+           auto callables =
+               overloads |
+               std::views::transform(
+                   [op](const std::tuple<type_id, std::vector<type_id>, std::vector<instruction>>&
+                            data) -> builtin_callable {
+                     const auto& [ret, types, ins] = data;
+                     return {op, ret, types, ins};
+                   }) |
+               TO_VEC;
+           return std::make_pair(op, callables);
+         }) |
+         std::ranges::to<std::unordered_map>();
+}
+} // namespace
+translation_unit::translation_unit()
+    : builtin_operators(provide_builtin_callables()) {}
+
 void translation_unit::clear() noexcept {
   m_stackframe.clear();
   m_functions.clear();
   variables.clear();
-}
-
-bool translation_unit::is_entry_point_defined() const noexcept {
-  builtin_signature_data a = builtin_signature_t::MAIN;
-  return m_functions.contains(a.signature());
 }
 
 const decl::label* translation_unit::get_label(const ast::identifier& id) const {
@@ -296,30 +435,34 @@ assembly::operand* translation_unit::declare_variable(ast::decl::variable* var) 
   return addr;
 }
 
-std::vector<const function*> translation_unit::user_defined_functions(
-    const ast::identifier& id) const {
-  return m_functions.get_by_name(id);
-}
-
 void translation_unit::declare_function(decl::function* func, bool) {
   if (is_declared<decl::function>(func->ident)) {
-    throw_error<compilation_error_t::ALREADY_DECLARED_SYMBOL>(func->ident);
+    THROW(ALREADY_DECLARED_SYMBOL, func->ident);
   }
   REGISTER_TRACE("Creating func {}", func->ident.value());
   m_functions.insert(func);
 }
 
-const function* translation_unit::get_entry_point() {
-  builtin_signature_data a = builtin_signature_t::MAIN;
-  return m_functions.at(a.signature());
-}
+void translation_unit::define_function(ast::decl::function* t_func) {
+  // if (ast->is_declar) {
+  //   throw_error<compilation_error_t::ALREADY_DEFINED_FUNCTION>(t_func->ident);
+  // }
 
-void translation_unit::link_entry_point(ast::decl::function* fn) {
-  if (!is_entry_point_defined()) {
-    builtin_signature_data main_header = builtin_signature_t::MAIN;
-    m_functions.insert(fn);
-  } else {
-    throw_error<compilation_error_t::ALREADY_DECLARED_SYMBOL>(*fn);
+  create_frame(t_func->body);
+  auto registers = m_context->regs.parameters();
+  for (const variable& param : t_func->parameters()) {
+    active_frame()->declare_parameter(param, registers.next());
+  }
+  active_frame()->local_stack.push();
+  m_context->asmgen.load_new_procedure(t_func->ident.value());
+  m_context->runner.generate_statements(*t_func->body);
+
+  m_context->asmgen.save_current_procedure();
+
+  size_t ditched_vars = pop_frame();
+
+  if (!is_global_scope()) {
+    active_frame()->local_stack.pop(ditched_vars + 1);
   }
 }
 
@@ -350,9 +493,9 @@ bool translation_unit::is_declarable(const ast::identifier& id) const noexcept {
     // Only check current scope
     return !active_scope()->variables.contains(id);
   } else if constexpr (std::is_same_v<decl::function, T>) {
-    return m_functions.get_by_name(id).size() > 0;
+    return !m_functions.contains(id.string());
   } else {
-    return active_frame()->labels.contains(id);
+    return !active_frame()->labels.contains(id);
   }
 }
 
@@ -388,267 +531,4 @@ void translation_unit::set_context(ir::compilation_unit* ctx) { m_context = ctx;
 
 template bool translation_unit::is_declared<decl::label>(const ast::identifier&) const noexcept;
 
-void ast_visitor::visit(ast::literal& c) { TRACE_VISITOR(c); }
-
-void ast_visitor::visit(ast::keyword& c) { TRACE_VISITOR(c); }
-
-void ast_visitor::visit(ast::identifier& c) { TRACE_VISITOR(c); }
-
-void ast_visitor::visit(ast::decl::specifiers& c) {
-  TRACE_VISITOR(c);
-  c.storage.accept(*this);
-  c.linkage.accept(*this);
-  c.type.accept(*this);
-};
-
-void ast_visitor::visit(ast ::expr ::identifier& c) { TRACE_VISITOR(c); };
-
-void ast_visitor::visit(ast ::expr ::unary_operator& c) {
-  TRACE_VISITOR(c);
-  c.operator_.accept(*this);
-  c.expr.accept(*this);
-};
-
-void ast_visitor::visit(ast ::expr ::binary_operator& c) {
-  TRACE_VISITOR(c);
-  c.operator_.accept(*this);
-  c.left.accept(*this);
-  c.right.accept(*this);
-};
-
-void ast_visitor::visit(ast ::expr ::call& c) {
-  TRACE_VISITOR(c);
-  c.ident.accept(*this);
-  c.args.accept(*this);
-};
-
-void ast_visitor::visit(ast ::decl ::variable& c) {
-  TRACE_VISITOR(c);
-  c.ident.accept(*this);
-  c.specs.accept(*this);
-  if (auto* init = c.init) {
-    init->accept(*this);
-  }
-};
-
-void ast_visitor::visit(ast ::decl ::function& c) {
-  TRACE_VISITOR(c);
-  c.specs.accept(*this);
-  c.ident.accept(*this);
-  for (auto& param : c.params) {
-    param->accept(*this);
-  }
-  if (auto* body = c.body) {
-    body->accept(*this);
-  }
-};
-
-void ast_visitor::visit(ast ::decl ::label& c) {
-  TRACE_VISITOR(c);
-  c.ident.accept(*this);
-};
-
-void ast_visitor::visit(ast ::iteration ::while_& c) {
-  TRACE_VISITOR(c);
-  c.condition.accept(*this);
-  if (auto* body = c.body) {
-    body->accept(*this);
-  }
-};
-
-void ast_visitor::visit(ast ::iteration ::for_& c) {
-  TRACE_VISITOR(c);
-  c.start->accept(*this);
-  if (auto* cond = c.condition) {
-    cond->accept(*this);
-  }
-  if (auto* step = c.step) {
-    step->accept(*this);
-  }
-  if (auto* body = c.body) {
-    body->accept(*this);
-  }
-};
-
-void ast_visitor::visit(ast ::selection ::if_& c) {
-  TRACE_VISITOR(c);
-  c.condition.accept(*this);
-  if (auto* block = c.block) {
-    block->accept(*this);
-  }
-  if (auto* else_ = c.else_) {
-    else_->accept(*this);
-  }
-};
-
-void ast_visitor::visit(ast ::jump ::goto_& c) {
-  TRACE_VISITOR(c);
-  c.term.accept(*this);
-};
-
-void ast_visitor::visit(ast ::jump ::return_& c) {
-  TRACE_VISITOR(c);
-  if (auto* expr = c.expr) {
-    expr->accept(*this);
-  }
-}
-
-void ast_visitor::visit(ast::jump::continue_& c) { TRACE_VISITOR(c); }
-
-void ast_visitor::visit(ast::expr::literal& c) { TRACE_VISITOR(c); }
-
-void ast_visitor::visit(ast::jump::break_& c) { TRACE_VISITOR(c); }
-
-void ast_visitor::visit(ast::operator_& c) { TRACE_VISITOR(c); }
-
-void ast_visitor::visit(ast::storage_spec& c) { TRACE_VISITOR(c); }
-
-void ast_visitor::visit(ast::type_spec& c) { TRACE_VISITOR(c); }
-
-void ast_visitor::visit(ast::linkage_spec& c) { TRACE_VISITOR(c); }
-
-void ast_visitor::visit(expr::arguments& c) { TRACE_VISITOR(c); }
-
-void ast_visitor::visit(ast ::expr ::implicit_type_conversion& c) { TRACE_VISITOR(c); }
-
-void ast_visitor::visit(ast::decl::function::definition& c) {
-  TRACE_VISITOR(c);
-  for (const auto& stmt : c.stmts) {
-    stmt->accept(*this);
-  }
-}
-
-void ast_visitor::visit(ast::decl::block& c) {
-  TRACE_VISITOR(c);
-  for (const auto& stmt : c.stmts) {
-    stmt->accept(*this);
-  }
-}
-
-void const_ast_visitor::visit(const ast::operator_& c) { TRACE_VISITOR(c); }
-
-void const_ast_visitor::visit(const ast::literal& c) { TRACE_VISITOR(c); }
-
-void const_ast_visitor::visit(const ast::keyword& c) { TRACE_VISITOR(c); }
-
-void const_ast_visitor::visit(const ast::identifier& c) { TRACE_VISITOR(c); }
-
-void const_ast_visitor::visit(const expr::arguments& c) { TRACE_VISITOR(c); }
-
-void const_ast_visitor::visit(const ast ::expr ::implicit_type_conversion& c) { TRACE_VISITOR(c); }
-
-void const_ast_visitor::visit(const ast::decl::specifiers& s) {
-  TRACE_VISITOR(s);
-  s.accept(*this);
-};
-
-void const_ast_visitor::visit(const ast ::expr ::identifier& c) { TRACE_VISITOR(c); };
-
-void const_ast_visitor::visit(const ast ::expr ::unary_operator& c) {
-  TRACE_VISITOR(c);
-  c.operator_.accept(*this);
-  c.expr.accept(*this);
-};
-
-void const_ast_visitor::visit(const ast ::expr ::binary_operator& c) {
-  TRACE_VISITOR(c);
-  c.operator_.accept(*this);
-  c.left.accept(*this);
-  c.right.accept(*this);
-};
-
-void const_ast_visitor::visit(const ast ::expr ::call& c) {
-  TRACE_VISITOR(c);
-  c.ident.accept(*this);
-  c.args.accept(*this);
-};
-
-void const_ast_visitor::visit(const ast ::decl ::variable& c) {
-  TRACE_VISITOR(c);
-  c.ident.accept(*this);
-  c.specs.accept(*this);
-  if (auto* init = c.init) {
-    init->accept(*this);
-  }
-};
-
-void const_ast_visitor::visit(const ast ::decl ::function& c) {
-  TRACE_VISITOR(c);
-  c.specs.accept(*this);
-  c.ident.accept(*this);
-  for (const auto& param : c.params) {
-    param->accept(*this);
-  }
-  if (auto* body = c.body) {
-    body->accept(*this);
-  }
-};
-
-void const_ast_visitor::visit(const ast ::decl ::label& c) {
-  TRACE_VISITOR(c);
-  c.ident.accept(*this);
-};
-
-void const_ast_visitor::visit(const ast ::iteration ::while_& c) {
-  TRACE_VISITOR(c);
-  c.condition.accept(*this);
-  if (auto* body = c.body) {
-    body->accept(*this);
-  }
-};
-
-void const_ast_visitor::visit(const ast ::iteration ::for_& c) {
-  TRACE_VISITOR(c);
-  c.start->accept(*this);
-  if (auto* cond = c.condition) {
-    cond->accept(*this);
-  }
-  if (auto* step = c.step) {
-    step->accept(*this);
-  }
-  if (auto* body = c.body) {
-    body->accept(*this);
-  }
-};
-
-void const_ast_visitor::visit(const ast ::selection ::if_& c) {
-  TRACE_VISITOR(c);
-  c.condition.accept(*this);
-  if (auto* block = c.block) {
-    block->accept(*this);
-  }
-  if (auto* else_ = c.else_) {
-    else_->accept(*this);
-  }
-};
-
-void const_ast_visitor::visit(const ast ::jump ::goto_& c) {
-  TRACE_VISITOR(c);
-  c.term.accept(*this);
-};
-void const_ast_visitor::visit(const ast ::jump ::return_& c) {
-  TRACE_VISITOR(c);
-  if (auto* expr = c.expr) {
-    expr->accept(*this);
-  }
-}
-void const_ast_visitor::visit(const ast::jump::continue_& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::jump::break_& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::storage_spec& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::linkage_spec& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::type_spec& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::expr::literal& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::decl::function::definition& c) {
-  TRACE_VISITOR(c);
-  for (const auto& stmt : c.stmts) {
-    stmt->accept(*this);
-  }
-}
-
-void const_ast_visitor::visit(const ast::decl::block& c) {
-  TRACE_VISITOR(c);
-  for (const auto& stmt : c.stmts) {
-    stmt->accept(*this);
-  }
-}
 } // namespace cmm::ast

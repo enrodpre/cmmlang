@@ -1,24 +1,26 @@
 #pragma once
 
-#include "common.hpp"
 #include <array>
+#include <cassert>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <functional>
-
+#include <initializer_list>
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_containers.hpp>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
-#include <cassert>
-#include <cstdint>
-#include <functional>
-#include <string>
-#include <utility>
+#include "common.hpp"
+#include "macros.hpp"
 
 #define BASIC_T(TYPE) cmm::types::global().make(cmm::types::core_t::TYPE)
 #define VOID_T        BASIC_T(void_t)
@@ -393,6 +395,7 @@ struct core_keyeq {
 using modifier_t = std::function<type_id(type_id)>;
 
 struct modifier;
+
 class manager {
 public:
   types::type_id make(const types::core& c,

@@ -381,6 +381,23 @@ concept should_use_arrow = std::is_pointer_v<std::remove_cvref_t<T>>;
     OBJ.FUNC                                              \
   }
 
-template <class T>
-concept stringish = std::is_same_v<std::decay_t<T>, std::string> ||
-                    std::is_same_v<std::decay_t<T>, std::string_view>;
+template <typename From, typename To>
+concept implicitly_convertible_to = std::convertible_to<From, To> && requires {
+  []<typename T>(T&&) {}(std::declval<From>()); // Can be used in generic lambda
+};
+
+template <typename T>
+concept stringish =
+    // Direct string types
+    std::same_as<std::remove_cvref_t<T>, std::string> ||
+    std::same_as<std::remove_cvref_t<T>, std::string_view> ||
+    std::same_as<std::remove_cvref_t<T>, const char*> ||
+    std::same_as<std::remove_cvref_t<T>, char*> ||
+
+    // C-style string arrays
+    (std::is_array_v<std::remove_reference_t<T>> &&
+     std::same_as<std::remove_extent_t<std::remove_reference_t<T>>, char>) ||
+
+    // Has implicit (non-explicit) conversion to std::string
+    (implicitly_convertible_to<T, std::string> &&
+     !std::same_as<std::remove_cvref_t<T>, std::string>);

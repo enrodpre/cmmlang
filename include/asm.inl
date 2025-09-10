@@ -2,10 +2,11 @@
 
 #include "asm.hpp"
 
+#include <array>
 #include <format>
-
 #include <magic_enum/magic_enum.hpp>
 #include <optional>
+#include <stdint.h>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -113,15 +114,17 @@ constexpr std::string format_ins(instruction_t ins, Args&&... args) {
 
 template <typename... Args>
 void asmgen::write_instruction(const instruction_t& ins, Args&&... args) {
+  assert(m_current_procedure);
   instruction_data data(ins);
   if constexpr ((sizeof...(Args) == 0)) {
-    m_text.write<2>("{}", data.string());
+    m_current_procedure->second += std::format("{}\n", data.string());
   } else if constexpr ((sizeof...(Args) == 1)) {
-    m_text.write<2>("{} {}", data.string(), std::forward<Args>(args)...);
+    m_current_procedure->second +=
+        std::format("  {} {}\n", data.string(), std::forward<Args>(args)...);
   } else if constexpr ((sizeof...(Args) == 2)) {
-    m_text.write<2>("{} {}, {}", data.string(), std::forward<Args>(args)...);
+    m_current_procedure->second +=
+        std::format("{} {}, {}\n", data.string(), std::forward<Args>(args)...);
   }
-  m_text.write("\n");
 }
 
 } // namespace cmm::assembly

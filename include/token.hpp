@@ -7,6 +7,7 @@
 #include <magic_enum/magic_enum_containers.hpp>
 #include <ranges>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>

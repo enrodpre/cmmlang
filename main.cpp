@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <cxxopts.hpp>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -48,7 +49,7 @@ int main(int argc, char* argv[]) {
   }
 
   if (!input_file.has_value()) {
-    REGISTER_ERROR("No input file providad");
+    REGISTER_ERROR("No input file provided");
     exit(EXIT_FAILURE);
   }
 

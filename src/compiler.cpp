@@ -1,8 +1,11 @@
 #include "compiler.hpp"
 
 #include <format>
+#include <iterator>
 #include <optional>
 #include <ranges>
+#include <stdexcept>
+#include <stdlib.h>
 #include <string>
 
 #include "ast.hpp"
@@ -21,16 +24,15 @@ source_code::source_code(const fs::ifile& input)
     : m_code(input.content()),
       m_file(input) {}
 
-std::pair<std::size_t, std::size_t> source_code::to_coordinates(cmm::location loc) const {
-  if (loc.start > m_code.size()) {
+std::tuple<size_t, size_t, size_t> source_code::to_coordinates(const cmm::location& loc) const {
+  if (loc.end > m_code.size()) {
     throw std::out_of_range("n is out of range of the text");
   }
 
-  std::size_t line = 1;
-  std::size_t col  = 1;
-
-  for (unsigned int i = 0; i < loc.start; ++i) {
-    if (m_code[i] == '\n') {
+  uint32_t line = 1;
+  uint32_t col  = 1;
+  for (uint32_t i = 0; i < loc.start && i < get_code().size(); ++i) {
+    if (get_code()[i] == '\n') {
       ++line;
       col = 1;
     } else {
@@ -38,58 +40,35 @@ std::pair<std::size_t, std::size_t> source_code::to_coordinates(cmm::location lo
     }
   }
 
-  return {line, col};
+  return {line, col, loc.end - loc.start};
 }
+
 [[nodiscard]] std::string_view source_code::get_code() const { return m_code; }
+
 [[nodiscard]] std::string source_code::get_filename() const { return m_file.filename().c_str(); }
-bool source_code::is_valid(const location& loc) const {
-  auto line                = get_line(loc);
-  const auto& [start, end] = loc;
-  return (start <= line.first) && (end <= line.second);
+
+[[nodiscard]] std::string_view source_code::get_nth_line(size_t nth) const {
+  auto split = std::views::split(get_code(), '\n') | TO_VEC;
+  if (std::ranges::empty(split)) {
+    throw std::range_error("error nth line");
+  }
+  auto subrange = *split.begin();
+  return std::string_view{std::ranges::subrange(subrange)};
 }
 
-[[nodiscard]] std::string source_code::get_nth_line(const location& loc) const {
-  const auto& [n, c] = to_coordinates(loc);
-  std::istringstream in(m_code);
-  std::string line;
-  size_t i = 1;
-  while (std::getline(in, line)) {
-    if (i++ == n)
-      return line;
-  }
-  throw cmm::error("aaa");
-}
-std::pair<size_t, size_t> source_code::get_line(const location& loc) const {
-  const auto& [start, end] = loc;
-
-  // Get last \n before start
-  auto right_before = m_code.substr(0, start).rfind('\n');
-  if (right_before == std::string::npos) {
-    throw cmm::error("No newline found");
-  }
-
-  auto right_after = m_code.substr(end, std::string::npos).find('\n');
-  if (right_after == std::string::npos) {
-    throw cmm::error("No newline found");
-  }
-
-  return std::make_pair(right_before + 1, end + right_after);
-}
-
-std::tuple<std ::string, std::string, std::string> source_code::get_line_chunked(
+std::tuple<std::string_view, std::string_view, std::string_view> source_code::get_line_chunked(
     const location& loc) const {
-  auto [start, end]       = loc;
-  auto str                = get_nth_line(loc);
-  const auto& [line, col] = to_coordinates(loc);
-  auto left               = m_code.substr(col);
-  auto middle             = m_code.substr(col, end);
-  auto right              = m_code.substr(end);
+  const auto& [line, col_start, col_end] = to_coordinates(loc);
+  auto str                               = get_nth_line(line);
+  auto left                              = str.substr(0, col_start);
+  auto middle                            = str.substr(col_start, col_end - col_start);
+  auto right                             = str.substr(col_end);
 
   return {left, middle, right};
 }
 std::string source_code::build_full_location(const location& loc) {
-  const auto& [line, column] = to_coordinates(loc);
-  return std::format("{}:{}:{}", get_filename(), line, column);
+  const auto& [line, start, end] = to_coordinates(loc);
+  return std::format("{}:{}:{}", get_filename(), line, start);
 }
 compiler::compiler(const fs::path& input, const std::string& output)
     : m_source_code(input),
@@ -173,13 +152,15 @@ std::vector<std::string> source_code::build_compilation_error(
   auto formatted_error      = log::apply(error, log::style_t::ERROR);
 
   auto left_size            = left.size();
-  auto second_line          = std::format("{:6}{}{}", left, formatted_error, right);
+  auto second_line          = std::format("{}{}{}", left, formatted_error, right);
   auto third_line           = std::format("{}{}", std::string(left_size, ' '), "^");
 
   const size_t margin_left  = 6;
   message.push_back(first_line);
-  message.push_back(std::format(
-      "{}{} |{}", std::string(margin_left - 2, ' '), to_coordinates(loc).first, second_line));
+  message.push_back(std::format("{}{} |{}",
+                                std::string(margin_left - 2, ' '),
+                                std::get<0>(to_coordinates(loc)),
+                                second_line));
   message.push_back(std::format("{}|{}",
                                 std::string(margin_left, ' '),
                                 log::apply(third_line, log::style_t::ERROR_UNDERLINE)));

@@ -1,1 +1,0 @@
-/home/kike/dev/cmm/test/integration/conftest.py

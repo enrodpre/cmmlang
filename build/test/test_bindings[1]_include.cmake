@@ -1,5 +1,0 @@
-if(EXISTS "/home/kike/dev/cmm/build/test/test_bindings[1]_tests.cmake")
-  include("/home/kike/dev/cmm/build/test/test_bindings[1]_tests.cmake")
-else()
-  add_test(test_bindings_NOT_BUILT test_bindings_NOT_BUILT)
-endif()
