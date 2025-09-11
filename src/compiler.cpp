@@ -10,6 +10,7 @@
 
 #include "ast.hpp"
 #include "common.hpp"
+#include "fs.hpp"
 #include "ir.hpp"
 #include "lexer.hpp"
 #include "os.hpp"
@@ -18,11 +19,11 @@
 
 namespace cmm {
 
-using namespace fs;
-
-source_code::source_code(const fs::ifile& input)
-    : m_code(input.content()),
-      m_file(input) {}
+using namespace std::filesystem;
+source_code::source_code(const path& input, std::string t_out)
+    : m_code(fs::read(input)),
+      m_input(input),
+      m_output(t_out) {}
 
 std::tuple<size_t, size_t, size_t> source_code::to_coordinates(const cmm::location& loc) const {
   if (loc.end > m_code.size()) {
@@ -44,8 +45,9 @@ std::tuple<size_t, size_t, size_t> source_code::to_coordinates(const cmm::locati
 }
 
 [[nodiscard]] std::string_view source_code::get_code() const { return m_code; }
-
-[[nodiscard]] std::string source_code::get_filename() const { return m_file.filename().c_str(); }
+[[nodiscard]] path source_code::get_input() const { return m_input; }
+[[nodiscard]] path source_code::get_output() const { return m_output; }
+[[nodiscard]] std::string source_code::get_filename() const { return m_input.filename(); }
 
 [[nodiscard]] std::string_view source_code::get_nth_line(size_t nth) const {
   auto split = std::views::split(get_code(), '\n') | TO_VEC;
@@ -66,18 +68,15 @@ std::tuple<std::string_view, std::string_view, std::string_view> source_code::ge
 
   return {left, middle, right};
 }
-std::string source_code::build_full_location(const location& loc) {
+std::string source_code::build_full_location(const location& loc) const {
   const auto& [line, start, end] = to_coordinates(loc);
   return std::format("{}:{}:{}", get_filename(), line, start);
 }
-compiler::compiler(const fs::path& input, const std::string& output)
-    : m_source_code(input),
-      m_output_filename(output) {}
 
-void compiler::preprocess(const std::string&) { REGISTER_WARN("Preprocessor disabled"); }
+void compiler::preprocess(const source_code&) { REGISTER_WARN("Preprocessor disabled"); }
 
-ofile compiler::compile(const source_code& src) {
-  lexer lexer_instance(src.get_code());
+path compiler::compile(const source_code& ctx) {
+  lexer lexer_instance(ctx.get_code());
   auto tokens = lexer_instance.tokenize();
 
   parser::parser parser(tokens);
@@ -85,17 +84,17 @@ ofile compiler::compile(const source_code& src) {
 
   ir::compilation_unit& cunit = ir::compilation_unit::instance();
 
-  fs::ofile asm_file(m_output_filename);
-  asm_file = asm_file.replace_extension("asm");
+  auto asm_file               = ctx.get_output();
+  asm_file.replace_extension("asm");
 
   try {
-    auto asm_code = cunit.compile(compound, &src);
-    asm_file.write(asm_code);
+    auto asm_code = cunit.compile(compound, &ctx);
+    cmm::fs::write(asm_file, asm_code);
     return asm_file;
   } catch (const compilation_error& e) {
     if (e.loc.has_value()) {
       auto stackframe = cunit.ast->stackframe();
-      auto lines      = m_source_code.build_compilation_error(stackframe, e.what(), e.loc.value());
+      auto lines      = ctx.build_compilation_error(stackframe, e.what(), e.loc.value());
       for (const auto& line : lines) {
         WRITE_STDOUT("{}\n", line);
       }
@@ -106,31 +105,34 @@ ofile compiler::compile(const source_code& src) {
   }
 }
 
-ofile compiler::assemble(ofile& asm_file) {
-  os::execute(std::format("nasm -felf64 -g {}", asm_file.path().string()));
+path& compiler::assemble(std::filesystem::path& compiled) {
+  os::execute(std::format("nasm -felf64 -g {}", compiled.string()));
 
-  return asm_file.replace_extension("o");
+  return compiled.replace_extension("o");
 }
 
-ofile compiler::link(ofile& obj_file) {
-  auto binary = obj_file.replace_extension("");
-  os::execute(std::format("ld -o {} {}", binary.path().string(), obj_file.path().string()));
-  obj_file.remove();
-  return binary;
+path& compiler::link(path& obj_file) {
+  auto binary = obj_file;
+  os::execute(std::format("ld -o {} {}", obj_file.replace_extension("").string(), binary.string()));
+  if (!configuration::keep_object) {
+    remove(binary);
+  }
+
+  return obj_file;
 }
 
-fs::ofile compiler::run() {
-  LOG_PATH();
-  REGISTER_INFO("Compiling {}", m_source_code.get_filename());
+path compiler::compile(path t_path, std::string t_out) {
+  source_code context{t_path, t_out};
 
-  preprocess();
-  auto asm_file     = compile(m_source_code);
+  REGISTER_INFO("Compiling {}", context.get_input().string());
+
+  preprocess(context);
+  auto asm_file     = compile(context);
 
   auto obj_file     = assemble(asm_file);
   const auto binary = link(obj_file);
 
-  REGISTER_INFO(
-      "Succesfully compiled {} into {}", m_source_code.get_filename(), binary.path().string());
+  REGISTER_INFO("Succesfully compiled {} into {}", context.get_filename(), binary.string());
 
   return binary;
 }
@@ -143,7 +145,7 @@ void compiler::throw_linking_error(const std::string& err) {
 std::vector<std::string> source_code::build_compilation_error(
     const std::vector<const ast::decl::function::definition*>&,
     std::string_view err,
-    const location& loc) {
+    const location& loc) const {
   std::vector<std::string> message;
   auto full_loc = build_full_location(loc);
   auto first_line =

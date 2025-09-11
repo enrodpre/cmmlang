@@ -21,16 +21,12 @@ ret_t<T> get_retriever() {
 } // namespace
 
 types::type_id expr::expression::type() const {
-  auto conv = get_parent<conversion>();
-  return conv ? conv->type_impl() : type_impl();
+  return current_conversor.has_value() ? current_conversor->convert_type(type_impl()) : type_impl();
 }
 value_category_t expr::expression::value_category() const {
-  auto conv = get_parent<conversion>();
-  return conv ? conv->value_category_impl() : value_category_impl();
-}
-
-const expr::conversion* expr::expression::get_conversion() const {
-  return get_parent<conversion>();
+  return current_conversor.has_value()
+             ? current_conversor->convert_value_category(value_category_impl())
+             : value_category_impl();
 }
 
 expr::identifier::identifier(const token& t_token)

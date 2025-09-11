@@ -200,7 +200,7 @@ public:
 
 #define EXPRESSION_TYPES                                                                         \
   ast::expr::binary_operator, ast::expr::unary_operator, ast::expr::call, ast::expr::identifier, \
-      ast::expr::literal, ast::expr::conversion
+      ast::expr::literal
 
 #define NODE_TYPES STATEMENT_TYPES, EXPRESSION_TYPES, TERM_TYPES, CHILDREN_TYPES, GLOBAL_TYPES
 
@@ -219,7 +219,6 @@ struct ast_visitor : public visitor<NODE_TYPES> {
   void visit(ast::expr::literal& c) override;
   void visit(ast::expr::binary_operator& c) override;
   void visit(ast::expr::call& c) override;
-  void visit(ast::expr::conversion& c) override;
   void visit(ast::decl::variable& c) override;
   void visit(ast::decl::function& c) override;
   void visit(ast::decl::label& c) override;
@@ -251,7 +250,6 @@ struct const_ast_visitor : const_visitor<NODE_TYPES> {
   void visit(const ast::expr::unary_operator& c) override;
   void visit(const ast::expr::binary_operator& c) override;
   void visit(const ast::expr::call& c) override;
-  void visit(const ast::expr::conversion& c) override;
   void visit(const ast::decl::variable& c) override;
   void visit(const ast::decl::function& c) override;
   void visit(const ast::decl::label& c) override;

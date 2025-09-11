@@ -1,14 +1,11 @@
 #include <cstdlib>
 #include <cxxopts.hpp>
-#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
 
-#include "common.hpp"
 #include "compiler.hpp"
-#include "fs.hpp"
 
 #define ADD_DUMP_OPT(OPTION, DESC) OPTION, DESC, cxxopts::value<bool>()
 #define GET_DUMP_OPT(OPTION)       result[OPTION].as<bool>()
@@ -22,8 +19,8 @@ int main(int argc, char* argv[]) {
   cxxopts::Options options("CmmLang", "Compiler for cmm language");
   options.add_options()("h,help", "Show help")(
       "o,out", "Compiled file path", cxxopts::value<std::string>())("dump-ast", "Dump ast nodes")(
-      "dump-memory", "Dump memory statistics")("dump-state", "Dump state")("dump-tokens",
-                                                                           "Dump tokens");
+      "dump-memory", "Dump memory statistics")("dump-state", "Dump state")(
+      "dump-tokens", "Dump tokens")("a,asm", "Don't remove intermediate generated asm");
 
   options.add_options("Positional")(INPUT_ARG, "Input file", cxxopts::value<std::string>());
   options.parse_positional({INPUT_ARG});
@@ -53,9 +50,9 @@ int main(int argc, char* argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  fs::path input_path{input_file.value()};
+  std::filesystem::path input_path{input_file.value()};
 
-  if (!fs::exists(input_path)) {
+  if (!std::filesystem::exists(input_path)) {
     REGISTER_ERROR("Input file {} does not exist", input_path.string());
     exit(EXIT_FAILURE);
   }
@@ -65,8 +62,7 @@ int main(int argc, char* argv[]) {
   // bool dump_state  = GET_DUMP_OPT("dump-state");
   // bool dump_memory = GET_DUMP_OPT("dump-memory");
 
-  compiler compiler_instance{input_path, output_name};
-  compiler_instance.run();
+  compiler::compile(input_path, output_name);
 
   return EXIT_SUCCESS;
 }

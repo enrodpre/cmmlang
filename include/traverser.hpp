@@ -94,7 +94,6 @@ struct expression_visitor : public visitor<EXPRESSION_TYPES> {
   void visit(ast::expr::unary_operator&) override;
   void visit(ast::expr::identifier&) override;
   void visit(ast::expr::literal&) override;
-  void visit(ast::expr::conversion&) override;
 };
 
 struct statement_visitor : public visitor<expr::expression, STATEMENT_TYPES, GLOBAL_TYPES> {

@@ -26,12 +26,11 @@ struct expression : derived_visitable<expression, statement> {
   value_category_t value_category() const;
   virtual bool is_constant_evaluable() const = 0;
 
+  std::optional<conversor> current_conversor;
+
 protected:
   virtual types::type_id type_impl() const             = 0;
   virtual value_category_t value_category_impl() const = 0;
-
-private:
-  const conversion* get_conversion() const;
 };
 
 using expression_reference = reference<expression>;
@@ -108,22 +107,22 @@ struct binary_operator : derived_visitable<binary_operator, expression> {
   value_category_t value_category_impl() const override;
 };
 
-using conversion_function = std::function<expression&(expression&)>;
+// using conversion_function = std::function<expression&(expression&)>;
 
-struct conversion : derived_visitable<conversion, expression> {
-  expression& expr;
-  const conversor* func;
-
-  conversion(expression& exp, const conversor* fn)
-      : expr(exp),
-        func(std::move(fn)) {}
-  types::type_id type_impl() const override { return func->convert_type(expr.type()); };
-  value_category_t value_category_impl() const override {
-    return func->convert_value_category(expr.value_category());
-  };
-  bool is_constant_evaluable() const override { return expr.is_constant_evaluable(); };
-  std::vector<node*> children() override { return {expr}; }
-};
+// struct conversion : derived_visitable<conversion, expression> {
+//   expression& expr;
+//   const conversor* func;
+//
+//   conversion(expression& exp, const conversor* fn)
+//       : expr(exp),
+//         func(std::move(fn)) {}
+//   types::type_id type_impl() const override { return func->convert_type(expr.type()); };
+//   value_category_t value_category_impl() const override {
+//     return func->convert_value_category(expr.value_category());
+//   };
+//   bool is_constant_evaluable() const override { return expr.is_constant_evaluable(); };
+//   std::vector<node*> children() override { return {expr}; }
+// };
 
 }; // namespace expr
 } // namespace cmm::ast

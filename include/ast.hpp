@@ -37,7 +37,6 @@ struct identifier;
 struct unary_operator;
 struct call;
 struct binary_operator;
-struct conversion;
 } // namespace expr
 
 using namespace revisited;

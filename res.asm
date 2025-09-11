@@ -3,13 +3,7 @@ section .text
 
 _start:
 main:
-  mov rax, 255
-;; init local variable x:
-  push rax
-;; end init local variable x:
-;; loading x:
-mov rax, [rsp]
-;; end loading x:
+  mov rax, 254
 mov rdi, rax
   jmp exit
 

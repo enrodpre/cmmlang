@@ -1,10 +1,10 @@
 #include "preprocessor.hpp"
 
+#include <filesystem>
 #include <regex>
 #include <string>
 #include <string_view>
 #include <utility>
-#include <filesystem>
 
 #include "fs.hpp"
 
@@ -85,14 +85,14 @@ void Preprocessor::process_includes() {
     }
 
     std::string filename = include_match[1];
-    fs::ifile included_file(filename);
+    std::filesystem::path included_file(filename);
     size_t start_line = include_match.position();
     /* BINARY_ASSERT(next_pos, ==, start_line); */
 
     auto end_line = start_line + include_match.length();
 
     // + 1 because we want to remove newline as well
-    replace(start_line, end_line + 1, included_file.content());
+    replace(start_line, end_line + 1, fs::read(included_file));
   }
   next_pos = string().find("#include", pointer);
 }

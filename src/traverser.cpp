@@ -176,10 +176,6 @@ void expression_visitor::visit(expr::call& expr_call) {
   out = gen->m_context.call_function(expr_call.ident, expr_call.args).gen_op(in);
 }
 
-void expression_visitor::visit(ast::expr::conversion& t_conversion) {
-  gen->generate_expr(t_conversion.expr);
-}
-
 void expression_visitor::visit(expr::binary_operator& binop) {
   auto op = binop.operator_.value();
   out     = gen->m_context.call_builtin_operator(binop.operator_, {&binop.left, &binop.right});
@@ -274,9 +270,9 @@ void statement_visitor::visit(iteration::for_& for_) {
 
   gen->m_context.asmgen.write_label(condition_label);
   // Checking condition
-  if (auto* cond = for_.condition) {
-    ast::expr::conversion cond_conv{*cond, &any_to_bool};
-    gen->generate_condition(cond_conv, for_.labels().second);
+  if (for_.condition) {
+    for_.condition->current_conversor = any_to_bool;
+    gen->generate_condition(*for_.condition, for_.labels().second);
   }
 
   // If true execute body and check cond again
@@ -296,7 +292,7 @@ void statement_visitor::visit(iteration::while_& while_) {
   gen->m_context.asmgen.write_label(condition_label);
 
   // Checking condition
-  ast::expr::conversion cond_conv{while_.condition, &any_to_bool};
+  while_.condition->current_conversor = any_to_bool;
   gen->generate_condition(while_.condition, while_.labels().second);
 
   // If true execute body and check cond again
@@ -309,9 +305,9 @@ void statement_visitor::visit(iteration::while_& while_) {
 
 void statement_visitor::visit(selection::if_& if_) {
   // Checking condition
-  auto a = gen->m_context.asmgen.begin_comment_block("if condition");
+  auto a                           = gen->m_context.asmgen.begin_comment_block("if condition");
 
-  ast::expr::conversion cond_conv{if_.condition, &any_to_bool};
+  if_.condition->current_conversor = any_to_bool;
   gen->generate_condition(if_.condition, "else block");
   a.end();
 
@@ -359,8 +355,8 @@ void statement_visitor::visit(jump::return_& ret) {
 
   operand* op = nullptr;
   if (ret.expr != nullptr) {
-    ast::expr::conversion rvalue_conv{*ret.expr, &lvalue_to_rvalue};
-    op = gen->generate_expr(rvalue_conv);
+    ret.expr->current_conversor = lvalue_to_rvalue;
+    op                          = gen->generate_expr(*ret.expr);
   } else {
     op = gen->m_context.zero(gen->m_context.regs.get(register_t::ACCUMULATOR));
   }

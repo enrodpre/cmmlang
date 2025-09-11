@@ -124,8 +124,6 @@ void ast_visitor::visit(ast::linkage_spec& c) { TRACE_VISITOR(c); }
 
 void ast_visitor::visit(expr::arguments& c) { TRACE_VISITOR(c); }
 
-void ast_visitor::visit(ast ::expr ::conversion& c) { TRACE_VISITOR(c); }
-
 void ast_visitor::visit(ast::decl::function::definition& c) {
   TRACE_VISITOR(c);
   for (const auto& stmt : c.stmts) {
@@ -149,8 +147,6 @@ void const_ast_visitor::visit(const ast::keyword& c) { TRACE_VISITOR(c); }
 void const_ast_visitor::visit(const ast::identifier& c) { TRACE_VISITOR(c); }
 
 void const_ast_visitor::visit(const expr::arguments& c) { TRACE_VISITOR(c); }
-
-void const_ast_visitor::visit(const ast ::expr ::conversion& c) { TRACE_VISITOR(c); }
 
 void const_ast_visitor::visit(const ast::decl::specifiers& s) {
   TRACE_VISITOR(s);

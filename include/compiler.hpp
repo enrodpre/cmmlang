@@ -6,12 +6,11 @@
 #include <string>
 #include <string_view>
 #include <tuple>
-#include <utility>
 #include <vector>
 
 #include "ast.hpp"
 #include "common.hpp"
-#include "fs.hpp"
+#include "macros.hpp"
 
 namespace cmm {
 struct location;
@@ -48,9 +47,11 @@ public:
     // }
   };
 
-  source_code(const fs::ifile&);
+  source_code(const std::filesystem::path&, std::string);
 
   [[nodiscard]] std::string_view get_code() const;
+  [[nodiscard]] std::filesystem::path get_input() const;
+  [[nodiscard]] std::filesystem::path get_output() const;
   [[nodiscard]] std::string get_filename() const;
   [[nodiscard]] std::string_view get_nth_line(size_t) const;
   [[nodiscard]] std::tuple<std::string_view, std::string_view, std::string_view> get_line_chunked(
@@ -60,36 +61,37 @@ public:
   std::vector<std::string> build_compilation_error(
       const std::vector<const ast::decl::function::definition*>&,
       std::string_view,
-      const location&);
+      const location&) const;
 
 private:
   std::string m_code;
-  std::filesystem::path m_file;
+  std::filesystem::path m_input;
+  std::filesystem::path m_output;
 
-  std::string build_full_location(const location&);
+  std::string build_full_location(const location&) const;
+};
+
+struct configuration {
+  STATIC_CLS(configuration);
+
+  static inline bool keep_preprocessed = false;
+  static inline bool keep_object       = false;
+  static inline bool keep_assembly     = true;
 };
 
 class compiler {
-
 public:
-  compiler(const fs::path&, const std::string&);
-  compiler(compiler&&)                 = delete;
-  compiler& operator=(compiler&&)      = delete;
-  compiler(const compiler&)            = delete;
-  compiler& operator=(const compiler&) = delete;
-  ~compiler()                          = default;
+  STATIC_CLS(compiler);
 
-  static void preprocess(const std::string& = "");
-  fs::ofile compile(const source_code&);
-  static fs::ofile assemble(fs::ofile& file);
-  static fs::ofile link(fs::ofile& file);
-  fs::ofile run();
+  static std::filesystem::path compile(std::filesystem::path, std::string);
 
   static void throw_linking_error(const std::string&);
 
 private:
-  source_code m_source_code;
-  std::string_view m_output_filename;
+  static void preprocess(const source_code&);
+  static std::filesystem::path compile(const source_code&);
+  static std::filesystem::path& assemble(std::filesystem::path&);
+  static std::filesystem::path& link(std::filesystem::path&);
 };
 
 }; // namespace cmm

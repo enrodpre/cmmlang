@@ -1,1 +1,1 @@
-set args examples/func1.cmm
+set args examples/binop.cmm

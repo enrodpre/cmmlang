@@ -6,33 +6,18 @@
 
 namespace cmm::fs {
 
-path executable() { return std::filesystem::canonical("/proc/self/exe"); }
+std::filesystem::path executable() { return std::filesystem::canonical("/proc/self/exe"); }
+std::filesystem::path executable_dir() { return executable().parent_path(); }
 
-path executable_dir() { return executable().parent_path(); }
-
-ifile::ifile(const fs::path& p)
-    : file<ifile>(p),
-      m_content(read()) {}
-
-ifile::ifile(fs::path&& p)
-    : file<ifile>(std::move(p)),
-      m_content(read()) {}
-
-[[nodiscard]] std::string ifile::read() noexcept {
+std::string read(const std::filesystem::path& t_path) {
   std::ifstream cmm_file;
-  cmm_file.open(m_path);
+  cmm_file.open(t_path);
   return {std::istreambuf_iterator<char>(cmm_file), {}};
 }
 
-ofile::ofile(const fs::path& p)
-    : file<ofile>(p) {}
-
-ofile::ofile(fs::path&& p)
-    : file<ofile>(std::move(p)) {}
-
-void ofile::write(std::string_view src) const {
-  std::ofstream f(m_path, std::ios_base::out | std::ios_base::trunc);
-  f.write(src.data(), static_cast<long>(src.size()));
+void write(const std::filesystem::path& t_path, std::string_view t_src) {
+  std::ofstream f(t_path, std::ios_base::out | std::ios_base::trunc);
+  f.write(t_src.data(), static_cast<long>(t_src.size()));
   f.close();
 }
 
