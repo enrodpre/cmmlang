@@ -21,17 +21,18 @@ namespace cmm::ir {
 using namespace cmm::assembly;
 using namespace cmm::ast;
 
-compilation_unit::compilation_unit(ast::translation_unit* t_ast, const source_code* t_code)
+compilation_unit::compilation_unit(ast::translation_unit* t_ast, source_code* t_code)
     : ast(t_ast),
       code(t_code),
       runner(*this) {
   ast->cunit = this;
 }
 
-std::string compilation_unit::compile() {
+source_code* compilation_unit::compile() {
   start();
   runner.generate_program(*ast);
-  return end();
+  code->set_compiled(end());
+  return code;
 }
 
 void compilation_unit::call(std::string_view func) {

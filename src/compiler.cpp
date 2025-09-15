@@ -44,11 +44,6 @@ std::tuple<size_t, size_t, size_t> source_code::to_coordinates(const cmm::locati
   return {line, col, col + loc.end - loc.start};
 }
 
-[[nodiscard]] std::string_view source_code::get_code() const { return m_code; }
-[[nodiscard]] path source_code::get_input() const { return m_input; }
-[[nodiscard]] path source_code::get_output() const { return m_output; }
-[[nodiscard]] std::string source_code::get_filename() const { return m_input.filename(); }
-
 [[nodiscard]] std::string_view source_code::get_nth_line(size_t nth) const {
   auto split = std::views::split(get_code(), '\n') | TO_VEC;
   if (std::ranges::empty(split)) {
@@ -76,9 +71,9 @@ std::string source_code::build_full_location(const location& loc) const {
   return std::format("{}:{}:{}", get_filename(), line, start);
 }
 
-void compiler::preprocess(const source_code&) { REGISTER_WARN("Preprocessor disabled"); }
+void compiler::preprocess(source_code&) { REGISTER_WARN("Preprocessor disabled"); }
 
-int compiler::compile(const source_code& ctx) {
+int compiler::compile(source_code& ctx) {
   lexer lexer_instance(ctx.get_code());
   auto tokens = lexer_instance.tokenize();
 
@@ -87,13 +82,9 @@ int compiler::compile(const source_code& ctx) {
 
   ir::compilation_unit cunit(&tu, &ctx);
 
-  auto asm_file = ctx.get_output();
-  asm_file.replace_extension("asm");
-
   try {
-    auto asm_code = cunit.compile();
-    cmm::fs::write(asm_file, asm_code);
-    return asm_file;
+    cunit.compile();
+    return os::SUCCESS;
   } catch (const compilation_error& e) {
     if (e.loc.has_value()) {
       auto stackframe = cunit.ast->stackframe();
@@ -109,30 +100,47 @@ int compiler::compile(const source_code& ctx) {
 }
 
 int compiler::assemble(const path& compiled) {
-  int result = os::execute(std::format("nasm -felf64 -g {}", compiled.string()));
-
-  return compiled.replace_extension("o");
+  int res = os::execute(std::format("nasm -felf64 -g {}", compiled.string()));
+  if (!configuration::keep_assembly) {
+    remove(compiled);
+  }
+  return res;
 }
 
 int compiler::link(const path& t_obj, const path& t_binary) {
   int result = os::execute(std::format("ld -o {} {}", t_obj.string(), t_binary.string()));
   if (!configuration::keep_object) {
-    remove(t_binary);
+    remove(t_obj);
   }
+  return result;
 }
 
 int compiler::compile(path t_path, std::string t_out) {
   source_code context{t_path, t_out};
 
-  REGISTER_INFO("Compiling {}", context.get_input().string());
+  REGISTER_INFO("Compiling {}", context.get_input());
 
   preprocess(context);
-  auto asm_file     = compile(context);
+  compile(context);
+  auto compiled = context.get_compiled();
+  auto out      = context.get_output();
+  auto asm_file = out;
+  asm_file.replace_extension("asm");
+  fs::write(asm_file, compiled);
 
-  auto obj_file     = assemble(asm_file);
-  const auto binary = link(obj_file);
+  auto asm_res = assemble(asm_file);
+  if (asm_res != 0) {
+    REGISTER_ERROR("Error assembling");
+    return os::ASSEMBLER_ERROR;
+  }
 
-  REGISTER_INFO("Succesfully compiled {} into {}", context.get_filename(), binary.string());
+  auto link_res = link(out.replace_extension(""), context.get_output());
+  if (link_res != 0) {
+    REGISTER_ERROR("Error linking");
+    return os::LINKING_ERROR;
+  }
+
+  REGISTER_INFO("Succesfully compiled {} into {}", context.get_filename(), context.get_output());
 
   return 0;
 }

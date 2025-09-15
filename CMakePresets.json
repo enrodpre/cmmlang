@@ -19,7 +19,7 @@
         "CMAKE_MODULE_PATH": "${sourceDir}/cmake",
         "ENABLE_IWYU": "OFF",
         "IWYU_AUTOFIX": "OFF",
-        "LOG_LEVEL": "5",
+        "LOG_LEVEL": "TRACE",
         "BUILD_TESTING": "ON",
         "BUILD_INTEGRATION": "ON",
         "ENABLE_TEST_COVERAGE": "OFF"

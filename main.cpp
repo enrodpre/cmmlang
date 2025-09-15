@@ -3,33 +3,32 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <spdlog/spdlog.h>
 #include <string>
 
 #include "compiler.hpp"
 #include "os.hpp"
 
-#define ADD_DUMP_OPT(OPTION, DESC) OPTION, DESC, cxxopts::value<bool>()
-#define GET_DUMP_OPT(OPTION)       result[OPTION].as<bool>()
-
 using namespace cmm;
 
-static uint64_t s_allocs = 0;
-static uint64_t s_size   = 0;
-void* operator new(size_t t_size) {
-  s_allocs++;
-  s_size += t_size;
-  std::cout << "Allocating " << t_size << '\n';
-  return malloc(t_size);
-}
-
-void print_allocations() {
-  std::cout << "Allocated " << s_size << " bytes " << s_allocs << "times" << '\n';
-}
+// static uint64_t s_allocs = 0;
+// static uint64_t s_size   = 0;
+// void* operator new(size_t t_size) {
+//   s_allocs++;
+//   s_size += t_size;
+//   std::cout << "Allocating " << t_size << '\n';
+//   return malloc(t_size);
+// }
+//
+// void print_allocations() {
+//   std::cout << "Allocated " << s_size << " bytes " << s_allocs << "times" << '\n';
+// }
 
 int main(int argc, char* argv[]) {
-  std::atexit(print_allocations);
+  // std::atexit(print_allocations);
   std::string INPUT_ARG               = "input";
   std::string DEFAULT_OUTPUT_FILENAME = "res";
+  initialize_logging();
 
   cxxopts::Options options("CmmLang", "Compiler for cmm language");
   options.add_options()("h,help", "Show help")(

@@ -55,14 +55,14 @@ public:
   assembly::registers regs;
   cmm::assembly::asmgen asmgen;
   translation_unit* ast;
-  const source_code* code;
+  source_code* code;
   ast_traverser runner;
 
   ///////// FUNCTIONS //////////
 
-  compilation_unit(ast::translation_unit*, const source_code*);
+  compilation_unit(ast::translation_unit*, source_code*);
 
-  std::string compile();
+  source_code* compile();
 
   [[nodiscard]] decl::function::definition* active_frame() noexcept { return stackframe.top(); }
   [[nodiscard]] const decl::function::definition* active_frame() const noexcept {

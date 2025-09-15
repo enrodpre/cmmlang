@@ -23,17 +23,18 @@ endif()
 set(WARNING_LEVEL SOME CACHE STRING "The level of the enabled warnings")
 set_property(CACHE WARNING_LEVEL PROPERTY STRINGS NONE SOME ALL ERROR)
 option(BUILD_TESTING "Build tests")
-option(WARNING_LEVEL "The set warning level")
 option(USE_ASAN "Compile address sanitizer into the binary")
 option(ENABLE_IWYU "Enable include-what-you-use analysis")
 option(IWYU_AUTOFIX "Automatically apply IWYU suggestions")
 option(BUILD_INTEGRATION "Build integration tests")
 
-option(LOG_LEVEL "Log level" ${LOG_LEVEL})
-if(NOT LOG_LEVEL MATCHES "^[0-5]$")
-  message(FATAL_ERROR "LOG_LEVEL must be between 0 and 5, got: ${LOG_LEVEL}")
+set(LOG_LEVELS "TRACE" CACHE STRING "Log level")
+set_property(CACHE LOG_LEVELS PROPERTY STRINGS "TRACE" "DEBUG" "INFO" "WARN" "ERR" "CRITICAL" "OFF")
+if(NOT LOG_LEVEL IN_LIST LOG_LEVELS)
+  message(FATAL_ERROR "LOG_LEVEL must be valid, got ${LOG_LEVEL}, valid values: ${LOG_LEVELS}")
 endif()
-add_compile_definitions(-DLOG_LEVEL=${LOG_LEVEL})
+
+add_compile_definitions("-DSPDLOG_ACTIVE_LEVEL=SPD_LEVEL_${LOG_LEVEL}")
 
 message(STATUS "Log level: ${LOG_LEVEL}")
 
@@ -84,10 +85,10 @@ endfunction()
 
 create_symlink(examples)
 
-target_compile_definitions(CmmLib PUBLIC SAVE_PREPROCESSED=0 SAVE_ASSEMBLY=1)
+# target_compile_definitions(CmmLib PUBLIC SPDLOG_ACTIVE_LEVEL=)
 target_link_libraries(
    ${LIBNAME} PUBLIC magic_enum::magic_enum
-                           Revisited )
+                           Revisited spdlog::spdlog)
 target_include_directories(
   ${LIBNAME}
   PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
