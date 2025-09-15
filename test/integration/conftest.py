@@ -103,7 +103,7 @@ def pytest_configure(config):
     config.option.tb = "no"
     config.option.disable_warnings = True
     config.option.show_capture = "all"
-    sys.stdout = StringIO()
+    # sys.stdout = StringIO()
 
 
 def pytest_collection_modifyitems(config, items):

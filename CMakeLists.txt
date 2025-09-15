@@ -49,6 +49,10 @@ CPMAddPackage(
   SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/Revisited"
 )
 
+if (NOT TARGET spdlog)
+  find_package(spdlog REQUIRED)
+endif()
+
 # target_precompile_headers()
 
 # Apply warning flags depending on selection

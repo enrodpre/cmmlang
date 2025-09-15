@@ -6,13 +6,28 @@
 #include <string>
 
 #include "compiler.hpp"
+#include "os.hpp"
 
 #define ADD_DUMP_OPT(OPTION, DESC) OPTION, DESC, cxxopts::value<bool>()
 #define GET_DUMP_OPT(OPTION)       result[OPTION].as<bool>()
 
 using namespace cmm;
 
+static uint64_t s_allocs = 0;
+static uint64_t s_size   = 0;
+void* operator new(size_t t_size) {
+  s_allocs++;
+  s_size += t_size;
+  std::cout << "Allocating " << t_size << '\n';
+  return malloc(t_size);
+}
+
+void print_allocations() {
+  std::cout << "Allocated " << s_size << " bytes " << s_allocs << "times" << '\n';
+}
+
 int main(int argc, char* argv[]) {
+  std::atexit(print_allocations);
   std::string INPUT_ARG               = "input";
   std::string DEFAULT_OUTPUT_FILENAME = "res";
 
@@ -47,22 +62,15 @@ int main(int argc, char* argv[]) {
 
   if (!input_file.has_value()) {
     REGISTER_ERROR("No input file provided");
-    exit(EXIT_FAILURE);
+    return os::status_code::INVALID_ARGS;
   }
 
   std::filesystem::path input_path{input_file.value()};
 
   if (!std::filesystem::exists(input_path)) {
     REGISTER_ERROR("Input file {} does not exist", input_path.string());
-    exit(EXIT_FAILURE);
+    return os::status_code::FILE_NOT_FOUND;
   }
 
-  // bool dump_tokens = GET_DUMP_OPT("dump-tokens");
-  // bool dump_ast    = GET_DUMP_OPT("dump-ast");
-  // bool dump_state  = GET_DUMP_OPT("dump-state");
-  // bool dump_memory = GET_DUMP_OPT("dump-memory");
-
-  compiler::compile(input_path, output_name);
-
-  return EXIT_SUCCESS;
+  return compiler::compile(input_path, output_name);
 }

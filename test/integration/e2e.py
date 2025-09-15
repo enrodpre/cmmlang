@@ -16,13 +16,6 @@ def get_examples():
     return (name for name in RESOURCES_PATH.iterdir() if name.is_file())
 
 
-def run(filename: Path):
-    res = subprocess.run(GENERATED_PATH / filename.stem, capture_output=True, text=True)
-
-
-return res.returncode
-
-
 testfiles = get_examples()
 
 
@@ -57,9 +50,12 @@ def test_case(filename: Path, request):
 
     if res.returncode != 0:
         request.node.user_properties.append(("stderr", res.stderr.strip()))
-        pytest.fail(f"Compilation not successfull. {res.stderr}")
+        pytest.fail(res.stderr)
 
     assert output_path.exists()
 
-    actual_status = run(output_path)
+    result = subprocess.run(
+        GENERATED_PATH / filename.stem, capture_output=True, text=True
+    )
+    actual_status = result.returncode
     assert OK_STATUS == actual_status

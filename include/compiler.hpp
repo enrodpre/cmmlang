@@ -27,6 +27,7 @@ public:
     iterator()              = default;
     iterator(std::string_view t_code)
         : m_code(t_code) {}
+    NOT_COPYABLE_CLS(source_code);
     reference operator*() const { return m_current; }
     // iterator& operator++() {}
     // iterator& operator++(int) {}
@@ -83,15 +84,15 @@ class compiler {
 public:
   STATIC_CLS(compiler);
 
-  static std::filesystem::path compile(std::filesystem::path, std::string);
+  static int compile(std::filesystem::path, std::string);
 
   static void throw_linking_error(const std::string&);
 
 private:
   static void preprocess(const source_code&);
-  static std::filesystem::path compile(const source_code&);
-  static std::filesystem::path& assemble(std::filesystem::path&);
-  static std::filesystem::path& link(std::filesystem::path&);
+  static int compile(const source_code&, std::string&);
+  static int assemble(const std::filesystem::path&, const std::filesystem::path&);
+  static int link(const std::filesystem::path&, const std::filesystem::path&);
 };
 
 }; // namespace cmm

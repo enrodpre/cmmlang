@@ -21,10 +21,6 @@ set(PYTEST_BASE_OPTS
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
 
-add_test(NAME single_example
-  COMMAND pytest "${CMAKE_BINARY_DIR}/e2e.py"
-  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-)
 
 function(add_integration_test_target TARGET_NAME)
   set(options VERBOSE JSON_REPORT)
@@ -56,19 +52,22 @@ function(add_integration_test_target TARGET_NAME)
     list(APPEND PYTEST_CMD ${ARGS_PYTEST_ARGS})
   endif()
 
-  list(APPEND PYTEST_CMD e2e.py)
+  list(APPEND PYTEST_CMD --root-dir ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/e2e.py -v)
 
   # Create the target
-  add_custom_target(${TARGET_NAME}
-        COMMAND ${CMAKE_COMMAND} -E echo "Setting up test environment..."
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/examples ${CMAKE_CURRENT_BINARY_DIR}/examples
-        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/conftest.py ${CMAKE_CURRENT_BINARY_DIR}
-        COMMAND ${CMAKE_COMMAND} -E echo "Running integration tests in ${CMAKE_CURRENT_BINARY_DIR}..."
+  add_test(NAME ${TARGET_NAME}
         COMMAND ${CMAKE_COMMAND} -E env ${ARGS_ENV_VARS} ${PYTEST_CMD}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Running ${TARGET_NAME} in ${CMAKE_CURRENT_BINARY_DIR}"
-        USES_TERMINAL
     )
+  set_tests_properties(${TARGET_NAME} PROPERTIES
+            LABELS "integration;python"
+            TIMEOUT 300
+        )
+
+  # Make sure C++ targets are built before running integration tests
+  set_tests_properties(${TARGET_NAME} PROPERTIES
+            DEPENDS "CmmLang"  # Replace with your actual target name
+        )
 endfunction()
 add_integration_test_target(integration)
 add_custom_target(test-help

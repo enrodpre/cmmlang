@@ -169,13 +169,9 @@ struct token_data : public cmm::enumeration<token_t> {
   IS_GROUP(is_binary_operator, binary)
 
   [[nodiscard]] bool is_specifier() const { return is_storage() || is_modifier() || is_type(); }
-
-  [[nodiscard]] bool is_from_expression() const {
-    return is_literal() || is(ident) || is_operator() || is(o_paren) || is(c_paren);
-  }
 };
 
-struct token : public displayable {
+struct token : displayable {
   token_t type;
   std::string_view value;
   token(token_t t, cmm::location&& t_location, std::string_view t_sv = {})

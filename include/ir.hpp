@@ -5,7 +5,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include "asm.hpp"
 #include "ast.hpp"
@@ -16,9 +15,6 @@
 
 namespace cmm {
 class source_code;
-namespace types {
-struct type_id;
-} // namespace types
 
 namespace ast {
 struct identifier;
@@ -30,9 +26,6 @@ namespace cmm::ir {
 
 using assembly::operand;
 
-enum class address_intent_t : uint8_t { HAVING_VALUE = 0, HAVING_ADDRESS, CARENT };
-enum class address_mode_intent_t : uint8_t { COPY = 0, ADDRESS_MEMORY, LOAD_ADDRESS };
-
 enum class Phase : uint8_t {
   STOPPED = 0,
   GENERATING,
@@ -41,7 +34,7 @@ enum class Phase : uint8_t {
   EXITING
 };
 
-struct compilation_unit : public default_singleton<compilation_unit> {
+struct compilation_unit {
 public:
   /////////// OBJECTS //////////
 
@@ -57,31 +50,34 @@ public:
   } counters;
 
   std::optional<instruction_t> next_jump;
-  Phase current_phase       = Phase::STOPPED;
-  const source_code* source = nullptr;
-  assembly::registers regs;
+  Phase current_phase = Phase::STOPPED;
 
+  assembly::registers regs;
   cmm::assembly::asmgen asmgen;
   translation_unit* ast;
+  const source_code* code;
   ast_traverser runner;
 
   ///////// FUNCTIONS //////////
 
-  [[nodiscard]] std::string current_line() const;
+  compilation_unit(ast::translation_unit*, const source_code*);
 
-  std::string compile(translation_unit&, const source_code*);
+  std::string compile();
 
+  [[nodiscard]] decl::function::definition* active_frame() noexcept { return stackframe.top(); }
+  [[nodiscard]] const decl::function::definition* active_frame() const noexcept {
+    return stackframe.top();
+  }
   void reserve_static_var(std::string_view);
   void reserve_memory(std::string_view, std::string_view, std::string_view);
   assembly::label_literal* reserve_constant(std::string_view);
-  template <typename T, typename Id = T::identifier_t>
-  const T* get_callable(Id id, const expr::arguments&) const;
   operand* call_builtin_operator(const operator_&, const ast::expr::arguments&);
   std::optional<operand*> call_function(const identifier&, const ast::expr::arguments&);
 
   template <assembly::Operand... Args>
   void instruction(const instruction_t&, Args&&...);
   operand* move(operand*, operand*);
+  void move_rsp(int64_t);
   operand* lea(operand*, operand*);
   operand* move_immediate(operand*, std::string_view);
   operand* return_reg(operand*);
@@ -100,22 +96,13 @@ public:
   void label(std::string_view);
   void comment(std::string_view);
 
-  friend default_singleton<compilation_unit>;
-
-protected:
-  compilation_unit();
+  stack<decl::function::definition*> stackframe;
 
 private:
   void start();
   std::string end();
 
   void load_arguments(const parameters&, const expr::arguments&);
-  template <typename T, typename Id>
-  std::vector<const callable*> get_candidates(Id, const expr::arguments&) const;
-  template <typename Id>
-  const callable* resolve_overloads(Id, std::vector<const callable*>, const expr::arguments&) const;
-  [[nodiscard]] static bool match_arguments(const std::vector<types::type_id>&,
-                                            const std::vector<types::type_id>&);
 };
 
 } // namespace cmm::ir

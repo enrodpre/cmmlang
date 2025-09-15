@@ -7,6 +7,7 @@
 #include "types.hpp"
 #include <algorithm>
 #include <initializer_list>
+#include <magic_enum/magic_enum_flags.hpp>
 #include <ranges>
 #include <type_traits>
 #include <utility>
@@ -74,6 +75,12 @@ function::function(decltype(specs)&& s,
       params(std::move(args)),
       body(body_) {}
 
+cmm::parameters decl::function::parameters_impl() const {
+  return params | std::views::transform([](const variable& t_var) -> cmm::parameter {
+           return {t_var.specs.type, t_var.init};
+         }) |
+         std::ranges::to<memory::vector<cmm::parameter>>();
+}
 std::vector<node*> decl::function::children() {
   return {to_node(&ident), to_node(&specs), to_node(&params), to_node(body)};
 }
@@ -229,10 +236,10 @@ void variable_store::insert(const decl::variable* var, assembly::operand* op) {
   THROW(UNDECLARED_SYMBOL, ident);
 }
 
-assembly::operand* function::definition::declare_parameter(const parameter& var,
+assembly::operand* function::definition::declare_parameter(const variable& var,
                                                            assembly::operand* op) {
   variables.insert(&var, op);
-  return op->hold_value(&var);
+  return op->hold(&var);
 }
 
 size_t translation_unit::pop_frame() {
@@ -278,35 +285,35 @@ constexpr builtin_callable create_same_args(type_id ret, const type_id& args) {
 }
 
 constexpr auto create_overloaded_op(const std::vector<type_id>& types, std::vector<instruction> ins)
-    -> std::vector<std::tuple<type_id, std::vector<type_id>, std::vector<instruction>>> {
+    -> std::vector<std::tuple<type_id, parameters, std::vector<instruction>>> {
   return types | std::views::transform([ins](type_id t) {
-           return std::make_tuple(t, std::vector<type_id>{t, t}, ins);
+           return std::make_tuple(t, parameters{t, t}, ins);
          }) |
          TO_VEC;
 }
 
 template <instruction_t Ins>
 constexpr auto create_overloaded_op(type_id ret, const std::vector<type_id>& types)
-    -> std::vector<std::tuple<type_id, std::vector<type_id>, std::vector<instruction>>> {
+    -> std::vector<std::tuple<type_id, parameters, std::vector<instruction>>> {
 
   return types | std::views::transform([ret](type_id t) {
-           return std::make_tuple(ret, std::vector<type_id>{t, t}, create_ins<Ins>());
+           return std::make_tuple(ret, parameters{t, t}, create_ins<Ins>());
          }) |
          TO_VEC;
 }
 
 constexpr auto provide_operator_overloads(
     operator_t op,
-    std::vector<std::tuple<type_id, std::vector<type_id>, std::vector<instruction>>> ovs)
+    std::vector<std::tuple<type_id, parameters, std::vector<instruction>>> ovs)
     -> std::pair<operator_t,
-                 std::vector<std::tuple<type_id, std::vector<type_id>, std::vector<instruction>>>> {
+                 std::vector<std::tuple<type_id, parameters, std::vector<instruction>>>> {
   return std::make_pair(op, ovs);
 }
 
 using builtin_data = std::vector<
-    std::pair<operator_t,
-              std::vector<std::tuple<type_id, std::vector<type_id>, std::vector<instruction>>>>>;
-auto provide_builtin_callables() {
+    std::pair<operator_t, std::vector<std::tuple<type_id, parameters, std::vector<instruction>>>>>;
+
+static auto provide_builtin_callables() {
   builtin_data data = {
       {
        provide_operator_overloads(
@@ -373,13 +380,13 @@ auto provide_builtin_callables() {
   };
   return data | std::views::transform([](const auto& pair) {
            operator_t op = pair.first;
-           std::vector<std::tuple<type_id, std::vector<type_id>, std::vector<instruction>>>
-               overloads = pair.second;
+           std::vector<std::tuple<type_id, parameters, std::vector<instruction>>> overloads =
+               pair.second;
            auto callables =
                overloads |
                std::views::transform(
-                   [op](const std::tuple<type_id, std::vector<type_id>, std::vector<instruction>>&
-                            data) -> builtin_callable {
+                   [op](const std::tuple<type_id, parameters, std::vector<instruction>>& data)
+                       -> builtin_callable {
                      const auto& [ret, types, ins] = data;
                      return {op, ret, types, ins};
                    }) |
@@ -389,20 +396,18 @@ auto provide_builtin_callables() {
          std::ranges::to<std::unordered_map>();
 }
 } // namespace
-translation_unit::translation_unit()
-    : builtin_operators(provide_builtin_callables()) {}
+translation_unit::translation_unit(global_declarations decls)
+    : stmts(std::move(decls)) {}
 
 void translation_unit::clear() noexcept {
   m_stackframe.clear();
-  m_functions.clear();
+  functions.clear();
   variables.clear();
 }
 
 const decl::label* translation_unit::get_label(const ast::identifier& id) const {
   return active_frame()->labels.at(id.value().data());
 }
-
-void block::declare_label(const ast::decl::label* l) { labels.emplace(l->ident.value(), l); }
 
 assembly::operand* scope::declare_variable(ast::decl::variable* decl) {
   variables.insert(decl, nullptr);
@@ -424,40 +429,47 @@ assembly::operand* translation_unit::declare_variable(ast::decl::variable* var) 
   if (m_stackframe.empty()) {
     addr = assembly::operand_factory::create_label(var->string());
     variables.insert(var, addr);
-    addr->hold_address(var);
-    m_context->reserve_static_var(var->string());
+    addr->hold(var);
+    cunit->reserve_static_var(var->string());
   } else {
-    auto offset = active_frame()->local_stack.size() + 1;
-    addr        = assembly::operand_factory::create_stack_memory(offset);
+    active_frame()->local_stack.push();
+    auto offset = active_frame()->local_stack.size();
+    addr        = assembly::operand_factory::create_stack_memory(offset, this);
     active_frame()->variables.insert(var, addr);
-    addr->hold_value(var);
+    addr->hold(var);
   }
   return addr;
 }
 
-void translation_unit::declare_function(decl::function* func, bool) {
-  if (is_declared<decl::function>(func->ident)) {
-    THROW(ALREADY_DECLARED_SYMBOL, func->ident);
+void translation_unit::declare_function(decl::function* t_func) {
+  REGISTER_TRACE("Creating func {}", t_func->ident.value());
+  functions.insert(t_func);
+  if (t_func->body) {
+    define_function(t_func);
   }
-  REGISTER_TRACE("Creating func {}", func->ident.value());
-  m_functions.insert(func);
 }
 
 void translation_unit::define_function(ast::decl::function* t_func) {
-  // if (ast->is_declar) {
-  //   throw_error<compilation_error_t::ALREADY_DEFINED_FUNCTION>(t_func->ident);
-  // }
+  assert(t_func->body != nullptr);
+
+  if (!functions.contains(t_func->ident)) {
+    THROW(UNDECLARED_SYMBOL, t_func->ident);
+  }
+  auto* declared_func = functions.at(t_func->ident);
+  if (declared_func->body == nullptr) {
+    THROW(ALREADY_DEFINED_FUNCTION, t_func->ident);
+  }
 
   create_frame(t_func->body);
-  auto registers = m_context->regs.parameters();
-  for (const variable& param : t_func->parameters()) {
+  auto registers = cunit->regs.parameters();
+  for (const variable& param : t_func->params) {
     active_frame()->declare_parameter(param, registers.next());
   }
   active_frame()->local_stack.push();
-  m_context->asmgen.load_new_procedure(t_func->ident.value());
-  m_context->runner.generate_statements(*t_func->body);
+  cunit->asmgen.load_new_procedure(t_func->ident.value());
+  cunit->runner.generate_statements(*t_func->body);
 
-  m_context->asmgen.save_current_procedure();
+  cunit->asmgen.save_current_procedure();
 
   size_t ditched_vars = pop_frame();
 
@@ -487,23 +499,11 @@ bool translation_unit::in_main() const noexcept {
   return parent->ident.value() == "main";
 }
 
-template <typename T>
 bool translation_unit::is_declarable(const ast::identifier& id) const noexcept {
-  if constexpr (std::is_same_v<decl::variable, T>) {
-    // Only check current scope
-    return !active_scope()->variables.contains(id);
-  } else if constexpr (std::is_same_v<decl::function, T>) {
-    return !m_functions.contains(id.string());
-  } else {
-    return !active_frame()->labels.contains(id);
-  }
+  // Only check current scope
+  return !active_scope()->variables.contains(id) && !functions.contains(id) &&
+         !(!is_global_scope() ? !active_frame()->labels.contains(id) : true);
 }
-
-template bool translation_unit::is_declarable<decl::function>(
-    const ast::identifier&) const noexcept;
-template bool translation_unit::is_declarable<decl::variable>(
-    const ast::identifier&) const noexcept;
-template bool translation_unit::is_declarable<decl::label>(const ast::identifier&) const noexcept;
 
 template <typename T>
 bool translation_unit::is_declared(const ast::identifier& id) const noexcept {
@@ -513,7 +513,7 @@ bool translation_unit::is_declared(const ast::identifier& id) const noexcept {
     return (!is_global_scope() && !m_stackframe.empty() && active_frame()->is_declared(id)) ||
            variables.contains(id);
   } else if constexpr (std::is_same_v<decl::function, T>) {
-    return m_functions.get_by_name(id).size() > 0;
+    return functions.get_by_name(id).size() > 0;
   } else {
     return active_frame()->labels.contains(id);
   }
@@ -527,8 +527,170 @@ std::vector<const ast::decl::function::definition*> translation_unit::stackframe
   }
   return res;
 }
-void translation_unit::set_context(ir::compilation_unit* ctx) { m_context = ctx; }
+
+template <typename T, typename Id>
+std::vector<const callable*> translation_unit::get_candidates(Id t_id,
+                                                              const expr::arguments& t_args) const {
+  if constexpr (std::is_same_v<T, builtin_callable>) {
+    return translation_unit::operators.at(t_id.value()) |
+           std ::views ::transform(
+               [](const auto& elem) { return dynamic_cast<const callable*>(&elem); }) |
+           std ::ranges ::to<std ::vector>();
+
+  } else if constexpr (std::is_same_v<T, decl::function>) {
+    return CAST_RANGE(functions.get_by_name(t_id), const callable);
+  }
+}
+template <typename T, typename Id>
+const T* translation_unit::get_callable(Id id, const expr::arguments& argument_expressions) const {
+  auto argument_types = argument_expressions | MAP_RANGE(expr::expression*, elem->type());
+
+  std::vector<const callable*> overloads = get_candidates<T, Id>(id, argument_expressions);
+  auto possible_exact_match =
+      overloads | std::views::filter([argument_types](const callable* fn) -> bool {
+        return std::ranges::equal(
+            (fn->parameters() |
+             std ::views ::transform([](const parameter& param) -> type_id { return param.type; })),
+            argument_types);
+      }) |
+      TO_VEC;
+
+  if (possible_exact_match.size() == 1) {
+    return dynamic_cast<const T*>(possible_exact_match.front());
+  }
+
+  // Overload resolution
+  auto resolved = resolve_overloads(id, overloads, argument_expressions);
+  if (!resolved) {
+    THROW(UNDECLARED_SYMBOL, id);
+  }
+
+  return dynamic_cast<const T*>(resolved);
+}
+
+template <typename Id>
+const callable* translation_unit::resolve_overloads(
+    Id id,
+    std::vector<const callable*> candidates,
+    const expr::arguments& argument_expressions) const {
+  // Already have candidates
+  // Lets check number of parameters
+  auto check_param_number = [argument_expressions](const callable* fn) {
+    auto parameters = fn->parameters();
+    auto n_params   = parameters.size();
+    auto n_args     = argument_expressions.size();
+    if (n_params > n_args) {
+      auto idx = n_params - (n_params - n_args);
+      for (; idx < n_params; ++idx) {
+        if (parameters.at(idx).init == nullptr) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    if (n_params < n_args) {
+      // Ellipsis is not yet implemented
+      return false;
+    }
+
+    // n_params == n_args
+    return true;
+  };
+  auto step1 = candidates | std::views::filter(check_param_number) | TO_VEC;
+  REGISTER_TRACE("Tras step1 quedan {}", step1.size());
+  auto check_binding_rules = [argument_expressions](const callable* fn) {
+    // Binding rules
+    auto parameters = fn->parameters();
+    return std::ranges::all_of(
+        std::views::zip(parameters, argument_expressions), [](const auto& pair) {
+          const auto& [parameter, expression] = pair;
+          // If the parameter is reference, it applies the binding rule
+          // Binding rules are supposed to be counted as  a implicit conversions
+          // But for now we'll just take into account the implicit conversion rule
+          // on those parameter types that are not reference (hence applies the binding rule)
+          if (types::is_reference(parameter.type).ok) {
+            // If is a lvalue argument with a non const lvalue ref parameter
+            bool rvaluearg_nonconstlvalue =
+                (types::is_lvalue && types::is_const)(parameter.type).ok &&
+                expression->value_category() == value_category_t::RVALUE;
+            // Or lvalue arg with rvalue reference parameter
+            bool lvaluearg_rvaluerefparam =
+                types::is_rvalue(parameter.type).ok &&
+                expression->value_category() == value_category_t::LVALUE;
+            // Is not viable function
+            return !rvaluearg_nonconstlvalue && !lvaluearg_rvaluerefparam;
+          }
+
+          return std::ranges::any_of(standard_conversions, [&expression](const conversor* conv) {
+            return conv->is_convertible(expression->value_category(), expression->type());
+          });
+        });
+  };
+  auto step2 = step1 | std::views::filter(check_binding_rules) | TO_VEC;
+  REGISTER_TRACE("Tras step2 quedan {}", step2.size());
+  if (step2.size() == 0) {
+    return nullptr;
+  }
+  return step2.front();
+}
+
+[[nodiscard]] bool translation_unit::match_arguments(const std::vector<type_id>& builtin,
+                                                     const std::vector<type_id>& called) {
+  return std::ranges::all_of(std::views::zip(builtin, called), [](const auto& pair) {
+    const auto& [required, actual] = pair;
+    return required == actual;
+  });
+}
+cmm::binding_mode_t translation_unit::bind_value(value_category_t cat, type_id type) {
+  auto mode = binding_rules.at(cat) |
+              FILTER([type](const auto& rule) { return rule.first(type).ok; }) |
+              std::views::values | TO_VEC;
+  if (mode.empty()) {
+    THROW(NOT_BINDEABLE, type, cat);
+  }
+  if (mode.size() > 1) {
+    REGISTER_WARN("Too many results when binding values, {}", mode);
+  }
+  return mode.front();
+}
+
+ast::expr::expression* translation_unit::bind_expression(ast::expr::expression* t_expr,
+                                                         type_id t_param) {
+  auto mode = translation_unit::bind_value(t_expr->value_category(), t_param);
+  using enum value_category_t;
+  using enum binding_mode_t;
+  switch (magic_enum::enum_fuse(t_expr->value_category(), mode).value()) {
+    case magic_enum::enum_fuse(LVALUE, COPY).value():
+      {
+        t_expr->current_conversor = lvalue_to_rvalue;
+        return t_expr;
+      }
+      break;
+    default:
+      return t_expr;
+  }
+}
+bool translation_unit::is_bindable_to(value_category_t t_value, types::type_id t_type) {
+  return std::ranges::any_of(binding_rules[t_value],
+                             [t_type](const auto& t_rule) { return t_rule.first(t_type); });
+}
 
 template bool translation_unit::is_declared<decl::label>(const ast::identifier&) const noexcept;
 
+template const ast::decl::function* translation_unit::get_callable(
+    ast::identifier id,
+    const expr::arguments& argument_expressions) const;
+template const builtin_callable* translation_unit::get_callable(
+    ast::operator_ id,
+    const expr::arguments& argument_expressions) const;
+
+decltype(translation_unit::operators) translation_unit::operators = provide_builtin_callables();
+decltype(translation_unit::unary_matchers) translation_unit::unary_matchers =
+    &types::unary_matchers;
+decltype(translation_unit::modifiers) translation_unit::modifiers = &types::modifiers;
+decltype(translation_unit::types) translation_unit::types         = &types::manager::instance();
+decltype(translation_unit::standard_conversions) translation_unit::standard_conversions = {
+    &lvalue_to_rvalue,
+    &any_to_bool};
 } // namespace cmm::ast

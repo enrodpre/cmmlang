@@ -41,7 +41,7 @@ std::tuple<size_t, size_t, size_t> source_code::to_coordinates(const cmm::locati
     }
   }
 
-  return {line, col, loc.end - loc.start};
+  return {line, col, col + loc.end - loc.start};
 }
 
 [[nodiscard]] std::string_view source_code::get_code() const { return m_code; }
@@ -54,17 +54,20 @@ std::tuple<size_t, size_t, size_t> source_code::to_coordinates(const cmm::locati
   if (std::ranges::empty(split)) {
     throw std::range_error("error nth line");
   }
-  auto subrange = *split.begin();
-  return std::string_view{std::ranges::subrange(subrange)};
+  auto subrange = split.begin();
+  while (--nth > 0) {
+    subrange++;
+  };
+  return std::string_view{*subrange};
 }
 
 std::tuple<std::string_view, std::string_view, std::string_view> source_code::get_line_chunked(
     const location& loc) const {
   const auto& [line, col_start, col_end] = to_coordinates(loc);
   auto str                               = get_nth_line(line);
-  auto left                              = str.substr(0, col_start);
-  auto middle                            = str.substr(col_start, col_end - col_start);
-  auto right                             = str.substr(col_end);
+  auto left                              = str.substr(0, col_start - 1);
+  auto middle                            = str.substr(col_start - 1, col_end - col_start);
+  auto right                             = str.substr(col_end - 1);
 
   return {left, middle, right};
 }
@@ -75,20 +78,20 @@ std::string source_code::build_full_location(const location& loc) const {
 
 void compiler::preprocess(const source_code&) { REGISTER_WARN("Preprocessor disabled"); }
 
-path compiler::compile(const source_code& ctx) {
+int compiler::compile(const source_code& ctx) {
   lexer lexer_instance(ctx.get_code());
   auto tokens = lexer_instance.tokenize();
 
   parser::parser parser(tokens);
-  auto compound               = parser.parse();
+  ast::translation_unit tu = parser.parse();
 
-  ir::compilation_unit& cunit = ir::compilation_unit::instance();
+  ir::compilation_unit cunit(&tu, &ctx);
 
-  auto asm_file               = ctx.get_output();
+  auto asm_file = ctx.get_output();
   asm_file.replace_extension("asm");
 
   try {
-    auto asm_code = cunit.compile(compound, &ctx);
+    auto asm_code = cunit.compile();
     cmm::fs::write(asm_file, asm_code);
     return asm_file;
   } catch (const compilation_error& e) {
@@ -101,27 +104,24 @@ path compiler::compile(const source_code& ctx) {
     } else {
       REGISTER_ERROR("{}", e.what());
     }
-    exit(1);
+    return os::COMPILATION_ERROR;
   }
 }
 
-path& compiler::assemble(std::filesystem::path& compiled) {
-  os::execute(std::format("nasm -felf64 -g {}", compiled.string()));
+int compiler::assemble(const path& compiled) {
+  int result = os::execute(std::format("nasm -felf64 -g {}", compiled.string()));
 
   return compiled.replace_extension("o");
 }
 
-path& compiler::link(path& obj_file) {
-  auto binary = obj_file;
-  os::execute(std::format("ld -o {} {}", obj_file.replace_extension("").string(), binary.string()));
+int compiler::link(const path& t_obj, const path& t_binary) {
+  int result = os::execute(std::format("ld -o {} {}", t_obj.string(), t_binary.string()));
   if (!configuration::keep_object) {
-    remove(binary);
+    remove(t_binary);
   }
-
-  return obj_file;
 }
 
-path compiler::compile(path t_path, std::string t_out) {
+int compiler::compile(path t_path, std::string t_out) {
   source_code context{t_path, t_out};
 
   REGISTER_INFO("Compiling {}", context.get_input().string());
@@ -134,7 +134,7 @@ path compiler::compile(path t_path, std::string t_out) {
 
   REGISTER_INFO("Succesfully compiled {} into {}", context.get_filename(), binary.string());
 
-  return binary;
+  return 0;
 }
 
 void compiler::throw_linking_error(const std::string& err) {

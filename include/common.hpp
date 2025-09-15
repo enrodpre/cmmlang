@@ -85,8 +85,8 @@ enum class Level : uint8_t { NONE = 0, ERROR, WARN, INFO, DEBUG, TRACE };
 #  define WRITE_STDOUT(fmt_string, ...)
 #else
 #  define WRITE_STDOUT(fmt_string, ...) std::print(stdout, fmt_string, ##__VA_ARGS__)
-#  define REGISTER_LOG(lvl, file, header_color, formatter_string, ...)                       \
-    std::print(file, "[{}:{} {}] ", __FILE_NAME__, __LINE__, log::apply(lvl, header_color)); \
+#  define REGISTER_LOG(lvl, file, header_color, formatter_string, ...)                            \
+    std::print(file, "[{}:{} {}] ", __FILE_NAME__, __LINE__, cmm::log::apply(lvl, header_color)); \
     std::println(file, formatter_string, ##__VA_ARGS__)
 #endif
 
@@ -127,8 +127,8 @@ enum class Level : uint8_t { NONE = 0, ERROR, WARN, INFO, DEBUG, TRACE };
 #  else
 #    define MEMORY_TRACE(std_string, ...)
 #  endif
-#  define REGISTER_TRACE(std_string, ...)                                                       \
-    REGISTER_LOG(STRINGIZE_IMPL(TRACE), stdout, log::style_t::WHITE, std_string, ##__VA_ARGS__)
+#  define REGISTER_TRACE(std_string, ...) \
+    REGISTER_LOG(STRINGIZE_IMPL(TRACE), stdout, cmm::log::style_t::WHITE, std_string, ##__VA_ARGS__)
 #else
 #  define REGISTER_TRACE(std_string, ...)
 #endif
@@ -1156,5 +1156,7 @@ std::string mangle_function(std::string id, Args args, char delim) {
   auto format_args = args | std::views::join_with('_') | std::ranges::to<std::string>();
   return std::format("{}{}", id, !format_args.empty() ? std::format("_{}", format_args) : "");
 }
+
 } // namespace cmm
+
 #include "common.inl"

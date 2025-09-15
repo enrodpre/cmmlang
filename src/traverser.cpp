@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <format>
+#include <magic_enum/magic_enum_flags.hpp>
 #include <magic_enum/magic_enum_fuse.hpp>
 #include <optional>
 #include <string>
@@ -85,38 +86,22 @@ void ast_traverser::end_scope() {
   size_t ditched = ast->active_frame()->destroy_scope();
 
   if (ditched > 0) {
-    ;
-    // m_context.move_rsp(ditched);
+    m_context.move_rsp(ditched);
   }
 }
 
-//
-// std::optional<assembly::operand*> ast_traverser::define_function(const identifier& t,
-//                                                                const std::vector<type>&
-//                                                                types, const expr::arguments&
-//                                                                args) {
-//   decl::signature sig(t.value(), types);
-//   const decl::function* func = ast->get_function(sig);
-//   return define_function(func, args);
-// }
-
 template <typename Jump>
 void ast_traverser::generate_continue_break(const Jump& node) {
-  // Check if there is a visible iteration scope
-  retriever_visitor<VisitorDirection::ChildToParent, ast::iteration::iteration*> visitor{
-      is_derived<ast::iteration::iteration>};
 
-  visitor.visit(node);
-  const auto& [ok, it] = visitor.get_result();
-  if (!ok) {
+  const auto* it = find_parent<ast::iteration::iteration>(&node, [node]() {
     if constexpr (std::is_same_v<jump::continue_, Jump>) {
       THROW(INVALID_CONTINUE, node);
     } else if constexpr (std::is_same_v<jump::break_, Jump>) {
       THROW(INVALID_BREAK, node);
     }
-  }
+  });
 
-  auto labels = it->labels();
+  auto labels    = it->labels();
   if constexpr (std::is_same_v<jump::continue_, Jump>) {
     m_context.jump(labels.first);
   } else if constexpr (std::is_same_v<jump::break_, Jump>) {
@@ -130,7 +115,7 @@ template void ast_traverser::generate_continue_break<jump::break_>(const jump::b
 
 template <bool IsGlobal>
 void ast_traverser::generate_variable_decl(decl::variable* vardecl) {
-  if (!ast->is_declarable<ast::decl::variable>(vardecl->ident)) {
+  if (ast->is_declarable(vardecl->ident)) {
     THROW(ALREADY_DECLARED_SYMBOL, vardecl->ident);
   }
 
@@ -145,7 +130,7 @@ void ast_traverser::generate_variable_decl(decl::variable* vardecl) {
     auto* addr = ast->declare_variable(vardecl);
     m_context.move(addr, reg_);
   } else {
-    auto b = m_context.asmgen.begin_comment_block("init local variable {}", vardecl->ident.value());
+    auto b = m_context.asmgen.begin_comment_block("init variable {}", vardecl->ident.value());
     ast->declare_variable(vardecl);
     m_context.push(reg_);
   }
@@ -154,8 +139,8 @@ void ast_traverser::generate_variable_decl(decl::variable* vardecl) {
 void global_visitor::visit(decl::variable& vardecl) { gen->generate_variable_decl<true>(&vardecl); }
 
 void global_visitor::visit(decl::function& func) {
-  REGISTER_TRACE("Generating function {}", func.ident.value());
-  if (!gen->ast->is_declarable<ast::decl::function>(func.ident)) {
+  REGISTER_INFO("Generating function {}", func.ident.value());
+  if (gen->ast->is_declarable(func.ident)) {
     THROW(ALREADY_DECLARED_SYMBOL, func.ident);
   }
   gen->ast->declare_function(&func);
@@ -212,9 +197,15 @@ void expression_visitor::visit(ast ::expr ::literal& c) {
 }
 
 void expression_visitor::visit(expr::identifier& ident) {
+  const auto& opt = gen->m_context.regs.find_var(ident);
+  if (opt) {
+    out = opt.value();
+    return;
+  }
+
   const auto& [var, addr] = gen->ast->get_variable(ident);
   auto b                  = gen->m_context.asmgen.begin_comment_block("loading {}", ident.value());
-  if (types::is_lvalue(var->specs.type)) {
+  if (magic_enum::enum_flags_test(ident.value_category(), value_category_t::LVALUE)) {
     out = gen->m_context.lea(out, addr);
   } else {
     out = gen->m_context.move(out, addr);
@@ -245,11 +236,18 @@ void statement_visitor::visit(decl::variable& vardecl) {
 }
 
 void statement_visitor::visit(decl::label& label_) {
-  if (gen->ast->is_declarable<decl::label>(label_.ident)) {
+  if (gen->ast->is_declarable(label_.ident)) {
     THROW(ALREADY_DECLARED_SYMBOL, label_);
   }
 
-  gen->ast->active_frame()->declare_label(&label_);
+  const auto* fn = find_parent<ast::decl::function::definition>(label_);
+  if (!fn) {
+    THROW(LABEL_IN_GLOBAL, label_.ident);
+  }
+  if (fn->labels.contains(label_.ident)) {
+    THROW(ALREADY_DECLARED_SYMBOL, label_.ident);
+  }
+  // res.second->labels.insert()
   gen->m_context.label(label_.ident.value());
 
   if (gen->m_context.current_phase == Phase::PRUNING_LABEL &&
@@ -355,8 +353,8 @@ void statement_visitor::visit(jump::return_& ret) {
 
   operand* op = nullptr;
   if (ret.expr != nullptr) {
-    ret.expr->current_conversor = lvalue_to_rvalue;
-    op                          = gen->generate_expr(*ret.expr);
+    const ast::decl::function* fn = find_parent<ast::decl::function>(ret);
+    op = gen->generate_expr(*translation_unit::bind_expression(ret.expr, fn->specs.type));
   } else {
     op = gen->m_context.zero(gen->m_context.regs.get(register_t::ACCUMULATOR));
   }

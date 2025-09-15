@@ -16,6 +16,17 @@ namespace cmm::memory {
 struct register_;
 struct arena;
 
+class bad_alloc : std::bad_alloc {
+public:
+  bad_alloc(std::string t_message)
+      : message(t_message) {}
+
+  const char* what() const noexcept override { return message.c_str(); }
+
+private:
+  std::string message;
+};
+
 template <typename T>
 class allocator {
 public:
@@ -31,7 +42,7 @@ public:
 
   template <typename U>
   bool operator==(const allocator<U>& rhs) const noexcept {
-    return m_region == rhs.m_region;
+    return typeid(T) == typeid(T);
   }
 
   template <typename U>
@@ -39,9 +50,10 @@ public:
     return !(*this == rhs);
   }
 
-private:
   template <typename U>
   friend class allocator;
+
+private:
   arena& m_region;
 };
 
@@ -62,13 +74,17 @@ struct arena : default_singleton<arena> {
     size_t remaining_space = m_capacity - used();
     size_t element_size    = sizeof(T) * times;
     if (remaining_space < element_size) {
-      throw std::bad_alloc();
+      throw bad_alloc(
+          std::format("No remaining space. Tried to allocate {} bytes when only {} are available",
+                      element_size,
+                      remaining_space));
     }
 
     auto* start_ptr             = static_cast<void*>(m_offset);
     auto* const aligned_address = std::align(alignof(T), element_size, start_ptr, remaining_space);
     if (nullptr == aligned_address) {
-      throw std::bad_alloc();
+      throw bad_alloc(
+          std::format("Could not allocate {} bytes of type {}", element_size, typeid(T).name()));
     }
 
     m_offset = static_cast<std::byte*>(aligned_address) + element_size;

@@ -239,6 +239,7 @@
         CTOR_ASSIGN_DATA(__VA_ARGS__) {}
 
 #define TO_VEC                std::ranges::to<std::vector>()
+#define TO_MEMVEC             std::ranges::to<memory::vector>()
 #define TRANSFORM(FUNC)       std::views::transform(FUNC)
 #define FILTER(FUNC)          std::views::filter(FUNC)
 #define MAP_RANGE(TYPE, FUNC) TRANSFORM([](TYPE elem) { return FUNC; })
@@ -336,7 +337,3 @@ private:              \
 #define ARE_TYPES(...)  FOR_EACH_2(IS_TYPE, __VA_ARGS__)
 
 #define using_category() USING_ENUMS(group_t, core_t, layer_t);
-
-;
-;
-;

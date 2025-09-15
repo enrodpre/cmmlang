@@ -2,16 +2,8 @@
 
 #include <stdlib.h>
 
-#include "common.hpp"
-
 namespace cmm::os {
 
-void execute(const std::string& command) {
-  int status = system(command.data());
-  if (status != 0) {
-    REGISTER_ERROR("Error while executing {}. Exiting", command);
-    exit(status);
-  }
-}
+int execute(const std::string& command) { return system(command.data()); }
 
 } // namespace cmm::os

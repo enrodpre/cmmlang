@@ -22,7 +22,7 @@
 #include "common.hpp"
 #include "macros.hpp"
 
-#define BASIC_T(TYPE) cmm::types::global().make(cmm::types::core_t::TYPE)
+#define BASIC_T(TYPE) MANAGER.make(cmm::types::core_t::TYPE)
 #define VOID_T        BASIC_T(void_t)
 #define BOOL_T        BASIC_T(bool_t)
 #define CHAR_T        BASIC_T(char_t)
@@ -434,12 +434,10 @@ private:
   types::type_id get(types::info);
 };
 
-inline manager& global() { return manager::instance(); }
-
 inline types::type_id make(const types::core& c,
                            std::initializer_list<layer> layers = {},
                            cv_qualification_t qual             = {}) {
-  return global().make(c, stack<layer>(layers));
+  return manager::instance().make(c, stack<layer>(layers));
 }
 
 // Strip leading refs (LRef/RRef) and optionally leading top-level cv
@@ -516,6 +514,24 @@ inline unary_matcher is_reference    = is_lvalue || is_rvalue;
 inline unary_matcher is_direct       = {"is_direct ",
                                         [](type_id t) -> match_result { return t->layers.empty(); }};
 
+inline std::array unary_matchers     = {
+    is_bool,
+    is_floating,
+    is_unscoped,
+    is_integral,
+    is_arithmetic,
+    is_compound,
+    is_pointer,
+    is_array,
+    is_const,
+    is_volatile,
+    is_lvalue,
+    is_const_lvalue,
+    is_rvalue,
+    is_const_rvalue,
+    is_reference,
+    is_direct,
+};
 struct binary_matcher : displayable {
   using binary_matcher_t = std::function<match_result(types::type_id, type_id)>;
   binary_matcher(std::string_view, binary_matcher_t);
@@ -557,24 +573,26 @@ protected:
   modifier_t m_modifier;
 };
 
+#define MANAGER types::manager::instance()
+
 inline modifier operator&&(const types::unary_matcher&, const modifier&);
 
 inline modifier type_identity        = {"type_identity", std::identity{}};
-inline modifier add_lvalue_reference = global().make_layer_adder<layer_t::lvalue_ref_t>();
-inline modifier add_rvalue_reference = global().make_layer_adder<layer_t::rvalue_ref_t>();
-inline modifier add_pointer          = global().make_layer_adder<layer_t::pointer_t>();
-inline modifier add_const            = global().make_cv_adder<cv_qualification_t::CONST>();
-inline modifier add_volatile         = global().make_cv_adder<cv_qualification_t::VOLATILE>();
+inline modifier add_lvalue_reference = MANAGER.make_layer_adder<layer_t::lvalue_ref_t>();
+inline modifier add_rvalue_reference = MANAGER.make_layer_adder<layer_t::rvalue_ref_t>();
+inline modifier add_pointer          = MANAGER.make_layer_adder<layer_t::pointer_t>();
+inline modifier add_const            = MANAGER.make_cv_adder<cv_qualification_t::CONST>();
+inline modifier add_volatile         = MANAGER.make_cv_adder<cv_qualification_t::VOLATILE>();
 inline modifier add_cv               = add_const | add_volatile;
 
-inline modifier remove_volatile      = global().make_cv_remover<cv_qualification_t::VOLATILE>();
-inline modifier remove_const         = global().make_cv_remover<cv_qualification_t::CONST>();
+inline modifier remove_volatile      = MANAGER.make_cv_remover<cv_qualification_t::VOLATILE>();
+inline modifier remove_const         = MANAGER.make_cv_remover<cv_qualification_t::CONST>();
 inline modifier remove_cv            = remove_const | remove_volatile;
-inline modifier remove_lvalue        = global().make_layer_remover<layer_t::lvalue_ref_t>();
-inline modifier remove_rvalue        = global().make_layer_remover<layer_t::rvalue_ref_t>();
-inline modifier remove_reference     = global().make_layer_remover<group_t::reference_t>();
+inline modifier remove_lvalue        = MANAGER.make_layer_remover<layer_t::lvalue_ref_t>();
+inline modifier remove_rvalue        = MANAGER.make_layer_remover<layer_t::rvalue_ref_t>();
+inline modifier remove_reference     = MANAGER.make_layer_remover<group_t::reference_t>();
 inline modifier remove_cvref         = remove_cv | remove_reference;
-inline modifier remove_extent        = global().make_layer_remover<layer_t::array_t>();
+inline modifier remove_extent        = MANAGER.make_layer_remover<layer_t::array_t>();
 
 inline modifier decay                = {"decay", [](type_id t) -> type_id {
                            if (is_array(t)) {
@@ -583,6 +601,24 @@ inline modifier decay                = {"decay", [](type_id t) -> type_id {
                            return remove_cvref(t);
                          }};
 
+inline std::array modifiers          = {type_identity,
+                                        add_lvalue_reference,
+                                        add_rvalue_reference,
+                                        add_pointer,
+                                        add_const,
+                                        add_volatile,
+                                        add_cv,
+                                        remove_volatile,
+                                        remove_const,
+                                        remove_cv,
+                                        remove_lvalue,
+                                        remove_rvalue,
+                                        remove_reference,
+                                        remove_cvref,
+                                        remove_extent,
+                                        decay
+
+};
 inline constexpr modifier replace(type_id c) {
   return {"convert to", [c](type_id) -> type_id { return c; }};
 }

@@ -2,35 +2,22 @@
 
 #include "ast.hpp"
 #include "common.hpp"
-#include "memory.hpp"
 #include "types.hpp"
 
 using namespace cmm;
 using cmm::builtin_callable;
-using cmm::operator_t;
 using cmm::value_category_t;
 using cmm::types::type_id;
 
 cmm::ast::identifier builtin_callable::identifier() const {
-  return {mangle_function(name, params | MAP_RANGE(type_id, elem->string()), '_')};
+  return {mangle_function(name,
+                          params | std ::views ::transform([](const parameter& t_param) {
+                            return t_param.type->string();
+                          }),
+                          '_')};
 }
 
-[[nodiscard]] cmm::parameters builtin_callable::parameters() const {
-  return params | std::views::enumerate |
-         std::views::transform([](const auto& pair) -> ast::decl::variable {
-           std::string name = std::format("var{}", std::get<0>(pair));
-           return {std::get<1>(pair), ast::identifier(name), nullptr};
-         }) |
-         std::ranges::to<
-             std::vector<ast::decl::variable, cmm::memory::allocator<ast::decl::variable>>>();
-}
-
-const std::unordered_map<cmm::operator_t, std::vector<builtin_callable>> cmm::builtin_operators{};
-
-std::vector<const builtin_callable*> cmm::get_builtin_operator(operator_t op) {
-  auto pointer_of = [](const builtin_callable& v) -> const builtin_callable* { return &v; };
-  return cmm::builtin_operators.at(op) | TRANSFORM(pointer_of) | TO_VEC;
-}
+[[nodiscard]] cmm::parameters builtin_callable::parameters_impl() const { return params; }
 
 value_category_t cmm::get_value_category(type_id t) {
   if (cmm::types::is_lvalue(t).ok) {
@@ -42,20 +29,36 @@ value_category_t cmm::get_value_category(type_id t) {
   return value_category_t::PRVALUE;
 }
 
-bool cmm::is_bindable_to(value_category_t value_category, type_id type) {
-  return std::ranges::any_of(binding_rules.at(value_category),
-                             [type](const auto& rule) { return rule.first(type).ok; });
-}
-
-cmm::binding_mode_t cmm::bind_value(value_category_t cat, type_id type) {
-  auto mode = binding_rules.at(cat) |
-              FILTER([type](const auto& rule) { return rule.first(type).ok; }) |
-              std::views::values | TO_VEC;
-  if (mode.empty()) {
-    THROW(NOT_BINDEABLE, type, cat);
-  }
-  if (mode.size() > 1) {
-    REGISTER_WARN("Too many results when binding values, {}", mode);
-  }
-  return mode.front();
-}
+const conversor cmm::lvalue_to_rvalue =
+    conversor{"lvalue_to_rvalue",
+              [](value_category_t t_cat, type_id t_type) {
+                auto mode = ast::translation_unit::bind_value(t_cat, t_type);
+                using magic_enum::enum_fuse;
+                using enum value_category_t;
+                using enum binding_mode_t;
+                switch (magic_enum::enum_fuse(t_cat, mode).value()) {
+                  case enum_fuse(LVALUE, COPY).value():
+                    return true;
+                  case enum_fuse(LVALUE, DIRECT).value():
+                  case enum_fuse(PRVALUE, TEMPORARY).value():
+                  case enum_fuse(PRVALUE, DIRECT).value():
+                  default:
+                    return false;
+                }
+              },
+              types::type_identity,
+              [](value_category_t t_cat) {
+                if (t_cat == value_category_t::LVALUE) {
+                  return value_category_t::RVALUE;
+                }
+                return t_cat;
+              }};
+const conversor cmm::any_to_bool = conversor{"any_to_bool",
+                                             [](value_category_t, type_id t_type) {
+                                               auto t_matcher =
+                                                   types::is_integral || types::is_pointer ||
+                                                   types::is_unscoped || types::is_floating;
+                                               return t_matcher(t_type);
+                                             },
+                                             types::replace(BOOL_T),
+                                             std::identity{}};

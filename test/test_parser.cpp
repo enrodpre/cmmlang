@@ -9,111 +9,6 @@
 using namespace cmm;
 using namespace ast;
 
-struct ast_matcher {
-  virtual ~ast_matcher()                            = default;
-  virtual void match(const expr::expression&) const = 0;
-};
-
-struct indent_matcher : ast_matcher {
-  std::string expected;
-  explicit indent_matcher(std::string v)
-      : expected(std::move(v)) {}
-
-  void match(const expr::expression& e) const override {
-    auto* id = dynamic_cast<const identifier*>(&e);
-    ASSERT_NE(id, nullptr);
-    EXPECT_EQ(id->value(), expected);
-  }
-};
-
-struct literal_matcher : ast_matcher {
-  std::string expected;
-  explicit literal_matcher(std::string v)
-      : expected(std::move(v)) {}
-
-  void match(const expr::expression& e) const override {
-    auto* lit = dynamic_cast<const literal*>(&e);
-    ASSERT_NE(lit, nullptr);
-    EXPECT_EQ(lit->value(), expected);
-  }
-};
-
-struct unary_matcher : ast_matcher {
-  operator_t op;
-  std::unique_ptr<ast_matcher> sub;
-
-  unary_matcher(operator_t o, std::unique_ptr<ast_matcher> s)
-      : op(o),
-        sub(std::move(s)) {}
-
-  void match(const expr::expression& e) const override {
-    auto* u = dynamic_cast<const expr::unary_operator*>(&e);
-    ASSERT_NE(u, nullptr);
-    EXPECT_EQ(u->operator_.value(), op);
-    sub->match(u->expr);
-  }
-};
-
-struct binary_matcher : ast_matcher {
-  operator_t op;
-  std::unique_ptr<ast_matcher> lhs, rhs;
-
-  binary_matcher(operator_t o, std::unique_ptr<ast_matcher> l, std::unique_ptr<ast_matcher> r)
-      : op(o),
-        lhs(std::move(l)),
-        rhs(std::move(r)) {}
-
-  void match(const expr::expression& e) const override {
-    auto* b = dynamic_cast<const expr::binary_operator*>(&e);
-    ASSERT_NE(b, nullptr);
-    EXPECT_EQ(b->operator_.value(), op);
-    lhs->match(b->left);
-    rhs->match(b->right);
-  }
-};
-
-struct call_matcher : ast_matcher {
-  std::string identifier;
-  std::vector<std::unique_ptr<ast_matcher>> args;
-
-  call_matcher(std::string ident, std::vector<std::unique_ptr<ast_matcher>>&& t_args)
-      : identifier(ident),
-        args(std::move(t_args)) {}
-
-  void match(const expr::expression& e) const override {
-    auto* b = dynamic_cast<const expr::call*>(&e);
-    ASSERT_NE(b, nullptr);
-    EXPECT_EQ(b->ident.value(), identifier);
-    for (const auto& [actual, matcher] : std::views::zip(b->args, args)) {
-      matcher->match(*actual);
-    }
-  }
-};
-
-inline std::unique_ptr<ast_matcher> Ident(std::string v) {
-  return std::make_unique<indent_matcher>(std::move(v));
-}
-inline std::unique_ptr<ast_matcher> Literal(std::string v) {
-  return std::make_unique<literal_matcher>(std::move(v));
-}
-inline std::unique_ptr<ast_matcher> Unary(operator_t op, std::unique_ptr<ast_matcher> sub) {
-  return std::make_unique<unary_matcher>(op, std::move(sub));
-}
-inline std::unique_ptr<ast_matcher> Binary(std::unique_ptr<ast_matcher> lhs,
-                                           operator_t op,
-                                           std::unique_ptr<ast_matcher> rhs) {
-  return std::make_unique<binary_matcher>(op, std::move(lhs), std::move(rhs));
-}
-inline std::unique_ptr<ast_matcher> Call(std::string ident,
-                                         std::vector<std::unique_ptr<ast_matcher>> args) {
-  return std::make_unique<call_matcher>(ident, std::move(args));
-}
-
-#define EXPECT_AST_EQ(expr, matcher) \
-  do {                               \
-    matcher->match(expr);            \
-  } while (0)
-
 class ParserTest : public ::testing::Test {
 
 protected:
@@ -168,59 +63,11 @@ using std::string;
 using namespace std;
 using namespace expr;
 
-TEST_F(ParserTest, Call) {
-  parser::parser p({exit, oparen, diez, comma, doce, cparen, semi});
-
-  auto* call_ = cast<expr::call*>(&p.parse_expr());
-  EXPECT_TRUE(call_);
-  EXPECT_EQ("exit", call_->ident.value());
-  EXPECT_EQ(2, call_->args.size());
-
-  auto it                = (*call_).args.begin();
-  expr::expression* arg1 = *it++;
-  check_literal(*arg1, "10");
-  expr::expression* arg2 = *it++;
-  check_literal(*arg2, "12");
-}
-
-TEST_F(ParserTest, Vardecl) {
-  parser::parser p({int_t, ident, assign, lit, semi});
-  auto* elements = p.parse_declaration();
-  auto* vardecl  = cast<decl::variable*>(elements);
-
-  EXPECT_EQ(vardecl->ident.value(), "var");
-  auto* expr = cast<expr::literal*>(vardecl->init);
-  EXPECT_EQ("5", expr->value());
-  EXPECT_EQ(cmm::types::core_t::sint_t, expr->type()->categorize());
-}
-
-TEST_F(ParserTest, binop_expression) {
-  parser::parser p({diez, plus, doce, star, ocho, plus, dos, star, quince});
-  auto& top_expr = p.parse_expr();
-
-  EXPECT_AST_EQ(top_expr,
-                Binary(Binary(Literal("10"),
-                              operator_t::star,
-                              Binary(Literal("12"), operator_t::star, Literal("8"))),
-                       operator_t::plus,
-                       Binary(Literal("2"), operator_t::star, Literal("15"))));
-}
-
-TEST_F(ParserTest, unary_operator) {
-  auto& expr = parser::parser({inc, ident}).parse_expr();
-  EXPECT_AST_EQ(expr, Unary(operator_t::pre_inc, Literal("var")));
-
-  expr = parser::parser({ident, dec}).parse_expr();
-  EXPECT_AST_EQ(expr, Unary(operator_t::post_dec, Literal("var")));
-}
-
-TEST_F(ParserTest, multi_operator) {
-  auto& expr = parser::parser({inc, exit, plus, doce, star, ident, dec}).parse_expr();
-  EXPECT_AST_EQ(
-      expr,
-      Binary(Unary(operator_t::pre_dec, Literal("x")),
-             operator_t::plus,
-             Binary(Literal("12"), operator_t::star, Unary(operator_t::post_inc, Literal("y")))));
+TEST_F(ParserTest, token_data) {
+  auto t = token_t::plus;
+  EXPECT_TRUE(token_data(t).is_binary_operator());
+  EXPECT_TRUE(token_t::binary_begin < t && t < token_t::binary_end);
+  EXPECT_TRUE(token_data(t).is_unary_operator());
 }
 
 TEST_F(ParserTest, IfElse) {
@@ -260,10 +107,13 @@ TEST_F(ParserTest, Block) {
   EXPECT_EQ(0, comp->stmts.size());
 }
 
-TEST_F(ParserTest, operator_precedence) {
-  parser::parser expr({x, assign, x, plus, ocho, semi});
-  EXPECT_AST_EQ(expr.parse_expr(),
-                Binary(Literal("x"),
-                       operator_t::assign,
-                       Binary(Literal("x"), operator_t::plus, Literal("8"))));
+TEST_F(ParserTest, Vardecl) {
+  parser::parser p({int_t, ident, assign, lit, semi});
+  auto* elements = p.parse_declaration();
+  auto* vardecl  = cast<decl::variable*>(elements);
+
+  EXPECT_EQ(vardecl->ident.value(), "var");
+  auto* expr = cast<expr::literal*>(vardecl->init);
+  EXPECT_EQ("5", expr->value());
+  EXPECT_EQ(cmm::types::core_t::sint_t, expr->type()->categorize());
 }

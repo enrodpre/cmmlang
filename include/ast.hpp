@@ -299,9 +299,7 @@ struct block : derived_visitable<block, scope> {
   block(const statements& s)
       : stmts(s) {}
 
-  void declare_label(const decl::label*);
   statements stmts;
-  label_store labels;
   children_impl(stmts | TRANSFORM([](const auto& s) { return dynamic_cast<node*>(s); }) | TO_VEC);
   std::string string() const override { return "Block"; }
 };
@@ -368,15 +366,18 @@ struct function : derived_visitable<function, declaration>, public callable {
   //       body(b) {}
 
   ast::identifier identifier() const override { return ident; }
-  cmm::parameters parameters() const override { return params.data(); }
+  cmm::parameters parameters_impl() const override;
   type_id return_type() const override { return specs.type.value(); }
   std::vector<node*> children() override;
   std::string repr() const override;
   std::string string() const override;
 };
+
 struct function::definition : derived_visitable<definition, block> {
   definition(const siblings<statement*>& s)
-      : derived_visitable(s) {}
+      : derived_visitable(s) {
+    local_scopes.push(this);
+  }
 
   struct {
     [[nodiscard]] size_t size() const { return stack_size; };
@@ -392,7 +393,7 @@ struct function::definition : derived_visitable<definition, block> {
   bool is_declared(const ast::identifier& ident) const override;
   void create_scope(block&) noexcept;
   [[nodiscard]] const variable_store::value_type& get_variable(
-      const ast::identifier& ident) const override;
+      const ast::identifier&) const override;
   assembly::operand* declare_parameter(const ast::decl::variable&, assembly::operand*);
   size_t destroy_scope() noexcept;
   void clear() noexcept;
@@ -534,19 +535,16 @@ struct return_ : derived_visitable<return_, statement> {
 } // namespace jump
 
 struct translation_unit : derived_visitable<translation_unit, scope> {
-  translation_unit();
-
+  translation_unit(global_declarations decl);
   children_impl(stmts | TRANSFORM([](const auto& s) { return dynamic_cast<node*>(s); }) | TO_VEC);
 
-  translation_unit(global_declarations decl)
-      : stmts(std::move(decl)) {}
-
   [[nodiscard]] decl::function::definition* active_frame() noexcept { return m_stackframe.top(); }
-
   [[nodiscard]] const decl::function::definition* active_frame() const noexcept {
+    if (m_stackframe.empty()) {
+      THROW(LABEL_IN_GLOBAL, nullptr);
+    }
     return m_stackframe.top();
   }
-
   [[nodiscard]] scope* active_scope() noexcept;
   [[nodiscard]] const scope* active_scope() const noexcept;
   void clear() noexcept;
@@ -557,30 +555,45 @@ struct translation_unit : derived_visitable<translation_unit, scope> {
 
   template <typename T>
   bool is_declared(const ast::identifier&) const noexcept;
-  template <typename T>
   bool is_declarable(const ast::identifier&) const noexcept;
   const decl::label* get_label(const ast::identifier&) const;
   const variable_store::value_type& get_variable(const ast::identifier&) const override;
   assembly::operand* declare_variable(ast::decl::variable*) override;
-  void declare_function(ast::decl::function*, bool = false);
+  void declare_function(ast::decl::function*);
   void define_function(ast::decl::function*);
+  template <typename T, typename Id = T::identifier_t>
+  const T* get_callable(Id id, const expr::arguments&) const;
 
   [[nodiscard]] bool is_global_scope() const noexcept;
   bool in_main() const noexcept;
-  void set_context(ir::compilation_unit*);
-  ir::compilation_unit* get_context() const { return m_context; }
 
   std::vector<const ast::decl::function::definition*> stackframe();
   siblings<declaration*> stmts;
+  function_store functions;
+  stack<decl::function::definition*> m_stackframe;
+  ir::compilation_unit* cunit;
 
-  friend ir::compilation_unit;
-
-  std::unordered_map<operator_t, std::vector<builtin_callable>> builtin_operators;
+  // GLOBAL DATA
+  static std::unordered_map<operator_t, std::vector<builtin_callable>> operators;
+  static const std::array<types::unary_matcher, types::unary_matchers.size()>* unary_matchers;
+  static const std::array<types::modifier, types::modifiers.size()>* modifiers;
+  static types::manager* types;
+  static const std::array<const conversor*, 2> standard_conversions;
+  static const magic_enum::containers::
+      array<value_category_t, std::vector<std::pair<types::unary_matcher, binding_mode_t>>>
+          binding_rules;
+  static cmm::binding_mode_t bind_value(value_category_t, type_id);
+  static ast::expr::expression* bind_expression(ast::expr::expression*, type_id);
+  static bool is_bindable_to(value_category_t, types::type_id);
 
 private:
-  function_store m_functions;
-  stack<decl::function::definition*> m_stackframe;
-  ir::compilation_unit* m_context{};
+  void load_arguments(const parameters&, const expr::arguments&);
+  template <typename T, typename Id>
+  std::vector<const callable*> get_candidates(Id, const expr::arguments&) const;
+  template <typename Id>
+  const callable* resolve_overloads(Id, std::vector<const callable*>, const expr::arguments&) const;
+  [[nodiscard]] static bool match_arguments(const std::vector<types::type_id>&,
+                                            const std::vector<types::type_id>&);
 };
 
 using namespace_ = translation_unit;

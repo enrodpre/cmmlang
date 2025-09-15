@@ -2,11 +2,10 @@
 
 #include "types.hpp"
 
-#include <magic_enum/magic_enum_flags.hpp>
-#include <magic_enum/magic_enum.hpp>
 #include <array>
 #include <format>
-#include <string_view>
+#include <magic_enum/magic_enum.hpp>
+#include <magic_enum/magic_enum_flags.hpp>
 
 namespace cmm {
 namespace types {
@@ -15,14 +14,14 @@ enum class cv_qualification_t : uint8_t;
 struct category_data;
 struct match_result;
 struct type_id;
-}  // namespace types
-}  // namespace cmm
+} // namespace types
+} // namespace cmm
 
 namespace cmm::types {
 
 template <>
 constexpr const category_data* category_t::operator->() const {
-  return &global().s_category_data.at(m_value);
+  return &MANAGER.s_category_data.at(m_value);
 }
 
 // consteval std::array<types::type_id, 20> provide_builtins() { return {}; }

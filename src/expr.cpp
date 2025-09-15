@@ -33,10 +33,7 @@ expr::identifier::identifier(const token& t_token)
     : m_term(t_token) {}
 
 type_id expr::identifier::type_impl() const {
-  auto visitor = get_retriever<ast::translation_unit>();
-  visitor.visit(*this);
-  const auto& [ok, tu] = visitor.get_result();
-  return tu->get_variable(*this).first->specs.type.value();
+  return find_parent<ast::translation_unit>(this)->get_variable(*this).first->specs.type.value();
 }
 
 expr::literal::literal(const token& t, literal_t l)
@@ -70,10 +67,8 @@ expr::call::call(decltype(ident)&& id, decltype(args) a = {})
       args(a) {}
 
 type_id expr::call::type_impl() const {
-  auto visitor = get_retriever<ast::translation_unit>();
-  visitor.visit(*this);
-  const auto& [ok, tu]       = visitor.get_result();
-  const decl::function* func = tu->get_context()->get_callable<decl::function>(ident, args);
+  const decl::function* func =
+      find_parent<ast::translation_unit>(this)->get_callable<decl::function>(ident, args);
   return func->specs.type.value();
 }
 
@@ -84,11 +79,8 @@ expr::unary_operator::unary_operator(expression& expression, ast::operator_&& op
       operator_(std::move(op)) {}
 
 type_id expr::unary_operator::type_impl() const {
-  auto visitor = get_retriever<ast::translation_unit>();
-  visitor.visit(*this);
-  const auto& [ok, tu] = visitor.get_result();
-  const builtin_callable* func =
-      tu->get_context()->get_callable<builtin_callable>(operator_, {&expr.get()});
+  const auto* func = find_parent<ast::translation_unit>(this)->get_callable<builtin_callable>(
+      operator_, {&expr.get()});
   return func->ret;
 }
 value_category_t expr::unary_operator::value_category_impl() const {
@@ -100,11 +92,8 @@ expr::binary_operator::binary_operator(expression& l, ast::operator_&& op, expre
       right(r) {}
 
 type_id expr::binary_operator::type_impl() const {
-  auto visitor = get_retriever<ast::translation_unit>();
-  visitor.visit(*this);
-  const auto& [ok, tu] = visitor.get_result();
-  const builtin_callable* func =
-      tu->get_context()->get_callable<builtin_callable>(operator_, {&left.get(), &right.get()});
+  const auto* func = find_parent<ast::translation_unit>(this)->get_callable<builtin_callable>(
+      operator_, {&left.get(), &right.get()});
   return func->ret;
 }
 

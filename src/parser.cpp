@@ -182,7 +182,7 @@ ast::declaration* parser::parse_declaration() {
 ast::expr::expression& parser::parse_lhs_expr() {
   const auto& token = m_tokens.peek();
 
-  if (peek_data().is_literal()) {
+  if (token_data(token.type).is_literal()) {
     auto lit = m_tokens.next();
     switch (lit.type) {
       case token_t::false_lit:
@@ -202,7 +202,7 @@ ast::expr::expression& parser::parse_lhs_expr() {
     }
   }
 
-  if (peek_data().is(token_t::ident)) {
+  if (token.type == token_t::ident) {
     want_ident;
     if (m_tokens.next_is(token_t::o_paren)) {
       return parse_call(ident);
@@ -211,11 +211,11 @@ ast::expr::expression& parser::parse_lhs_expr() {
     return *create_node<expr::identifier>(std::move(ident));
   }
 
-  if (peek_data().is(token_t::o_paren)) {
+  if (token.type == token_t::o_paren) {
     m_tokens.advance();
     auto& expr = parse_expr();
 
-    if (!m_tokens.next_is(token_t::c_paren)) {
+    if (m_tokens.peek().type != token_t::c_paren) {
       throw std::runtime_error("Expected ')' after expression");
     }
 
@@ -223,7 +223,7 @@ ast::expr::expression& parser::parse_lhs_expr() {
     return expr;
   }
 
-  if (peek_data().is_unary_operator()) {
+  if (token_data(token.type).is_unary_operator()) {
     auto next                 = m_tokens.next();
     operator_ t               = next.type == token_t::dec   ? operator_(next, operator_t::pre_dec)
                                 : next.type == token_t::inc ? operator_(next, operator_t::pre_inc)
@@ -236,20 +236,21 @@ ast::expr::expression& parser::parse_lhs_expr() {
 }
 
 expr::expression& parser::parse_expr(uint8_t min_prec) {
-  expr::expression& lhs = parse_lhs_expr();
+  expr::expression* lhs = &parse_lhs_expr();
 
   while (m_tokens.has_next()) {
-    const token& op_token = m_tokens.peek();
+    token op_token = m_tokens.peek();
 
-    if (!peek_data().is_binary_operator()) {
-      break;
-    }
     if (op_token.type == token_t::inc || op_token.type == token_t::dec) {
       m_tokens.advance();
       operator_ t(op_token,
                   op_token.type == token_t::inc ? operator_t::post_inc : operator_t::post_dec);
-      lhs = *create_node<expr::unary_operator>(lhs, std::move(t));
+      lhs = create_node<expr::unary_operator>(*lhs, std::move(t));
       continue;
+    }
+
+    if (!token_data(op_token.type).is_binary_operator()) {
+      break;
     }
 
     operator_ curr_op{op_token};
@@ -262,16 +263,14 @@ expr::expression& parser::parse_expr(uint8_t min_prec) {
 
     m_tokens.advance();
 
-    uint8_t next_min_precedence = prec;
-    if (data.assoc == cmm::associativity_t::L2R) {
-      next_min_precedence++;
-    }
+    uint8_t next_min_precedence = prec + (data.assoc == cmm::associativity_t::L2R ? 1 : 0);
 
-    expr::expression& rhs = parse_expr(next_min_precedence);
-    lhs                   = *create_node<expr::binary_operator>(lhs, std::move(curr_op), rhs);
+    expr::expression& rhs       = parse_expr(next_min_precedence);
+    auto* new_lhs               = create_node<expr::binary_operator>(*lhs, std::move(curr_op), rhs);
+    lhs                         = new_lhs;
   }
 
-  return lhs;
+  return *lhs;
 }
 
 expr::expression& parser::parse_call(const token& t_token) {
@@ -352,7 +351,7 @@ types::type_id parse_type(const std::vector<token>& ts) {
 
     THROW(REQUIRED_TYPE, std::ranges::fold_left_first(r, std::plus{}).value());
   }
-  return types::global().make(parse_enum_type(type_.value(), unsigned_), {}, const_ | volatile_);
+  return MANAGER.make(parse_enum_type(type_.value(), unsigned_), {}, const_ | volatile_);
 }
 
 template <ast_node Parent, ast_node Node, ast_node... Nodes>

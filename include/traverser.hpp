@@ -67,9 +67,6 @@ private:
   void begin_scope(decl::block&);
   void end_scope();
 
-  expr::expression* convert_lvalue_if(expr::expression*);
-  expr::expression* convert_expr_if(expr::expression*, conversor);
-
   friend statement_visitor;
   friend expression_visitor;
   friend global_visitor;

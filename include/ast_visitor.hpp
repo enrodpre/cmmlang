@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ast.hpp"
+#include "common.hpp"
 
 #include <functional>
 #include <revisited/visitor.h>
@@ -21,7 +22,7 @@ enum class VisitorMode {
 };
 
 template <VisitorDirection Dir, typename Ret>
-  requires(std::is_default_constructible_v<Ret>)
+// requires(std::is_default_constructible_v<Ret>)
 class generic_visitor : public revisited::RecursiveVisitor<node&, const node&> {
 protected:
   using node_type = node;
@@ -33,10 +34,10 @@ public:
     return traverse(const_cast<node_type*>(&node), false);
   }
 
-  std::pair<bool, Ret> get_result() const { return m_result; }
+  std::pair<bool, std::add_pointer_t<Ret>> get_result() const { return m_result; }
 
 protected:
-  void set_result(Ret t_ret) { m_result = std::make_pair(true, t_ret); }
+  void set_result(std::add_pointer_t<Ret> t_ret) { m_result = std::make_pair(true, t_ret); }
 
 private:
   bool traverse(node_type* t_root, bool successful) {
@@ -78,7 +79,7 @@ private:
 protected:
   // Condition tracking for complex queries
   mutable std::unordered_map<std::type_index, int> m_count;
-  std::pair<bool, Ret> m_result;
+  std::pair<bool, std::add_pointer_t<Ret>> m_result;
 };
 
 template <VisitorDirection Dir, typename Result>
@@ -94,7 +95,7 @@ protected:
   bool visit_node(node_type* t_node) override {
     bool result = m_condition(t_node);
     if (result) {
-      generic_visitor<Dir, Result>::set_result(dynamic_cast<Result>(t_node));
+      generic_visitor<Dir, Result>::set_result(dynamic_cast<std::add_pointer_t<Result>>(t_node));
     }
     return result;
   }
@@ -104,8 +105,35 @@ protected:
 };
 
 template <typename T>
-constexpr auto is_derived =
-    [](const node* t_node) { return dynamic_cast<const T*>(t_node) != nullptr; };
+constexpr auto is_derived = [](const node* t_node) {
+  return dynamic_cast<std::add_pointer_t<std::add_const_t<T>>>(t_node) != nullptr;
+};
+
+template <typename T>
+constexpr auto is_equals = [](const node* t_node) {
+  return dynamic_cast<std::add_pointer_t<std::add_const_t<T>>>(t_node) != nullptr;
+};
+
+template <VisitorDirection Dir, typename Ret>
+struct exact_retriever_visitor : public retriever_visitor<Dir, Ret> {
+  exact_retriever_visitor()
+      : retriever_visitor<Dir, Ret>(is_equals<Ret>) {}
+};
+
+template <typename Ret>
+std::add_pointer_t<std::add_const_t<Ret>> find_parent(
+    const node* t_node,
+    std::function<void()> on_failure = []() {
+      throw error(std::format("Couldnt find parent of type {}", typeid(Ret).name()));
+    }) {
+  exact_retriever_visitor<VisitorDirection::ChildToParent, Ret> visitor{};
+  t_node->accept(visitor);
+  auto res = visitor.get_result();
+  if (!res.first) {
+    on_failure();
+  }
+  return dynamic_cast<std::add_pointer_t<std::add_const_t<Ret>>>(res.second);
+}
 
 template <VisitorDirection Dir>
 class operator_visitor : public generic_visitor<Dir, bool> {

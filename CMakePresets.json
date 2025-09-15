@@ -6,7 +6,7 @@
       "name": "dev",
       "displayName": "Debug config",
       "description": "Debug config with optimization disabled",
-      "binaryDir": "${sourceDir}/build/${presetName}",
+      "binaryDir": "${sourceDir}/build",
       "generator": "Ninja",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
@@ -17,10 +17,12 @@
         "CMAKE_CXX_EXTENSIONS ": "ON",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
         "CMAKE_MODULE_PATH": "${sourceDir}/cmake",
-        "CMAKE_UNITY_BUILD": "ON",
         "ENABLE_IWYU": "OFF",
         "IWYU_AUTOFIX": "OFF",
-        "LOG_LEVEL": "5"
+        "LOG_LEVEL": "5",
+        "BUILD_TESTING": "ON",
+        "BUILD_INTEGRATION": "ON",
+        "ENABLE_TEST_COVERAGE": "OFF"
       },
       "environment": {
         "WARNING_LEVEL": "SOME"
@@ -32,10 +34,7 @@
       "description": "Debug config with optimization disabled and address sanitizers",
       "inherits": [
         "dev"
-      ],
-      "cacheVariables": {
-        "USE_ASAN": "ON"
-      }
+      ]
     },
     {
       "name": "dev-test",
@@ -43,19 +42,14 @@
       "description": "Debug config with unit and integration tests enabled",
       "inherits": [
         "dev-asan"
-      ],
-      "cacheVariables": {
-        "BUILD_TESTING": "ON",
-        "BUILD_INTEGRATION": "ON",
-        "ENABLE_TEST_COVERAGE": "ON"
-      }
+      ]
     }
   ],
   "buildPresets": [
     {
       "name": "dev",
       "displayName": "build for developing",
-      "configurePreset": "dev",
+      "configurePreset": "dev-test",
       "jobs": 12
     },
     {
@@ -63,6 +57,9 @@
       "configurePreset": "dev-test",
       "displayName": "Build Test",
       "description": "Configure/build test preset, and build targets in test/ if present.",
+      "environment": {
+        "USE_ASAN": "ON"
+      },
       "jobs": 12
     }
   ],
@@ -84,21 +81,25 @@
       "execution": {
         "noTestsAction": "error",
         "stopOnFailure": false
+      },
+      "environment": {
+        "CTEST_OUTPUT_ON_FAILURE": "ON",
+        "CTEST_PROGRESS_OUTPUT": "SOME"
       }
     },
     {
       "name": "integration",
       "displayName": "Run Integration Tests",
       "description": "Run integration/end-to-end tests with the built binary",
-      "configurePreset": "dev",
+      "configurePreset": "dev-test",
       "filter": {
         "include": {
-          "label": "e2e"
+          "label": "integration"
         }
       },
       "output": {
-        "outputOnFailure": false,
-        "verbosity": "default"
+        "shortProgress": true,
+        "outputOnFailure": false
       },
       "execution": {
         "noTestsAction": "error",

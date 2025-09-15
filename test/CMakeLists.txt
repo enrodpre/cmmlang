@@ -21,7 +21,7 @@ foreach(TESTFILE ${TEST_SOURCES})
         -fno-omit-frame-pointer # Better stack traces
     )
 
-  gtest_discover_tests(${NAME}  DISCOVERY_TIMEOUT 10 PROPERTIES LABELS "unit")
+  gtest_discover_tests(${NAME}  DISCOVERY_TIMEOUT 10 PROPERTIES LABELS "unit" )
 
   set_target_properties(${NAME} PROPERTIES CXX_STANDARD 26 CXX_STANDARD_REQUIRED ON)
   target_include_directories(${NAME}

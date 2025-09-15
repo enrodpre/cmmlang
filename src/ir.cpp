@@ -1,9 +1,7 @@
 #include "ir.hpp"
 
-#include <algorithm>
 #include <format>
 #include <ranges>
-#include <type_traits>
 #include <vector>
 
 #include "asm.hpp"
@@ -11,7 +9,6 @@
 #include "common.hpp"
 #include "expr.h"
 #include "lang.hpp"
-#include "macros.hpp"
 #include "traverser.hpp"
 #include "types.hpp"
 
@@ -24,16 +21,16 @@ namespace cmm::ir {
 using namespace cmm::assembly;
 using namespace cmm::ast;
 
-compilation_unit::compilation_unit()
-    : ast(),
-      runner(*this) {}
+compilation_unit::compilation_unit(ast::translation_unit* t_ast, const source_code* t_code)
+    : ast(t_ast),
+      code(t_code),
+      runner(*this) {
+  ast->cunit = this;
+}
 
-std::string compilation_unit::compile(ast::translation_unit& p, const source_code* src) {
-  source = src;
-  ast    = &p;
-  p.set_context(this);
+std::string compilation_unit::compile() {
   start();
-  runner.generate_program(p);
+  runner.generate_program(*ast);
   return end();
 }
 
@@ -55,11 +52,9 @@ operand* compilation_unit::move(operand* to, operand* from) {
     asmgen.write_instruction(instruction_t::mov, to->value(), from->value());
   }
 
-  if (auto cont = from->content(); cont) {
-    to->hold_value(from->variable());
-  }
   return to;
 }
+void compilation_unit::move_rsp(int64_t t_offset) { assert(false); }
 
 operand* compilation_unit::return_reg(operand* r) {
   move(regs.get(register_t::ACCUMULATOR), r);
@@ -73,7 +68,7 @@ operand* compilation_unit::move_immediate(operand* r, std::string_view lit) {
 
 operand* compilation_unit::lea(operand* to, operand* from) {
   asmgen.write_instruction(instruction_t::lea, to->value(), from->value());
-  to->hold_address(from->variable());
+  to->hold(from->variable());
   return to;
 }
 
@@ -140,7 +135,6 @@ void compilation_unit::start() {
 
 void compilation_unit::push(operand* r) {
   asmgen.write_instruction(instruction_t::push, r->value());
-  ast->active_frame()->local_stack.push();
 }
 
 void compilation_unit::pop(operand* r) {
@@ -153,50 +147,6 @@ std::string compilation_unit::end() {
   return asmgen.end();
 }
 
-template <typename T, typename Id>
-std::vector<const callable*> compilation_unit::get_candidates(Id t_id,
-                                                              const expr::arguments& t_args) const {
-  if constexpr (std::is_same_v<T, builtin_callable>) {
-    return CAST_RANGE(get_builtin_operator(t_id.value()), const callable);
-  } else if constexpr (std::is_same_v<T, decl::function>) {
-    return CAST_RANGE(ast->m_functions.get_by_name(t_id), const callable);
-  }
-}
-
-template <typename T, typename Id>
-const T* compilation_unit::get_callable(Id id, const expr::arguments& argument_expressions) const {
-  auto argument_types = argument_expressions | MAP_RANGE(expr::expression*, elem->type());
-
-  std::vector<const callable*> overloads = get_candidates<T, Id>(id, argument_expressions);
-  auto possible_exact_match =
-      overloads | std::views::filter([argument_types](const callable* fn) -> bool {
-        return std::ranges::equal(
-            (fn->parameters() |
-             TRANSFORM([](const parameter& param) -> type_id { return param.specs.type.value(); })),
-            argument_types);
-      }) |
-      TO_VEC;
-
-  if (possible_exact_match.size() == 1) {
-    return dynamic_cast<const T*>(possible_exact_match.front());
-  }
-
-  // Overload resolution
-  auto resolved = resolve_overloads(id, overloads, argument_expressions);
-  if (!resolved) {
-    THROW(UNDECLARED_SYMBOL, id);
-  }
-
-  return dynamic_cast<const T*>(resolved);
-}
-
-template const ast::decl::function* compilation_unit::get_callable(
-    ast::identifier id,
-    const expr::arguments& argument_expressions) const;
-template const builtin_callable* compilation_unit::get_callable(
-    ast::operator_ id,
-    const expr::arguments& argument_expressions) const;
-
 std::optional<assembly::operand*> compilation_unit::call_function(
     const identifier& id,
     const ast::expr::arguments& args) {
@@ -206,7 +156,7 @@ std::optional<assembly::operand*> compilation_unit::call_function(
     return {};
   }
 
-  const decl::function* fn = get_callable<decl::function>(id, args);
+  const decl::function* fn = ast->get_callable<decl::function>(id, args);
   if (nullptr == fn) {
     THROW(UNDECLARED_SYMBOL, id);
   }
@@ -217,7 +167,7 @@ std::optional<assembly::operand*> compilation_unit::call_function(
   load_arguments(fn->parameters(), args);
   call(fn->ident);
 
-  if (fn->specs.type.value() != types::global().make(types::core_t ::void_t, {})) {
+  if (fn->specs.type.value() != MANAGER.make(types::core_t ::void_t, {})) {
     return regs.get(register_t::ACCUMULATOR);
   }
 
@@ -247,13 +197,17 @@ constexpr operand* set_operand(compilation_unit& v, arg_t side, operand* l, oper
 operand* compilation_unit::call_builtin_operator(const operator_& op,
                                                  const ast::expr::arguments& args) {
   REGISTER_INFO("Calling builtin operator {}", op);
-  operand* res       = nullptr;
-  auto params        = regs.parameters();
-  auto load_argument = [this, &params](expr::expression* e) {
-    return runner.generate_expr(*e, params.next());
-  };
-  auto* impls = get_callable<builtin_callable>(op, args);
-  auto ops    = args | TRANSFORM(load_argument) | TO_VEC;
+  operand* res = nullptr;
+  auto* impls  = ast->get_callable<builtin_callable>(op, args);
+  auto params  = regs.parameters();
+  auto ops     = std::views::zip_transform(
+                 [this, &params](const parameter& t_param, expr::expression* t_expr) {
+                   return runner.generate_expr(
+                       *translation_unit::bind_expression(t_expr, t_param.type), params.next());
+                 },
+                 impls->params,
+                 args.data()) |
+             std ::ranges ::to<std ::vector>();
 
   operand* l;
   operand* r;
@@ -307,12 +261,11 @@ intent_t mode_to_intent(binding_mode_t t_mode) {
   return MOVE_CONTENT;
 }
 } // namespace
-
 void compilation_unit::load_arguments(const parameters& parameters, const expr::arguments& args) {
   auto param_regs = regs.parameters();
   for (const auto& [param, arg] : std::views::zip(parameters, args)) {
-    types::type_id param_type     = param.specs.type.value();
-    binding_mode_t mode           = bind_value(arg->value_category(), param_type);
+    types::type_id param_type     = param.type;
+    binding_mode_t mode           = ast->bind_value(arg->value_category(), param_type);
 
     ast::expr::expression* n_expr = param.init == nullptr ? arg : param.init;
     if (n_expr == nullptr) {
@@ -322,81 +275,6 @@ void compilation_unit::load_arguments(const parameters& parameters, const expr::
     intent_t intent = mode_to_intent(mode);
     runner.generate_expr(*n_expr, param_regs.next(), intent);
   }
-}
-
-template <typename Id>
-const callable* compilation_unit::resolve_overloads(
-    Id id,
-    std::vector<const callable*> candidates,
-    const expr::arguments& argument_expressions) const {
-  // Already have candidates
-  // Lets check number of parameters
-  auto check_param_number = [argument_expressions](const callable* fn) {
-    auto parameters = fn->parameters();
-    auto n_params   = parameters.size();
-    auto n_args     = argument_expressions.size();
-    if (n_params > n_args) {
-      auto idx = n_params - (n_params - n_args);
-      for (; idx < n_params; ++idx) {
-        if (parameters.at(idx).init == nullptr) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    if (n_params < n_args) {
-      // Ellipsis is not yet implemented
-      return false;
-    }
-
-    // n_params == n_args
-    return true;
-  };
-  auto step1 = candidates | std::views::filter(check_param_number) | TO_VEC;
-  REGISTER_INFO("Tras step1 quedan {}", step1.size());
-  auto check_binding_rules = [argument_expressions](const callable* fn) {
-    // Binding rules
-    auto parameters = fn->parameters();
-    return std::ranges::all_of(
-        std::views::zip(parameters, argument_expressions), [](const auto& pair) {
-          const auto& [parameter, expression] = pair;
-          // If the parameter is reference, it applies the binding rule
-          // Binding rules are supposed to be counted as  a implicit conversions
-          // But for now we'll just take into account the implicit conversion rule
-          // on those parameter types that are not reference (hence applies the binding rule)
-          if (types::is_reference(parameter.specs.type).ok) {
-            // If is a lvalue argument with a non const lvalue ref parameter
-            bool rvaluearg_nonconstlvalue =
-                (types::is_lvalue && types::is_const)(parameter.specs.type).ok &&
-                expression->value_category() == value_category_t::RVALUE;
-            // Or lvalue arg with rvalue reference parameter
-            bool lvaluearg_rvaluerefparam =
-                types::is_rvalue(parameter.specs.type).ok &&
-                expression->value_category() == value_category_t::LVALUE;
-            // Is not viable function
-            return !rvaluearg_nonconstlvalue && !lvaluearg_rvaluerefparam;
-          } else {
-            return std::ranges::any_of(standard_conversions, [&expression](const auto& conv) {
-              return conv->is_convertible(expression->value_category(), expression->type());
-            });
-          }
-        });
-  };
-  auto step2 = step1 | std::views::filter(check_binding_rules) | TO_VEC;
-  REGISTER_INFO("Tras step2 quedan {}", step2.size());
-  if (step2.size() == 0) {
-    return nullptr;
-  }
-  return step2.front();
-}
-
-[[nodiscard]] bool compilation_unit::match_arguments(const std::vector<type_id>& builtin,
-                                                     const std::vector<type_id>& called) {
-  return std::ranges::all_of(std::views::zip(builtin, called), [](const auto& pair) {
-    const auto& [required, actual] = pair;
-    return required == actual;
-  });
 }
 
 } // namespace cmm::ir

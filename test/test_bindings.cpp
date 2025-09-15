@@ -1,3 +1,4 @@
+#include "ast.hpp"
 #include "lang.hpp"
 #include "types.hpp"
 #include <gtest/gtest.h>
@@ -13,14 +14,16 @@ struct binding_test : public ::testing::Test {
   type_id intrref_t = add_rvalue_reference(SINT_T);
 };
 
-#define EXPECT_BINDABLE(CAT, PARAM, MODE)                                    \
-  EXPECT_TRUE(is_bindable_to(value_category_t::CAT, PARAM));                 \
-  EXPECT_NO_THROW(bind_value(value_category_t::CAT, PARAM));                 \
-  EXPECT_EQ(binding_mode_t::MODE, bind_value(value_category_t::CAT, PARAM));
+using ast::translation_unit;
 
-#define EXPECT_NOT_BINDABLE(CAT, PARAM)                                      \
-  EXPECT_FALSE(is_bindable_to(value_category_t::CAT, PARAM));                \
-  EXPECT_THROW(bind_value(value_category_t::CAT, PARAM), compilation_error);
+#define EXPECT_BINDABLE(CAT, PARAM, MODE)                                                      \
+  EXPECT_TRUE(translation_unit::is_bindable_to(value_category_t::CAT, PARAM));                 \
+  EXPECT_NO_THROW(translation_unit::bind_value(value_category_t::CAT, PARAM));                 \
+  EXPECT_EQ(binding_mode_t::MODE, translation_unit::bind_value(value_category_t::CAT, PARAM));
+
+#define EXPECT_NOT_BINDABLE(CAT, PARAM)                                                        \
+  EXPECT_FALSE(translation_unit::is_bindable_to(value_category_t::CAT, PARAM));                \
+  EXPECT_THROW(translation_unit::bind_value(value_category_t::CAT, PARAM), compilation_error);
 
 TEST_F(binding_test, sanity_checks) {
   EXPECT_TRUE(is_rvalue(intrref_t).ok);

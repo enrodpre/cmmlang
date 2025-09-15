@@ -45,18 +45,13 @@ struct operand : displayable {
   using content_t = const ast::decl::variable*;
 
   struct symbol_container {
-    enum symbol_attr : uint8_t { VALUE, ADDRESS };
-
     content_t content;
-    symbol_attr attribute;
 
-    symbol_container(content_t, symbol_attr);
+    symbol_container(content_t);
     symbol_container(const symbol_container&)            = default;
     symbol_container& operator=(const symbol_container&) = default;
-    [[nodiscard]] bool is_address() const;
 
     [[nodiscard]] bool is_disposable() const noexcept { return m_disposable; }
-
     void set_disposable() noexcept { m_disposable = true; }
 
   private:
@@ -81,8 +76,7 @@ struct operand : displayable {
   [[nodiscard]] std::optional<symbol_container> content() const;
   [[nodiscard]] types::type_id content_type() const;
   [[nodiscard]] content_t variable() const;
-  operand* hold_value(content_t);
-  operand* hold_address(content_t);
+  operand* hold(content_t);
   [[nodiscard]] bool empty() const;
   [[nodiscard]] bool is_writtable() const;
   void release();
@@ -107,34 +101,18 @@ struct reg : public operand {
   NOT_MOVABLE_CLS(reg);
 
   [[nodiscard]] type_t type() const override { return type_t::REGISTER; }
-
   [[nodiscard]] std::string name() const { return m_name; }
-
   [[nodiscard]] std::string value() const override;
 
 protected:
   std::string m_name;
 };
 
-struct register_placeholder : public reg {
-  register_placeholder()
-      : reg(std::format("placeholder_{}", i++)) {}
-
-  template <register_t Reg>
-  register_placeholder();
-
-  void bind(reg*);
-  reg* bound_reg{};
-  static inline int i = 1;
-};
-
 struct reg_memory : public reg {
   reg_memory(std::string, int64_t);
-  using reg::hold_address;
-  using reg::hold_value;
+  using reg::hold;
 
   [[nodiscard]] type_t type() const override { return type_t::MEMORY; }
-
   [[nodiscard]] std::string value() const override;
 
 protected:
@@ -142,7 +120,8 @@ protected:
 };
 
 struct stack_memory : public reg_memory {
-  stack_memory(int64_t);
+  ast::translation_unit* tu;
+  stack_memory(int64_t, decltype(tu));
   [[nodiscard]] std::string value() const override;
 };
 
@@ -153,9 +132,7 @@ struct immediate : public operand {
   immediate(stored_t, immediate_t);
 
   [[nodiscard]] type_t type() const override { return type_t::IMMEDIATE; }
-
   [[nodiscard]] immediate_t immediate_type() const { return m_immediate_type; }
-
   [[nodiscard]] std::string value() const override;
 
 protected:
@@ -175,7 +152,6 @@ struct label : public virtual operand {
   label(std::string);
 
   [[nodiscard]] type_t type() const override { return type_t::LABEL; }
-
   [[nodiscard]] std::string value() const override;
 
 protected:
@@ -183,25 +159,22 @@ protected:
 };
 
 struct label_memory : public label {
-  using label::hold_address;
-  using label::hold_value;
+  using label::hold;
   using label::label;
 
   [[nodiscard]] type_t type() const override { return type_t::MEMORY; }
-
   [[nodiscard]] std::string value() const override;
 };
 
 struct label_literal : public label {
-  using label::hold_address;
-  using label::hold_value;
+  using label::hold;
   using label::label;
   [[nodiscard]] std::string label_length() const;
 };
 
 struct operand_factory {
   STATIC_CLS(operand_factory);
-  static stack_memory* create_stack_memory(uint64_t);
+  static stack_memory* create_stack_memory(uint64_t, ast::translation_unit*);
   static label* create_label(const std::string&);
   static label_memory* create_label_memory(std::string&&);
   static label_literal* create_label_literal(std::string&&);
@@ -214,7 +187,8 @@ struct registers {
   using value_type = reg* const;
   using store_type = std::array<value_type, 11>;
 
-  registers();
+  inline registers();
+  NOT_COPYABLE_CLS(registers);
 
   constexpr static std::string to_realname(register_t);
   [[nodiscard]] reg* get(register_t) const;
@@ -225,7 +199,7 @@ struct registers {
   }
 
   // reg* last_opfunction_result;
-  const ast::decl::variable* find_var(const ast::identifier&);
+  std::optional<operand*> find_var(const ast::identifier&);
 
   [[nodiscard]] constexpr reg* parameter_at(int i) const;
 
@@ -234,6 +208,7 @@ struct registers {
         : params(p) {}
 
     ~parameters_transaction() { reset(); }
+    NOT_COPYABLE_CLS(parameters_transaction);
 
     reg* next();
     void reset();
@@ -243,56 +218,20 @@ struct registers {
     std::vector<reg*> m_regs;
   };
 
-  constexpr static const std::array<register_t, 6> m_parameters = {register_t::SYSCALL_1,
-                                                                   register_t::SYSCALL_2,
-                                                                   register_t::SCRATCH_1,
-                                                                   register_t::SCRATCH_4,
-                                                                   register_t::SCRATCH_2,
-                                                                   register_t::SCRATCH_3};
+  constexpr static const std::array m_parameters = {register_t::SYSCALL_1,
+                                                    register_t::SYSCALL_2,
+                                                    register_t::SCRATCH_1,
+                                                    register_t::SCRATCH_4,
+                                                    register_t::SCRATCH_2,
+                                                    register_t::SCRATCH_3};
 
   registers::parameters_transaction parameters();
 
 private:
   store_type m_registers;
-
-  constexpr static store_type initialize_registers();
-};
-
-// Usage example
-static_assert(!std::is_abstract_v<label>);
-static_assert(!std::is_abstract_v<reg_memory>);
-static_assert(!std::is_abstract_v<immediate_memory>);
-static_assert(!std::is_abstract_v<label_memory>);
-static_assert(!std::is_abstract_v<reg>);
-static_assert(!std::is_abstract_v<immediate>);
-
-struct assembly_code : public displayable {};
-
-struct assembly_line : public displayable {};
-
-struct assembly_empty_line : public assembly_line {
-  [[nodiscard]] std::string string() const override;
-};
-
-struct assembly_comment_line : public assembly_line {
-  std::string comment;
-  assembly_comment_line(std::string);
-
-  [[nodiscard]] std::string string() const override;
-};
-
-struct assembly_code_line : public assembly_line {
-  std::unique_ptr<assembly_code> instruction;
-  std::string comment;
-
-  assembly_code_line(decltype(instruction)&&, decltype(comment));
-
-  [[nodiscard]] std::string string() const override;
 };
 
 class comment_block;
-
-using constant_data_descriptor = std::pair<assembly::label*, assembly::label*>;
 
 class asmgen {
 public:
@@ -318,12 +257,6 @@ public:
   template <typename... Args>
   [[nodiscard]] comment_block begin_comment_block(std::format_string<Args...> std, Args&&... args);
 
-  // Dynamic buffer
-  // void create_delay();
-  // [[nodiscard]] std::string dump_delayed();
-  // void stop_delay();
-  // void load_delayed();
-
 private:
   std::unique_ptr<std::pair<std::string, std::string>> m_current_procedure;
   std::vector<std::string> m_comment_blocks;
@@ -340,34 +273,9 @@ private:
                      "mov  ebx, 1\n  mov edx, 1\n syscall"),
       std::make_pair(
           "print",
-          "  mov rax, 1\n  mov rdi, 1\n  lea rsi, [newline]\n  mov rdx, 1\n  syscall\n  ret")};
-};
-
-class comment_block {
-public:
-  comment_block(asmgen&, std::string);
-  ~comment_block();
-  void end();
-
-private:
-  asmgen& m_asmgen;
-  std::string m_name;
-  bool m_ended = false;
-};
-
-template <typename... Args>
-comment_block asmgen::begin_comment_block(std::format_string<Args...> std, Args&&... args) {
-  std::string comment = std::format(std, std::forward<Args>(args)...);
-  m_comment_blocks.emplace_back(comment);
-  write_comment(comment);
-  return {*this, comment};
-}
-
-enum class Snippet : uint8_t { int_to_str, exit, print_str, print_nl, print_int };
-constexpr static const std::string_view PRINT_NL = ""
-                                                   "syscall\n  ret";
-constexpr static const std::string_view INT_TO_FORMAT =
-    R"(  mov rcx, 10                ; Base 10
+          "  mov rax, 1\n  mov rdi, 1\n  lea rsi, [newline]\n  mov rdx, 1\n  syscall\n  ret"),
+      std::make_pair("iota",
+                     R"(  mov rcx, 10                ; Base 10
   xor rbx, rbx               ; Clear rbx (used for digit count)
 
 ; Clear the buffer (optional, but recommended)
@@ -384,9 +292,9 @@ constexpr static const std::string_view INT_TO_FORMAT =
   test rax, rax              ; Check if rax is zero
   jnz .convert_loop          ; Repeat if not zero
   mov rax, rdi               ; Return the pointer to the start  
-ret)";
-constexpr static const std::string_view PRINT_INT =
-    R"(  ;; Value to print should be in rax register
+ret)"),
+      std::make_pair("int_to_string",
+                     R"(  ;; Value to print should be in rax register
   lea rdi, [num + 10]         ;Pointer to the buffer
   call int_to_str
 
@@ -396,7 +304,21 @@ constexpr static const std::string_view PRINT_INT =
   sub rsi, rbx               ;Find the first character
   mov rdx, rbx               ;Length of the number string
   syscall
-  ret)";
+                      };
+                     ret)")};
+};
+
+class comment_block {
+public:
+  comment_block(asmgen&, std::string);
+  ~comment_block();
+  void end();
+
+private:
+  asmgen& m_asmgen;
+  std::string m_name;
+  bool m_ended = false;
+};
 
 }; // namespace cmm::assembly
 

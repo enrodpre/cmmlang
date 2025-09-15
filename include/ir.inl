@@ -1,15 +1,14 @@
 #pragma once
 
-#include <magic_enum/magic_enum.hpp>
 #include <format>
+#include <magic_enum/magic_enum.hpp>
 #include <tuple>
 #include <utility>
-#include <string>
 
 #include "asm.hpp"
+#include "asm.inl"
 #include "common.hpp"
 #include "ir.hpp"
-#include "asm.inl"
 
 namespace cmm::ir {
 
@@ -29,8 +28,7 @@ void compilation_unit::instruction(const instruction_t& ins, Args&&... args) {
       // address
       REGISTER_WARN("{} cannot address memory", data);
       static_assert(std::formattable<cmm::instruction_t, char>);
-      if (!op->empty() &&
-          op->content()->attribute == operand::symbol_container::symbol_attr::ADDRESS) {
+      if (!op->empty()) {
         auto* aux = regs.get(assembly::register_t::AUX);
         asmgen.write_instruction(instruction_t::mov, aux->value(), op->value());
         asmgen.write_instruction(ins, aux->value());
