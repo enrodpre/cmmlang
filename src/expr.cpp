@@ -33,7 +33,7 @@ expr::identifier::identifier(const token& t_token)
     : m_term(t_token) {}
 
 type_id expr::identifier::type_impl() const {
-  return find_parent<ast::translation_unit>(this)->get_variable(*this).first->specs.type.value();
+  return get_root()->get_variable(*this).first->specs.type.value();
 }
 
 expr::literal::literal(const token& t, literal_t l)
@@ -60,15 +60,16 @@ type_id expr::literal::type_impl() const {
       break;
     case ast::expr::literal_t::FLOAT:
       return FLOAT_T;
+      break;
+      DEFAULT_CASE;
   }
 }
 expr::call::call(decltype(ident)&& id, decltype(args) a = {})
     : ident(std::move(id)),
-      args(a) {}
+      args(std::move(a)) {}
 
 type_id expr::call::type_impl() const {
-  const decl::function* func =
-      find_parent<ast::translation_unit>(this)->get_callable<decl::function>(ident, args);
+  const auto* func = get_root()->get_callable<decl::function>(ident, args);
   return func->specs.type.value();
 }
 
@@ -79,8 +80,7 @@ expr::unary_operator::unary_operator(expression& expression, ast::operator_&& op
       operator_(std::move(op)) {}
 
 type_id expr::unary_operator::type_impl() const {
-  const auto* func = find_parent<ast::translation_unit>(this)->get_callable<builtin_callable>(
-      operator_, {&expr.get()});
+  const auto* func = get_root()->get_callable<builtin_callable>(operator_, {&expr.get()});
   return func->ret;
 }
 value_category_t expr::unary_operator::value_category_impl() const {
@@ -92,8 +92,8 @@ expr::binary_operator::binary_operator(expression& l, ast::operator_&& op, expre
       right(r) {}
 
 type_id expr::binary_operator::type_impl() const {
-  const auto* func = find_parent<ast::translation_unit>(this)->get_callable<builtin_callable>(
-      operator_, {&left.get(), &right.get()});
+  const auto* func =
+      get_root()->get_callable<builtin_callable>(operator_, {&left.get(), &right.get()});
   return func->ret;
 }
 

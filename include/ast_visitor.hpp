@@ -2,6 +2,7 @@
 
 #include "ast.hpp"
 #include "common.hpp"
+#include "expr.h"
 
 #include <functional>
 #include <revisited/visitor.h>
@@ -10,22 +11,23 @@
 
 namespace cmm::ast {
 
-enum class VisitorDirection {
+enum class VisitorDirection : uint8_t {
   ParentToChild, // Top-down traversal
   ChildToParent, // Bottom-up traversal
   Horizontal     // Sibling traversal
 };
 
-enum class VisitorMode {
+enum class VisitorMode : uint8_t {
   TraverseAll,    // Visit every node encountered
   ConditionalOnly // Only visit nodes matching condition
 };
 
-template <VisitorDirection Dir, typename Ret>
+template <VisitorDirection Dir, typename Ret = bool>
 // requires(std::is_default_constructible_v<Ret>)
 class generic_visitor : public revisited::RecursiveVisitor<node&, const node&> {
 protected:
-  using node_type = node;
+  using node_type  = node;
+  using value_type = std::add_pointer_t<Ret>;
 
 public:
   bool visit(node_type& node) override { return traverse(&node, false); }
@@ -34,10 +36,10 @@ public:
     return traverse(const_cast<node_type*>(&node), false);
   }
 
-  std::pair<bool, std::add_pointer_t<Ret>> get_result() const { return m_result; }
+  std::pair<bool, value_type> get_result() const { return m_result; }
 
 protected:
-  void set_result(std::add_pointer_t<Ret> t_ret) { m_result = std::make_pair(true, t_ret); }
+  void set_result(value_type t_ret) { m_result = std::make_pair(true, t_ret); }
 
 private:
   bool traverse(node_type* t_root, bool successful) {
@@ -66,8 +68,9 @@ private:
 
     } else if constexpr (Dir == VisitorDirection::Horizontal) {
       auto* parent = t_node->get_parent();
-      if (!parent)
+      if (parent == nullptr) {
         return nullptr;
+      }
 
       for (auto* sibling : parent->children()) {
         return sibling;
@@ -79,12 +82,13 @@ private:
 protected:
   // Condition tracking for complex queries
   mutable std::unordered_map<std::type_index, int> m_count;
-  std::pair<bool, std::add_pointer_t<Ret>> m_result;
+  std::pair<bool, value_type> m_result;
 };
 
 template <VisitorDirection Dir, typename Result>
 class retriever_visitor : public generic_visitor<Dir, Result> {
   using node_type      = generic_visitor<Dir, Result>::node_type;
+  using value_type     = std::add_pointer_t<std::add_const_t<Result>>;
   using condition_type = std::function<bool(const node_type*)>;
 
 public:
@@ -95,45 +99,44 @@ protected:
   bool visit_node(node_type* t_node) override {
     bool result = m_condition(t_node);
     if (result) {
-      generic_visitor<Dir, Result>::set_result(dynamic_cast<std::add_pointer_t<Result>>(t_node));
+      generic_visitor<Dir, Result>::set_result(dynamic_cast<value_type>(t_node));
     }
     return result;
   }
 
-protected:
   condition_type m_condition;
 };
 
 template <typename T>
-constexpr auto is_derived = [](const node* t_node) {
+constexpr auto is = [](const node& t_node) {
   return dynamic_cast<std::add_pointer_t<std::add_const_t<T>>>(t_node) != nullptr;
 };
 
-template <typename T>
-constexpr auto is_equals = [](const node* t_node) {
-  return dynamic_cast<std::add_pointer_t<std::add_const_t<T>>>(t_node) != nullptr;
-};
-
-template <VisitorDirection Dir, typename Ret>
-struct exact_retriever_visitor : public retriever_visitor<Dir, Ret> {
-  exact_retriever_visitor()
-      : retriever_visitor<Dir, Ret>(is_equals<Ret>) {}
+template <typename Ret>
+struct parent_retriever_visitor : public retriever_visitor<VisitorDirection::ChildToParent, Ret> {
+  parent_retriever_visitor()
+      : retriever_visitor<VisitorDirection::ChildToParent, Ret>(
+            is<typename retriever_visitor<VisitorDirection::ChildToParent, Ret>::value_type>) {}
 };
 
 template <typename Ret>
 std::add_pointer_t<std::add_const_t<Ret>> find_parent(
     const node* t_node,
-    std::function<void()> on_failure = []() {
+    const std::function<void()>& on_failure = []() {
       throw error(std::format("Couldnt find parent of type {}", typeid(Ret).name()));
     }) {
-  exact_retriever_visitor<VisitorDirection::ChildToParent, Ret> visitor{};
+  parent_retriever_visitor<Ret> visitor{};
   t_node->accept(visitor);
   auto res = visitor.get_result();
   if (!res.first) {
     on_failure();
   }
-  return dynamic_cast<std::add_pointer_t<std::add_const_t<Ret>>>(res.second);
+  return res.second;
 }
+
+static_assert(std::is_const_v<std::remove_pointer_t<const translation_unit*>>);
+
+ast::scope& get_scope(node*);
 
 template <VisitorDirection Dir>
 class operator_visitor : public generic_visitor<Dir, bool> {
@@ -164,6 +167,10 @@ protected:
   should_stop_type m_stop_condition;
   operation_type m_operation;
 };
+
+template <typename Node>
+  requires(std::is_base_of_v<node, Node>)
+void print_node(const Node&);
 
 class ConditionBuilder {
 public:
@@ -199,13 +206,13 @@ public:
   }
 
   // Combinators
-  static std::function<bool(const node*)> andCondition(std::function<bool(const node*)> a,
-                                                       std::function<bool(const node*)> b) {
+  static std::function<bool(const node*)> andCondition(const std::function<bool(const node*)>& a,
+                                                       const std::function<bool(const node*)>& b) {
     return [a, b](const node* n) { return a(n) && b(n); };
   }
 
-  static std::function<bool(const node*)> orCondition(std::function<bool(const node*)> a,
-                                                      std::function<bool(const node*)> b) {
+  static std::function<bool(const node*)> orCondition(const std::function<bool(const node*)>& a,
+                                                      const std::function<bool(const node*)>& b) {
     return [a, b](const node* n) { return a(n) || b(n); };
   }
 };
@@ -290,39 +297,4 @@ struct const_ast_visitor : const_visitor<NODE_TYPES> {
   void visit(const ast::jump::break_& c) override;
 };
 
-struct generic_node_visitor {
-  virtual ~generic_node_visitor() = default;
-
-  // entry point for visiting any node
-  void visit(node& n) { visit_impl(n); }
-
-protected:
-  // Override this to implement your check logic on any node
-  virtual void check(node& n) = 0;
-
-private:
-  void visit_impl(node& n) {
-    check(n); // call user-defined check
-
-    // recursively visit children if this is a composite
-    // if (const auto* c = dynamic_cast<const node*>(&n)) {}
-  }
-};
-
-struct ast_pp_visitor : public generic_node_visitor {
-  std::string result;
-  int indent_level = 0;
-
-protected:
-  void check(node& n) override {
-    result += std::string(indent_level * 2, ' ') + n.string() + "\n";
-
-    indent_level++;
-    for (auto* child : n.children()) {
-      if (child)
-        visit(*child);
-    }
-    indent_level--;
-  }
-};
 } // namespace cmm::ast

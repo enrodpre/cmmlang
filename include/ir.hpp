@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 #include "asm.hpp"
 #include "ast.hpp"
@@ -24,7 +25,7 @@ struct translation_unit;
 
 namespace cmm::ir {
 
-using assembly::operand;
+using assembly::element;
 
 enum class Phase : uint8_t {
   STOPPED = 0,
@@ -68,26 +69,31 @@ public:
   [[nodiscard]] const decl::function::definition* active_frame() const noexcept {
     return stackframe.top();
   }
+
+  template <typename T, typename... Args>
+    requires(std::is_base_of_v<assembly::element, T>)
+  T* get_operand(Args&&...);
+
   void reserve_static_var(std::string_view);
   void reserve_memory(std::string_view, std::string_view, std::string_view);
-  assembly::label_literal* reserve_constant(std::string_view);
-  operand* call_builtin_operator(const operator_&, const ast::expr::arguments&);
-  std::optional<operand*> call_function(const identifier&, const ast::expr::arguments&);
+  assembly::label_memory* reserve_constant(std::string_view);
+  assembly::reg* call_builtin_operator(const operator_&, const ast::expr::arguments&);
+  std::optional<assembly::reg*> call_function(const identifier&, const ast::expr::arguments&);
 
-  template <assembly::Operand... Args>
+  template <typename... Args>
   void instruction(const instruction_t&, Args&&...);
-  operand* move(operand*, operand*);
+  assembly::operand* move(assembly::operand*, assembly::operand*);
   void move_rsp(int64_t);
-  operand* lea(operand*, operand*);
-  operand* move_immediate(operand*, std::string_view);
-  operand* return_reg(operand*);
-  void push(operand*);
-  void pop(operand*);
-  operand* zero(operand*);
+  assembly::reg* lea(assembly::reg*, assembly::operand*);
+  assembly::reg* move_immediate(assembly::reg*, std::string_view);
+  assembly::reg* return_reg(assembly::reg*);
+  void push(assembly::reg*);
+  void pop(assembly::reg*);
+  void zero(assembly::reg*);
   void jump(std::string_view);
   void jump(const instruction_t&, std::string_view);
   void cmp(std::string_view, std::string_view);
-  void exit(operand*);
+  void exit(assembly::reg*);
   void call(std::string_view);
   void exit_successfully();
   void syscall();

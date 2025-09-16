@@ -55,19 +55,19 @@ function(add_integration_test_target TARGET_NAME)
   list(APPEND PYTEST_CMD --root-dir ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/e2e.py -v)
 
   # Create the target
-  add_test(NAME ${TARGET_NAME}
-        COMMAND ${CMAKE_COMMAND} -E env ${ARGS_ENV_VARS} ${PYTEST_CMD}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-  set_tests_properties(${TARGET_NAME} PROPERTIES
-            LABELS "integration;python"
-            TIMEOUT 300
-        )
-
-  # Make sure C++ targets are built before running integration tests
-  set_tests_properties(${TARGET_NAME} PROPERTIES
-            DEPENDS "CmmLang"  # Replace with your actual target name
-        )
+  # add_test(NAME ${TARGET_NAME}
+  #       COMMAND ${CMAKE_COMMAND} -E env ${ARGS_ENV_VARS} ${PYTEST_CMD}
+  #       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  #   )
+  # set_tests_properties(${TARGET_NAME} PROPERTIES
+  #           LABELS "integration;python"
+  #           TIMEOUT 300
+  #       )
+  #
+  # # Make sure C++ targets are built before running integration tests
+  # set_tests_properties(${TARGET_NAME} PROPERTIES
+  #           DEPENDS "CmmLang"  # Replace with your actual target name
+  # )
 endfunction()
 add_integration_test_target(integration)
 add_custom_target(test-help

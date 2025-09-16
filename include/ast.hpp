@@ -15,13 +15,18 @@
 #include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_format.hpp>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
 namespace cmm {
 namespace assembly {
+struct element;
+struct reg;
 struct operand;
-}
+struct memory;
+struct stack_memory;
+} // namespace assembly
 
 namespace ir {
 struct compilation_unit;
@@ -32,8 +37,6 @@ namespace ast {
 
 namespace expr {
 struct expression;
-struct literal;
-struct identifier;
 struct unary_operator;
 struct call;
 struct binary_operator;
@@ -46,10 +49,12 @@ using visitor = revisited::Visitor<std::add_lvalue_reference_t<Visitable>...>;
 template <typename... Visitable>
 using const_visitor = visitor<std::add_const_t<Visitable>...>;
 
+struct translation_unit;
+
 struct node : public revisited::Visitable<node>, displayable {
   ~node() override = default;
   node(std::optional<cmm::location> l = {})
-      : m_location(l) {}
+      : m_location(std::move(l)) {}
   node(const token& t)
       : node(t.location()) {}
   MOVABLE_CLS(node);
@@ -68,7 +73,10 @@ struct node : public revisited::Visitable<node>, displayable {
   operator node*() { return static_cast<node*>(this); }
   std::string string() const override { return demangle(typeid(this).name()); }
   virtual std::vector<node*> children() = 0;
-  void initialize() {
+  translation_unit* get_root();
+  const translation_unit* get_root() const;
+  void initialize(ast::translation_unit* t_tu) {
+    m_root = t_tu;
     for (node* child : children()) {
       if (child != nullptr) {
         child->set_parent(this);
@@ -78,7 +86,8 @@ struct node : public revisited::Visitable<node>, displayable {
   }
 
 private:
-  mutable node* m_parent = nullptr;
+  mutable node* m_parent   = nullptr;
+  translation_unit* m_root = nullptr;
   std::optional<cmm::location> m_location;
 };
 
@@ -100,7 +109,7 @@ struct term : derived_visitable<term<T>, node> {
   std::vector<node*> children() final { return {}; }
 
   term() = default;
-  COPYABLE_CLS(term<T>);
+  COPYABLE_CLS(term);
   term(T t_t)
       : m_value(t_t) {}
   term(const token& t_token, T t_t)
@@ -111,7 +120,7 @@ struct term : derived_visitable<term<T>, node> {
         m_value(t_t) {}
   operator const T&() const { return value(); }
   const T& value() const { return m_value; }
-  std::string string() const override { return std::format("{}", m_value); }
+  [[nodiscard]] std::string string() const override { return std::format("{}", m_value); }
 
 private:
   T m_value{};
@@ -160,7 +169,7 @@ struct identifier : derived_visitable<identifier, term<std::string>> {
   identifier(std::optional<cmm::location> t_loc, std::string t_ident)
       : derived_visitable(t_loc, t_ident) {}
   identifier(std::string mangled)
-      : identifier({}, mangled) {}
+      : identifier({}, std::move(mangled)) {}
   identifier(const token& t_token)
       : identifier(t_token.location(), std::string(t_token.value)) {}
   operator std::string_view() const { return value(); }
@@ -208,11 +217,14 @@ struct variable;
 struct label;
 }; // namespace decl
 
-using variable_store_value = struct variable_store
+struct variable_store
     : public hashmap<mangled_key, std::pair<const decl::variable*, assembly::operand*>> {
-  using key_type   = mangled_key;
-  using value_type = std::pair<const decl::variable*, assembly::operand*>;
-  variable_store() = default;
+  using key_type     = mangled_key;
+  using value_type   = std::pair<const decl::variable*, assembly::operand*>;
+  using symbol_type  = std::tuple_element<0, value_type>;
+  using address_type = std::tuple_element_t<1, value_type>;
+
+  variable_store()   = default;
   void insert(const decl::variable*, assembly::operand*);
 };
 
@@ -241,9 +253,9 @@ struct siblings : public derived_visitable<siblings<T>, node> {
   container_type::iterator end() { return m_data.end(); }
   container_type::const_iterator begin() const { return m_data.begin(); }
   container_type::const_iterator end() const { return m_data.begin(); }
-  size_t size() const noexcept { return m_data.size(); }
+  [[nodiscard]] size_t size() const noexcept { return m_data.size(); }
   void push_back(const T& t_t) { return m_data.push_back(t_t); }
-  void push_back(T&& t_t) { return m_data.push_back(t_t); }
+  void push_back(T&& t_t) { return m_data.push_back(std::move(t_t)); }
   const container_type& data() const { return m_data; }
 
   operator container_type() { return m_data; }
@@ -276,17 +288,17 @@ using statements          = siblings<statement*>;
 
 struct scope : derived_visitable<scope, anonymous_declaration> {
   using derived_visitable::derived_visitable;
-  [[nodiscard]] virtual bool is_declared(const ast::identifier&) const;
+  [[nodiscard]] virtual bool is_declared(const ast::identifier&) const noexcept;
   [[nodiscard]] virtual const variable_store::value_type& get_variable(
       const ast::identifier&) const;
   [[nodiscard]] const ast::decl::variable* get_variable_declaration(const ast::identifier&) const;
-  [[nodiscard]] assembly::operand* get_variable_address(const ast::identifier&) const;
+  [[nodiscard]] variable_store::address_type get_variable_address(const ast::identifier&) const;
+
   variable_store variables;
 
   friend struct translation_unit;
 
-protected:
-  virtual assembly::operand* declare_variable(ast::decl::variable*);
+  virtual variable_store::address_type declare_variable(ast::decl::variable*);
 };
 
 template <typename T>
@@ -296,8 +308,8 @@ using label_store = std::unordered_map<std::string, const decl::label*>;
 
 namespace decl {
 struct block : derived_visitable<block, scope> {
-  block(const statements& s)
-      : stmts(s) {}
+  block(statements s)
+      : stmts(std::move(s)) {}
 
   statements stmts;
   children_impl(stmts | TRANSFORM([](const auto& s) { return dynamic_cast<node*>(s); }) | TO_VEC);
@@ -311,7 +323,7 @@ struct specifiers : derived_visitable<specifiers, node> {
   specifiers(type_spec&&, linkage_spec&&, storage_spec&&);
 
   specifiers(types::type_id t, decltype(linkage) l = {}, decltype(storage) s = {})
-      : type(std::move(t)),
+      : type(t),
         linkage(std::move(l)),
         storage(std::move(s)) {}
   std::vector<node*> children() override {
@@ -390,11 +402,11 @@ struct function::definition : derived_visitable<definition, block> {
 
   block* active_scope() { return local_scopes.top(); }
   const block* active_scope() const { return local_scopes.top(); }
-  bool is_declared(const ast::identifier& ident) const override;
+  bool is_declared(const ast::identifier& ident) const noexcept override;
   void create_scope(block&) noexcept;
   [[nodiscard]] const variable_store::value_type& get_variable(
       const ast::identifier&) const override;
-  assembly::operand* declare_parameter(const ast::decl::variable&, assembly::operand*);
+  assembly::reg* declare_parameter(const ast::decl::variable&, assembly::reg*);
   size_t destroy_scope() noexcept;
   void clear() noexcept;
   label_store labels;
@@ -415,7 +427,7 @@ struct conversion_function : public function {
   conversion_function(const decltype(body)&);
   [[nodiscard]] virtual bool is_convertible(types::type_id) const noexcept = 0;
   [[nodiscard]] virtual types::type_id to(types::type_id) const noexcept   = 0;
-  [[nodiscard]] virtual assembly::operand* operator()(assembly::operand*) const noexcept;
+  [[nodiscard]] virtual assembly::element* operator()(assembly::element*) const noexcept;
   [[nodiscard]] bool is_implicit() const { return type == conversion_type_t::IMPLICIT; };
   [[nodiscard]] bool is_explicit() const { return type == conversion_type_t::EXPLICIT; };
 };
@@ -536,6 +548,7 @@ struct return_ : derived_visitable<return_, statement> {
 
 struct translation_unit : derived_visitable<translation_unit, scope> {
   translation_unit(global_declarations decl);
+  // NOT_COPYABLE_CLS(translation_unit);
   children_impl(stmts | TRANSFORM([](const auto& s) { return dynamic_cast<node*>(s); }) | TO_VEC);
 
   [[nodiscard]] decl::function::definition* active_frame() noexcept { return m_stackframe.top(); }
@@ -553,12 +566,11 @@ struct translation_unit : derived_visitable<translation_unit, scope> {
   void create_frame(decl::function::definition*);
   size_t pop_frame();
 
-  template <typename T>
-  bool is_declared(const ast::identifier&) const noexcept;
+  bool is_declared(const ast::identifier&) const noexcept override;
   bool is_declarable(const ast::identifier&) const noexcept;
   const decl::label* get_label(const ast::identifier&) const;
   const variable_store::value_type& get_variable(const ast::identifier&) const override;
-  assembly::operand* declare_variable(ast::decl::variable*) override;
+  variable_store::address_type declare_variable(ast::decl::variable*) override;
   void declare_function(ast::decl::function*);
   void define_function(ast::decl::function*);
   template <typename T, typename Id = T::identifier_t>
@@ -589,9 +601,8 @@ struct translation_unit : derived_visitable<translation_unit, scope> {
 private:
   void load_arguments(const parameters&, const expr::arguments&);
   template <typename T, typename Id>
-  std::vector<const callable*> get_candidates(Id, const expr::arguments&) const;
-  template <typename Id>
-  const callable* resolve_overloads(Id, std::vector<const callable*>, const expr::arguments&) const;
+  std::vector<const callable*> get_candidates(Id) const;
+  static const callable* resolve_overloads(std::vector<const callable*>, const expr::arguments&);
   [[nodiscard]] static bool match_arguments(const std::vector<types::type_id>&,
                                             const std::vector<types::type_id>&);
 };

@@ -29,8 +29,8 @@ public:
   NOT_MOVABLE_CLS(parser);
   NOT_COPYABLE_CLS(parser);
 
-  ast::translation_unit parse();
-  ast::translation_unit parse_program();
+  ast::translation_unit* parse();
+  ast::translation_unit* parse_program();
   ast::statement* parse_statement();
   template <typename T = ast::decl::block>
     requires(std::is_same_v<ast::decl::function::definition, T> ||
@@ -59,6 +59,7 @@ private:
   tokens m_tokens;
   memory::arena m_arena;
   std::vector<ast::declaration*> m_global;
+  ast::translation_unit* m_pointer;
 
   // Helpers
   template <typename Func, typename T = std::invoke_result_t<Func>>

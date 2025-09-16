@@ -44,38 +44,43 @@ operand* compilation_unit::move(operand* to, operand* from) {
     return to;
   }
 
-  if (to->type() == operand::type_t::MEMORY && from->type() == operand::type_t::MEMORY) {
-    auto* aux = regs.get(register_t::SCRATCH_1);
+  if (to->type() == element::type_t::MEMORY && from->type() == element::type_t::MEMORY) {
+    auto* aux = regs.get(registers::SCRATCH_1);
     asmgen.write_instruction(instruction_t::mov, aux->value(), from->value());
     asmgen.write_instruction(instruction_t::mov, to->value(), aux->value());
-    aux->release();
+    aux->reset();
   } else {
     asmgen.write_instruction(instruction_t::mov, to->value(), from->value());
   }
 
   return to;
 }
-void compilation_unit::move_rsp(int64_t t_offset) { assert(false); }
+void compilation_unit::move_rsp(int64_t t_offset) {
+  if (t_offset < 0) {
+    asmgen.write_instruction(instruction_t::sub, "rsp", std::abs(t_offset));
+  } else if (t_offset > 0) {
+    asmgen.write_instruction(instruction_t::add, "rsp", t_offset);
+  }
+}
 
-operand* compilation_unit::return_reg(operand* r) {
-  move(regs.get(register_t::ACCUMULATOR), r);
+reg* compilation_unit::return_reg(reg* r) {
+  move(regs.get(registers::ACCUMULATOR), r);
   return r;
 }
 
-operand* compilation_unit::move_immediate(operand* r, std::string_view lit) {
+assembly::reg* compilation_unit::move_immediate(assembly::reg* r, std::string_view lit) {
   asmgen.write_instruction(instruction_t::mov, r->value(), lit);
   return r;
 }
 
-operand* compilation_unit::lea(operand* to, operand* from) {
+reg* compilation_unit::lea(reg* to, operand* from) {
   asmgen.write_instruction(instruction_t::lea, to->value(), from->value());
-  to->hold(from->variable());
+  to->hold_symbol(from->symbol().value());
   return to;
 }
 
-operand* compilation_unit::zero(operand* reg) {
+void compilation_unit::zero(reg* reg) {
   asmgen.write_instruction(instruction_t::xor_, reg->value(), reg->value());
-  return reg;
 }
 
 void compilation_unit::reserve_memory(std::string_view name,
@@ -88,10 +93,10 @@ void compilation_unit::reserve_static_var(std::string_view name) {
   reserve_memory(name, "resb", "8");
 }
 
-assembly::label_literal* compilation_unit::reserve_constant(std::string_view value) {
+assembly::label_memory* compilation_unit::reserve_constant(std::string_view value) {
   std::string name = std::format("str_{}", counters.literals++);
   asmgen.add_data(name, value);
-  return operand_factory::create<assembly::label_literal>(name);
+  return get_operand<label_memory>(std::move(name), 0);
 }
 
 void compilation_unit::jump(std::string_view label) {
@@ -108,7 +113,7 @@ void compilation_unit::cmp(std::string_view a, std::string_view b) {
 
 void compilation_unit::ret() { asmgen.write_instruction(instruction_t::ret); }
 
-void compilation_unit::exit(operand* op) {
+void compilation_unit::exit(reg* op) {
   move(regs.parameter_at(0), op);
   jump("exit");
 }
@@ -121,7 +126,7 @@ void compilation_unit::exit_successfully() {
 void compilation_unit::syscall() { asmgen.write_instruction(instruction_t::syscall); }
 
 void compilation_unit::syscall(std::string_view num_syscall) {
-  move_immediate(regs.get(register_t::ACCUMULATOR), num_syscall);
+  move_immediate(regs.get(registers::ACCUMULATOR), num_syscall);
   syscall();
 }
 
@@ -134,11 +139,9 @@ void compilation_unit::start() {
   asmgen.start();
 }
 
-void compilation_unit::push(operand* r) {
-  asmgen.write_instruction(instruction_t::push, r->value());
-}
+void compilation_unit::push(reg* r) { asmgen.write_instruction(instruction_t::push, r->value()); }
 
-void compilation_unit::pop(operand* r) {
+void compilation_unit::pop(reg* r) {
   asmgen.write_instruction(instruction_t::pop, r->value());
   ast->active_frame()->local_stack.pop();
 }
@@ -148,16 +151,15 @@ std::string compilation_unit::end() {
   return asmgen.end();
 }
 
-std::optional<assembly::operand*> compilation_unit::call_function(
-    const identifier& id,
-    const ast::expr::arguments& args) {
+std::optional<assembly::reg*> compilation_unit::call_function(const identifier& id,
+                                                              const ast::expr::arguments& args) {
   if (asmgen::exists_snippet(id.value())) {
     asmgen.include_snippet(id);
     call(id);
     return {};
   }
 
-  const decl::function* fn = ast->get_callable<decl::function>(id, args);
+  const auto* fn = ast->get_callable<decl::function>(id, args);
   if (nullptr == fn) {
     THROW(UNDECLARED_SYMBOL, id);
   }
@@ -169,14 +171,14 @@ std::optional<assembly::operand*> compilation_unit::call_function(
   call(fn->ident);
 
   if (fn->specs.type.value() != MANAGER.make(types::core_t ::void_t, {})) {
-    return regs.get(register_t::ACCUMULATOR);
+    return regs.get(registers::ACCUMULATOR);
   }
 
   return {};
 }
 
 namespace {
-constexpr operand* set_operand(compilation_unit& v, arg_t side, operand* l, operand* r) {
+constexpr reg* set_operand(compilation_unit& v, arg_t side, reg* l, reg* r) {
   switch (side) {
     case arg_t::NONE:
       return nullptr;
@@ -185,7 +187,7 @@ constexpr operand* set_operand(compilation_unit& v, arg_t side, operand* l, oper
     case arg_t::RIGHT:
       return r;
     case arg_t::ACC:
-      return v.regs.get(register_t::ACCUMULATOR);
+      return v.regs.get(registers::ACCUMULATOR);
     case arg_t::AUX1:
       return v.regs.parameter_at(0);
     case arg_t::AUX2:
@@ -195,13 +197,13 @@ constexpr operand* set_operand(compilation_unit& v, arg_t side, operand* l, oper
 }
 } // namespace
 
-operand* compilation_unit::call_builtin_operator(const operator_& op,
-                                                 const ast::expr::arguments& args) {
+reg* compilation_unit::call_builtin_operator(const operator_& op,
+                                             const ast::expr::arguments& args) {
   REGISTER_INFO("Calling builtin operator {}", op);
-  operand* res = nullptr;
-  auto* impls  = ast->get_callable<builtin_callable>(op, args);
-  auto params  = regs.parameters();
-  auto ops     = std::views::zip_transform(
+  reg* res          = nullptr;
+  const auto* impls = ast->get_callable<builtin_callable>(op, args);
+  auto params       = regs.parameters();
+  auto ops          = std::views::zip_transform(
                  [this, &params](const parameter& t_param, expr::expression* t_expr) {
                    return runner.generate_expr(
                        *translation_unit::bind_expression(t_expr, t_param.type), params.next());
@@ -210,8 +212,8 @@ operand* compilation_unit::call_builtin_operator(const operator_& op,
                  args.data()) |
              std ::ranges ::to<std ::vector>();
 
-  operand* l;
-  operand* r;
+  reg* l = nullptr;
+  reg* r = nullptr;
   for (const auto& exec_unit : impls->ins) {
     instruction_t ins = exec_unit.ins;
     instruction_data data(ins);
@@ -239,7 +241,7 @@ operand* compilation_unit::call_builtin_operator(const operator_& op,
         res = r;
         break;
       case instruction_result_reg::ACCUMULATOR:
-        res = regs.get(register_t::ACCUMULATOR);
+        res = regs.get(registers::ACCUMULATOR);
         break;
       case instruction_result_reg::NONE:
         break;
@@ -265,8 +267,8 @@ intent_t mode_to_intent(binding_mode_t t_mode) {
 void compilation_unit::load_arguments(const parameters& parameters, const expr::arguments& args) {
   auto param_regs = regs.parameters();
   for (const auto& [param, arg] : std::views::zip(parameters, args)) {
-    types::type_id param_type     = param.type;
-    binding_mode_t mode           = ast->bind_value(arg->value_category(), param_type);
+    types::type_id param_type = param.type;
+    binding_mode_t mode = ast::translation_unit::bind_value(arg->value_category(), param_type);
 
     ast::expr::expression* n_expr = param.init == nullptr ? arg : param.init;
     if (n_expr == nullptr) {

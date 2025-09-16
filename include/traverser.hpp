@@ -10,9 +10,7 @@
 #include "lang.hpp"
 #include "macros.hpp"
 
-namespace cmm {
-namespace ast {
-namespace expr {
+namespace cmm::ast::expr {
 struct binary_operator;
 struct call;
 struct expression;
@@ -20,9 +18,7 @@ struct identifier;
 struct implicit_conversion;
 struct literal;
 struct unary_operator;
-} // namespace expr
-} // namespace ast
-} // namespace cmm
+} // namespace cmm::ast::expr
 
 namespace cmm::ir {
 
@@ -50,9 +46,9 @@ public:
   void generate_program(translation_unit&);
   void generate_statements(decl::block&);
   void generate_statement(ast::statement*);
-  assembly::operand* generate_expr(ast::expr::expression&,
-                                   assembly::operand* = nullptr,
-                                   intent_t           = intent_t::LOAD_VARIABLE_ADDRESS);
+  assembly::reg* generate_expr(ast::expr::expression&,
+                               assembly::reg* = nullptr,
+                               intent_t       = intent_t::LOAD_VARIABLE_ADDRESS);
 
 private:
   compilation_unit& m_context;
@@ -81,10 +77,10 @@ struct global_visitor : public visitor<GLOBAL_TYPES> {
 
 struct expression_visitor : public visitor<EXPRESSION_TYPES> {
   ast_traverser* gen;
-  assembly::operand* in;
-  assembly::operand* out;
+  assembly::reg* in;
+  assembly::reg* out;
   intent_t intent;
-  expression_visitor(ast_traverser*, assembly::operand*, intent_t);
+  expression_visitor(ast_traverser*, assembly::reg*, intent_t);
 
   void visit(ast::expr::call&) override;
   void visit(ast::expr::binary_operator&) override;

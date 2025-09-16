@@ -1,11 +1,11 @@
 #include "os.hpp"
-#include <spdlog/spdlog.h>
+#include "logging.hpp"
 #include <stdlib.h>
 
 namespace cmm::os {
 
 int execute(const std::string& command) {
-  SPDLOG_TRACE("Executing {}", command);
+  REGISTER_TRACE("Executing {}", command);
   return system(command.data());
 }
 

@@ -1,11 +1,12 @@
 #include "compiler.hpp"
 
+#include <cstdlib>
+#include <fmt/color.h>
 #include <format>
 #include <iterator>
 #include <optional>
 #include <ranges>
 #include <stdexcept>
-#include <stdlib.h>
 #include <string>
 
 #include "ast.hpp"
@@ -78,9 +79,9 @@ int compiler::compile(source_code& ctx) {
   auto tokens = lexer_instance.tokenize();
 
   parser::parser parser(tokens);
-  ast::translation_unit tu = parser.parse();
+  ast::translation_unit* tu = parser.parse();
 
-  ir::compilation_unit cunit(&tu, &ctx);
+  ir::compilation_unit cunit(tu, &ctx);
 
   try {
     cunit.compile();
@@ -108,7 +109,7 @@ int compiler::assemble(const path& compiled) {
 }
 
 int compiler::link(const path& t_obj, const path& t_binary) {
-  int result = os::execute(std::format("ld -o {} {}", t_obj.string(), t_binary.string()));
+  int result = os::execute(std::format("ld -o {} {}", t_binary, t_obj));
   if (!configuration::keep_object) {
     remove(t_obj);
   }
@@ -134,7 +135,7 @@ int compiler::compile(path t_path, std::string t_out) {
     return os::ASSEMBLER_ERROR;
   }
 
-  auto link_res = link(out.replace_extension(""), context.get_output());
+  auto link_res = link(out.replace_extension("o"), context.get_output());
   if (link_res != 0) {
     REGISTER_ERROR("Error linking");
     return os::LINKING_ERROR;
@@ -155,25 +156,26 @@ std::vector<std::string> source_code::build_compilation_error(
     std::string_view err,
     const location& loc) const {
   std::vector<std::string> message;
-  auto full_loc = build_full_location(loc);
+  auto fmt_error_style = fmt::emphasis::bold | fmt::fg(fmt::color::red);
+  auto full_loc        = build_full_location(loc);
   auto first_line =
-      std::format("{}: {} {}", full_loc, log::apply("error: ", log::style_t::ERROR), err);
+      fmt::format("{}: {} {}", full_loc, fmt::styled("error: ", fmt_error_style), err);
   auto [left, error, right] = get_line_chunked(loc);
-  auto formatted_error      = log::apply(error, log::style_t::ERROR);
 
   auto left_size            = left.size();
-  auto second_line          = std::format("{}{}{}", left, formatted_error, right);
-  auto third_line           = std::format("{}{}", std::string(left_size, ' '), "^");
+  auto second_line = fmt::format("{}{}{}", left, fmt::styled(error, fmt_error_style), right);
+  auto third_line  = std::format("{}{}", std::string(left_size, ' '), "^");
 
-  const size_t margin_left  = 6;
+  const size_t margin_left = 6;
   message.push_back(first_line);
   message.push_back(std::format("{}{} |{}",
                                 std::string(margin_left - 2, ' '),
                                 std::get<0>(to_coordinates(loc)),
                                 second_line));
-  message.push_back(std::format("{}|{}",
-                                std::string(margin_left, ' '),
-                                log::apply(third_line, log::style_t::ERROR_UNDERLINE)));
+  message.push_back(
+      fmt::format("{}|{}",
+                  std::string(margin_left, ' '),
+                  fmt::styled(third_line, fmt::emphasis::underline | fmt::fg(fmt::color::red))));
 
   return message;
 }

@@ -1,8 +1,8 @@
 #include "types.hpp"
 
-#include <magic_enum/magic_enum.hpp>
 #include <assert.h>
 #include <format>
+#include <magic_enum/magic_enum.hpp>
 #include <utility>
 
 #include "types.inl"
@@ -14,7 +14,7 @@ core::core(core_t t)
       name(magic_enum::enum_name(t)) {}
 
 info::info(const types::core& t_core, cv_qualification_t t_cv, cmm::stack<layer> t_layers)
-    : core(t_core),
+    : type(t_core),
       cv_qualifiers(t_cv),
       layers(t_layers) {}
 
@@ -56,12 +56,14 @@ std::string info::string() const {
         break;
     }
   }
-  return std::format(
-      "{}{}{}", core.name.substr(0, core.name.size() - 2), get_cv_repr(cvqual()), indirection_repr);
+  return std::format("{}{}{}",
+                     type.string().substr(0, type.string().size() - 2),
+                     get_cv_repr(cvqual()),
+                     indirection_repr);
 }
 category_t info::categorize() const {
   if (layers.empty()) {
-    return core.kind;
+    return type.kind;
   }
   return layers.top().tag;
 }
@@ -110,7 +112,7 @@ types::type_id manager::make(const types::core& c,
   return types::type_id{id};
 }
 
-types::type_id manager::get(types::info i) { return make(i.core, i.layers, i.cv_qualifiers); }
+types::type_id manager::get(types::info i) { return make(i.type, i.layers, i.cv_qualifiers); }
 
 const info& manager::info(types::type_id t) const {
   assert(t.value() < m_nodes.size());

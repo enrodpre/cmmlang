@@ -1,43 +1,57 @@
 #include "ast_visitor.hpp"
+#include "ast.hpp"
 #include "expr.h"
 
-using namespace cmm::ast;
+using namespace cmm;
+// using namespace cmm::ast;
 
-void ast_visitor::visit(ast::literal& c) { TRACE_VISITOR(c); }
+ast::translation_unit* cmm::ast::find_root(const node* t_node) {
+  parent_retriever_visitor<translation_unit*> visitor{};
+  t_node->accept(visitor);
+  auto res = visitor.get_result();
+  if (!res.first) {
+    throw error(std::format("Could not find the translation_unit of {}", typeid(t_node).name()));
+  }
+  return res.second;
+}
 
-void ast_visitor::visit(ast::keyword& c) { TRACE_VISITOR(c); }
+ast::scope& ast::get_scope(node* t_node) { return *find_parent<ast::scope>(t_node); }
 
-void ast_visitor::visit(ast::identifier& c) { TRACE_VISITOR(c); }
+void ast::ast_visitor::visit(ast::literal& c) { TRACE_VISITOR(c); }
 
-void ast_visitor::visit(ast::decl::specifiers& c) {
+void ast::ast_visitor::visit(ast::keyword& c) { TRACE_VISITOR(c); }
+
+void ast::ast_visitor::visit(ast::identifier& c) { TRACE_VISITOR(c); }
+
+void ast::ast_visitor::visit(ast::decl::specifiers& c) {
   TRACE_VISITOR(c);
   c.storage.accept(*this);
   c.linkage.accept(*this);
   c.type.accept(*this);
 };
 
-void ast_visitor::visit(ast ::expr ::identifier& c) { TRACE_VISITOR(c); };
+void ast::ast_visitor::visit(ast ::expr ::identifier& c) { TRACE_VISITOR(c); };
 
-void ast_visitor::visit(ast ::expr ::unary_operator& c) {
+void ast::ast_visitor::visit(ast ::expr ::unary_operator& c) {
   TRACE_VISITOR(c);
   c.operator_.accept(*this);
   c.expr->accept(*this);
 };
 
-void ast_visitor::visit(ast ::expr ::binary_operator& c) {
+void ast::ast_visitor::visit(ast ::expr ::binary_operator& c) {
   TRACE_VISITOR(c);
   c.operator_.accept(*this);
   c.left->accept(*this);
   c.right->accept(*this);
 };
 
-void ast_visitor::visit(ast ::expr ::call& c) {
+void ast::ast_visitor::visit(ast ::expr ::call& c) {
   TRACE_VISITOR(c);
   c.ident.accept(*this);
   c.args.accept(*this);
 };
 
-void ast_visitor::visit(ast ::decl ::variable& c) {
+void ast::ast_visitor::visit(ast ::decl ::variable& c) {
   TRACE_VISITOR(c);
   c.ident.accept(*this);
   c.specs.accept(*this);
@@ -46,7 +60,7 @@ void ast_visitor::visit(ast ::decl ::variable& c) {
   }
 };
 
-void ast_visitor::visit(ast ::decl ::function& c) {
+void ast::ast_visitor::visit(ast ::decl ::function& c) {
   TRACE_VISITOR(c);
   c.specs.accept(*this);
   c.ident.accept(*this);
@@ -58,12 +72,12 @@ void ast_visitor::visit(ast ::decl ::function& c) {
   }
 };
 
-void ast_visitor::visit(ast ::decl ::label& c) {
+void ast::ast_visitor::visit(ast ::decl ::label& c) {
   TRACE_VISITOR(c);
   c.ident.accept(*this);
 };
 
-void ast_visitor::visit(ast ::iteration ::while_& c) {
+void ast::ast_visitor::visit(ast ::iteration ::while_& c) {
   TRACE_VISITOR(c);
   c.condition->accept(*this);
   if (auto* body = c.body) {
@@ -71,7 +85,7 @@ void ast_visitor::visit(ast ::iteration ::while_& c) {
   }
 };
 
-void ast_visitor::visit(ast ::iteration ::for_& c) {
+void ast::ast_visitor::visit(ast ::iteration ::for_& c) {
   TRACE_VISITOR(c);
   c.start->accept(*this);
   if (auto* cond = c.condition) {
@@ -85,7 +99,7 @@ void ast_visitor::visit(ast ::iteration ::for_& c) {
   }
 };
 
-void ast_visitor::visit(ast ::selection ::if_& c) {
+void ast::ast_visitor::visit(ast ::selection ::if_& c) {
   TRACE_VISITOR(c);
   c.condition->accept(*this);
   if (auto* block = c.block) {
@@ -96,85 +110,85 @@ void ast_visitor::visit(ast ::selection ::if_& c) {
   }
 };
 
-void ast_visitor::visit(ast ::jump ::goto_& c) {
+void ast::ast_visitor::visit(ast ::jump ::goto_& c) {
   TRACE_VISITOR(c);
   c.term.accept(*this);
 };
 
-void ast_visitor::visit(ast ::jump ::return_& c) {
+void ast::ast_visitor::visit(ast ::jump ::return_& c) {
   TRACE_VISITOR(c);
   if (auto* expr = c.expr) {
     expr->accept(*this);
   }
 }
 
-void ast_visitor::visit(ast::jump::continue_& c) { TRACE_VISITOR(c); }
+void ast::ast_visitor::visit(ast::jump::continue_& c) { TRACE_VISITOR(c); }
 
-void ast_visitor::visit(ast::expr::literal& c) { TRACE_VISITOR(c); }
+void ast::ast_visitor::visit(ast::expr::literal& c) { TRACE_VISITOR(c); }
 
-void ast_visitor::visit(ast::jump::break_& c) { TRACE_VISITOR(c); }
+void ast::ast_visitor::visit(ast::jump::break_& c) { TRACE_VISITOR(c); }
 
-void ast_visitor::visit(ast::operator_& c) { TRACE_VISITOR(c); }
+void ast::ast_visitor::visit(ast::operator_& c) { TRACE_VISITOR(c); }
 
-void ast_visitor::visit(ast::storage_spec& c) { TRACE_VISITOR(c); }
+void ast::ast_visitor::visit(ast::storage_spec& c) { TRACE_VISITOR(c); }
 
-void ast_visitor::visit(ast::type_spec& c) { TRACE_VISITOR(c); }
+void ast::ast_visitor::visit(ast::type_spec& c) { TRACE_VISITOR(c); }
 
-void ast_visitor::visit(ast::linkage_spec& c) { TRACE_VISITOR(c); }
+void ast::ast_visitor::visit(ast::linkage_spec& c) { TRACE_VISITOR(c); }
 
-void ast_visitor::visit(expr::arguments& c) { TRACE_VISITOR(c); }
+void ast::ast_visitor::visit(expr::arguments& c) { TRACE_VISITOR(c); }
 
-void ast_visitor::visit(ast::decl::function::definition& c) {
+void ast::ast_visitor::visit(ast::decl::function::definition& c) {
   TRACE_VISITOR(c);
   for (const auto& stmt : c.stmts) {
     stmt->accept(*this);
   }
 }
 
-void ast_visitor::visit(ast::decl::block& c) {
+void ast::ast_visitor::visit(ast::decl::block& c) {
   TRACE_VISITOR(c);
   for (const auto& stmt : c.stmts) {
     stmt->accept(*this);
   }
 }
 
-void const_ast_visitor::visit(const ast::operator_& c) { TRACE_VISITOR(c); }
+void ast::const_ast_visitor::visit(const ast::operator_& c) { TRACE_VISITOR(c); }
 
-void const_ast_visitor::visit(const ast::literal& c) { TRACE_VISITOR(c); }
+void ast::const_ast_visitor::visit(const ast::literal& c) { TRACE_VISITOR(c); }
 
-void const_ast_visitor::visit(const ast::keyword& c) { TRACE_VISITOR(c); }
+void ast::const_ast_visitor::visit(const ast::keyword& c) { TRACE_VISITOR(c); }
 
-void const_ast_visitor::visit(const ast::identifier& c) { TRACE_VISITOR(c); }
+void ast::const_ast_visitor::visit(const ast::identifier& c) { TRACE_VISITOR(c); }
 
-void const_ast_visitor::visit(const expr::arguments& c) { TRACE_VISITOR(c); }
+void ast::const_ast_visitor::visit(const expr::arguments& c) { TRACE_VISITOR(c); }
 
-void const_ast_visitor::visit(const ast::decl::specifiers& s) {
+void ast::const_ast_visitor::visit(const ast::decl::specifiers& s) {
   TRACE_VISITOR(s);
   s.accept(*this);
 };
 
-void const_ast_visitor::visit(const ast ::expr ::identifier& c) { TRACE_VISITOR(c); };
+void ast::const_ast_visitor::visit(const ast ::expr ::identifier& c) { TRACE_VISITOR(c); };
 
-void const_ast_visitor::visit(const ast ::expr ::unary_operator& c) {
+void ast::const_ast_visitor::visit(const ast ::expr ::unary_operator& c) {
   TRACE_VISITOR(c);
   c.operator_.accept(*this);
   c.expr->accept(*this);
 };
 
-void const_ast_visitor::visit(const ast ::expr ::binary_operator& c) {
+void ast::const_ast_visitor::visit(const ast ::expr ::binary_operator& c) {
   TRACE_VISITOR(c);
   c.operator_.accept(*this);
   c.left->accept(*this);
   c.right->accept(*this);
 };
 
-void const_ast_visitor::visit(const ast ::expr ::call& c) {
+void ast::const_ast_visitor::visit(const ast ::expr ::call& c) {
   TRACE_VISITOR(c);
   c.ident.accept(*this);
   c.args.accept(*this);
 };
 
-void const_ast_visitor::visit(const ast ::decl ::variable& c) {
+void ast::const_ast_visitor::visit(const ast ::decl ::variable& c) {
   TRACE_VISITOR(c);
   c.ident.accept(*this);
   c.specs.accept(*this);
@@ -183,7 +197,7 @@ void const_ast_visitor::visit(const ast ::decl ::variable& c) {
   }
 };
 
-void const_ast_visitor::visit(const ast ::decl ::function& c) {
+void ast::const_ast_visitor::visit(const ast ::decl ::function& c) {
   TRACE_VISITOR(c);
   c.specs.accept(*this);
   c.ident.accept(*this);
@@ -195,12 +209,12 @@ void const_ast_visitor::visit(const ast ::decl ::function& c) {
   }
 };
 
-void const_ast_visitor::visit(const ast ::decl ::label& c) {
+void ast::const_ast_visitor::visit(const ast ::decl ::label& c) {
   TRACE_VISITOR(c);
   c.ident.accept(*this);
 };
 
-void const_ast_visitor::visit(const ast ::iteration ::while_& c) {
+void ast::const_ast_visitor::visit(const ast ::iteration ::while_& c) {
   TRACE_VISITOR(c);
   c.condition->accept(*this);
 
@@ -209,7 +223,7 @@ void const_ast_visitor::visit(const ast ::iteration ::while_& c) {
   }
 };
 
-void const_ast_visitor::visit(const ast ::iteration ::for_& c) {
+void ast::const_ast_visitor::visit(const ast ::iteration ::for_& c) {
   TRACE_VISITOR(c);
   c.start->accept(*this);
   if (auto* cond = c.condition) {
@@ -223,7 +237,7 @@ void const_ast_visitor::visit(const ast ::iteration ::for_& c) {
   }
 };
 
-void const_ast_visitor::visit(const ast ::selection ::if_& c) {
+void ast::const_ast_visitor::visit(const ast ::selection ::if_& c) {
   TRACE_VISITOR(c);
   c.condition->accept(*this);
   if (auto* block = c.block) {
@@ -234,30 +248,30 @@ void const_ast_visitor::visit(const ast ::selection ::if_& c) {
   }
 };
 
-void const_ast_visitor::visit(const ast ::jump ::goto_& c) {
+void ast::const_ast_visitor::visit(const ast ::jump ::goto_& c) {
   TRACE_VISITOR(c);
   c.term.accept(*this);
 };
-void const_ast_visitor::visit(const ast ::jump ::return_& c) {
+void ast::const_ast_visitor::visit(const ast ::jump ::return_& c) {
   TRACE_VISITOR(c);
   if (auto* expr = c.expr) {
     expr->accept(*this);
   }
 }
-void const_ast_visitor::visit(const ast::jump::continue_& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::jump::break_& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::storage_spec& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::linkage_spec& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::type_spec& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::expr::literal& c) { TRACE_VISITOR(c); }
-void const_ast_visitor::visit(const ast::decl::function::definition& c) {
+void ast::const_ast_visitor::visit(const ast::jump::continue_& c) { TRACE_VISITOR(c); }
+void ast::const_ast_visitor::visit(const ast::jump::break_& c) { TRACE_VISITOR(c); }
+void ast::const_ast_visitor::visit(const ast::storage_spec& c) { TRACE_VISITOR(c); }
+void ast::const_ast_visitor::visit(const ast::linkage_spec& c) { TRACE_VISITOR(c); }
+void ast::const_ast_visitor::visit(const ast::type_spec& c) { TRACE_VISITOR(c); }
+void ast::const_ast_visitor::visit(const ast::expr::literal& c) { TRACE_VISITOR(c); }
+void ast::const_ast_visitor::visit(const ast::decl::function::definition& c) {
   TRACE_VISITOR(c);
   for (const auto& stmt : c.stmts) {
     stmt->accept(*this);
   }
 }
 
-void const_ast_visitor::visit(const ast::decl::block& c) {
+void ast::const_ast_visitor::visit(const ast::decl::block& c) {
   TRACE_VISITOR(c);
   for (const auto& stmt : c.stmts) {
     stmt->accept(*this);

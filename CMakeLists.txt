@@ -34,11 +34,11 @@ if(NOT LOG_LEVEL IN_LIST LOG_LEVELS)
   message(FATAL_ERROR "LOG_LEVEL must be valid, got ${LOG_LEVEL}, valid values: ${LOG_LEVELS}")
 endif()
 
-add_compile_definitions("-DSPDLOG_ACTIVE_LEVEL=SPD_LEVEL_${LOG_LEVEL}")
+add_compile_definitions("SPDLOG_ACTIVE_LEVEL=SPD_LEVEL_${LOG_LEVEL}")
 
 message(STATUS "Log level: ${LOG_LEVEL}")
+message(STATUS "Warning level: ${WARNING_LEVEL}")
 
-include(cotire)
 include(CPM)
 
 file(GLOB_RECURSE sources CONFIGURE_DEPENDS
@@ -54,7 +54,6 @@ if (NOT TARGET spdlog)
   find_package(spdlog REQUIRED)
 endif()
 
-# target_precompile_headers()
 
 # Apply warning flags depending on selection
 if(WARNING_LEVEL STREQUAL "NONE")
@@ -72,8 +71,44 @@ else()
   message(FATAL_ERROR "Invalid value for WARNING_LEVEL: ${WARNING_LEVEL}")
 endif()
 
-add_compile_options(-fdiagnostics-color=always -O0 -g -fno-inline -Wno-switch -fdiagnostics-show-option -ferror-limit=10)
+add_compile_options(-Werror)
+if (CMAKE_CXX_COMPILER STREQUAL "/usr/bin/clang++")
+  add_compile_options(-ferror-limit=10)
+endif()
+
+add_compile_options(-fdiagnostics-color=always -O0 -g -fno-inline -Wno-switch -fdiagnostics-show-option)
 add_library(${LIBNAME} STATIC ${sources})
+# include(cotire)
+# cotire(CmmLang)
+target_precompile_headers(${LIBNAME} PRIVATE
+# STL containers
+    <string>
+    <vector>
+    <array>
+    <unordered_map>
+    <unordered_set>
+    # General utilities
+    <string_view>
+    <tuple>
+    <optional>
+    <variant>
+    # Input/Output
+    <iostream>
+    <fstream>
+    <sstream>
+    # STL algorithms and utilities
+    <algorithm>
+    <functional>
+    <memory>
+    <utility>
+    # Date and time
+    <ranges>
+    <sstream>
+    <format>
+    <concepts>
+    <type_traits>
+    <initializer_list>
+)
 
 function(create_symlink file)
   file(CREATE_LINK
@@ -93,12 +128,12 @@ target_include_directories(
   ${LIBNAME}
   PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
          $<INSTALL_INTERFACE:include/${PROJECT_NAME}-${PROJECT_VERSION}>)
-
+target_compile_options(${LIBNAME} PRIVATE -fpch-preprocess)
 add_executable(${APPNAME} main.cpp)
 find_package(cxxopts REQUIRED)
 target_link_libraries(${APPNAME} PRIVATE ${LIBNAME} cxxopts::cxxopts)
+target_precompile_headers(${APPNAME} REUSE_FROM ${LIBNAME})
 
-cotire(CmmLang)
 if(BUILD_TESTING)
   enable_testing()
   add_subdirectory(test)

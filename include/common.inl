@@ -52,49 +52,6 @@ compilation_error_data::properties_array() {
   return MAP;
 }; // namespace cmm
 
-namespace log {
-template <std::formattable<char> T>
-constexpr std::string apply(const T& t, style_t s) {
-  std::string pre;
-  switch (s) {
-    case style_t::HEADER:
-      pre = "\033[40;1;35m";
-      break;
-    case style_t::BOLD:
-      pre = "\033[1;33m";
-      break;
-    case style_t::ERROR:
-      pre = "\033[1;38;2;205;92;92m";
-      break;
-    case style_t::ERROR_UNDERLINE:
-      pre = "\e[38;2;239;137;165m";
-      break;
-    case style_t::RED:
-      pre = "\033[0;31m";
-      break;
-    case style_t::MAGENTA:
-      pre = "\033[0;35m";
-      break;
-    case style_t::YELLOW:
-      pre = "\033[0;33m";
-      break;
-    case style_t::GREEN:
-      pre = "\033[0;32m";
-      break;
-    case style_t::WHITE:
-      pre = "\033[0;37m";
-      break;
-    case style_t::WHITE_SMOKE:
-    case style_t::DARK_RED:
-    case style_t::NORMAL:
-      pre = "\033[0;37m";
-      break;
-  };
-
-  return std::format("{}{}{}", pre, t, "\033[0m");
-}
-} // namespace log
-
 template <std::ranges::range T>
 formattable_range<T>::formattable_range(T* t)
     : m_range(t) {}

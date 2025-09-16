@@ -1,13 +1,5 @@
 #pragma once
 
-#include <concepts>
-#include <functional>
-#include <memory>
-#include <string_view>
-#include <type_traits>
-#include <utility>
-#include <variant>
-
 // Helper macros for variadic argument handling
 #define FIRST(a, ...)     a
 #define SECOND(a, b, ...) b

@@ -1,40 +1,55 @@
 #pragma once
 
-#include "logging.hpp"
-#include <algorithm>
-#include <array>
-#include <bits/version.h>
-#include <concepts>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cxxabi.h>
 #include <exception>
-#include <format>
-#include <functional>
 #include <initializer_list>
-#include <magic_enum/magic_enum.hpp>
 #include <magic_enum/magic_enum_all.hpp>
-#include <magic_enum/magic_enum_flags.hpp>
-#include <magic_enum/magic_enum_format.hpp>
-#include <memory>
-#include <mutex>
-#include <optional>
-#include <ranges>
-#include <sstream>
 #include <stdexcept>
-#include <string>
-#include <string_view>
-#include <sys/types.h>
 #include <type_traits>
-#include <unordered_map>
-#include <utility>
-#include <vector>
 
+#include "logging.hpp"
 #include "macros.hpp"
 #include "traits.hpp"
 
+#define DEFAULT_CASE \
+  default:           \
+    assert(false)
+#define MAKE_GENERIC_FORMATTABLE(CONCEPT, FUNC)                   \
+  template <CONCEPT T, typename CharT>                            \
+  struct fmt::formatter<T, CharT> : fmt::formatter<string_view> { \
+    template <typename Ctx>                                       \
+    auto format(const T& t_obj, Ctx& ctx) const {                 \
+      return formatter<string_view>::format(FUNC, ctx);           \
+    }                                                             \
+  };                                                              \
+  template <CONCEPT T, typename CharT>                            \
+  struct std::formatter<T, CharT> : std::formatter<string_view> { \
+    template <typename Ctx>                                       \
+    auto format(const T& t_obj, Ctx& ctx) const {                 \
+      return std::formatter<string_view>::format(FUNC, ctx);      \
+    }                                                             \
+  };
+
+#define MAKE_FORMATTABLE(TYPE, FUNC)                                \
+  template <>                                                       \
+  struct fmt::formatter<TYPE> : fmt::formatter<string_view> {       \
+    template <typename Ctx>                                         \
+    auto format(const TYPE& loc, Ctx& ctx) const {                  \
+      return fmt::formatter<string_view>::format(FUNC, ctx);        \
+    }                                                               \
+  };                                                                \
+  template <>                                                       \
+  struct std::formatter<TYPE, char> : std::formatter<string_view> { \
+    template <typename Ctx>                                         \
+    auto format(const TYPE& loc, Ctx& ctx) const {                  \
+      return std::formatter<string_view>::format(FUNC, ctx);        \
+    }                                                               \
+  };
 namespace cmm {
+
 enum class comparison_t : uint8_t;
 
 template <typename E>
@@ -94,32 +109,9 @@ private:
 } // namespace cmm
 
 // Specialization for cmm::formattable itself
-template <cmm::Displayable T, typename CharT>
-struct std::formatter<T, CharT> : std::formatter<string_view> {
-  template <typename Ctx>
-  auto format(const T& obj, Ctx& ctx) const {
-    return std::formatter<string_view>::format(obj.string(), ctx);
-  }
-};
-
-template <cmm::DisplayablePtr T, typename CharT>
-struct std::formatter<T, CharT> : std::formatter<string_view> {
-  template <typename Ctx>
-  auto format(const T& obj, Ctx& ctx) const -> decltype(ctx.out()) {
-    if (obj) {
-      return std::formatter<string_view>::format(obj->string(), ctx);
-    }
-    return std::formatter<string_view>::format("No contained value", ctx);
-  }
-};
-
-template <cmm::scoped_enum T, typename CharT>
-struct std::formatter<T, CharT> : std::formatter<string_view> {
-  template <typename Ctx>
-  auto format(const T& obj, Ctx& ctx) const -> decltype(ctx.out()) {
-    return std::formatter<string_view>::format(magic_enum::enum_name(obj), ctx);
-  }
-};
+MAKE_GENERIC_FORMATTABLE(cmm::Displayable, t_obj.string());
+MAKE_GENERIC_FORMATTABLE(cmm::DisplayablePtr, t_obj ? t_obj->string() : "No contained value");
+MAKE_GENERIC_FORMATTABLE(cmm::scoped_enum, magic_enum::enum_name(t_obj));
 
 namespace cmm {
 
@@ -325,10 +317,11 @@ struct location : displayable {
       return std::nullopt;
     }
     if (!lhs) {
-      // rhs == true
-      return *rhs;
-    } else {
-      return *lhs;
+      return rhs;
+    }
+
+    if (!rhs) {
+      return lhs;
     }
 
     return *lhs + *rhs;
@@ -344,15 +337,11 @@ struct location : displayable {
 
 } // namespace cmm
 
-template <>
-struct std::formatter<std::optional<cmm::location>> : formatter<string_view> {
-  auto format(const std::optional<cmm::location>& loc, format_context& ctx) const {
-    if (loc) {
-      return formatter<string_view>::format(std::string(loc.value()), ctx);
-    }
-    return formatter<string_view>::format("<No location>", ctx);
-  }
-};
+MAKE_FORMATTABLE(std::optional<cmm::location>,
+                 loc.has_value() ? loc.value().string() : "<No location>");
+
+static_assert(std::formattable<std::optional<cmm::location>, char>);
+static_assert(fmt::formattable<std::optional<cmm::location>, char>);
 
 namespace cmm {
 struct allocated {
@@ -935,22 +924,6 @@ BUILD_ENUMERATION_DATA_CLASS(instruction,
                              instruction_result_reg,
                              where);
 
-namespace assembly {
-enum class register_t : uint8_t {
-  RSP,
-  RBP,
-  ACCUMULATOR,
-  COUNTER,
-  AUX,
-  SYSCALL_1,
-  SYSCALL_2,
-  SCRATCH_1,
-  SCRATCH_2,
-  SCRATCH_3,
-  SCRATCH_4
-};
-}
-
 constexpr auto to_type = [](const auto& v) {
   if constexpr (std::is_pointer_v<decltype(v)>) {
     return v->type;
@@ -964,10 +937,9 @@ constexpr auto opt_has_value = [](const auto& v) { return v.has_value(); };
 
 template <typename T,
           typename D,
-          typename std::enable_if<std::is_standard_layout<T>::value &&
-                                      std::is_trivially_copyable<T>::value,
-                                  int>::type                                               = 0,
-          typename std::enable_if<std::is_nothrow_move_constructible<T>::value, int>::type = 0>
+          std::enable_if_t<std::is_standard_layout_v<T> && std::is_trivially_copyable_v<T>, int> =
+              0,
+          std::enable_if_t<std::is_nothrow_move_constructible_v<T>, int> = 0>
 class raii_wrapper {
   T obj;
   std::optional<D> deleter;
@@ -993,11 +965,11 @@ public:
   operator T&() { return obj; }
   operator const T&() const { return obj; }
   T& get() { return obj; }
-  const T& get() const { return obj; }
+  [[nodiscard]] const T& get() const { return obj; }
 };
 template <typename T, typename D>
-raii_wrapper<typename std::remove_reference<T>::type, D> raii_wrap(T obj, D deleter) {
-  return raii_wrapper<typename std::remove_reference<T>::type, D>(obj, deleter);
+raii_wrapper<std::remove_reference_t<T>, D> raii_wrap(T obj, D deleter) {
+  return raii_wrapper<std::remove_reference_t<T>, D>(obj, deleter);
 }
 
 inline std::string demangle(const std::string& name, bool check_prefix = true) {
@@ -1017,19 +989,18 @@ inline std::string demangle(const std::string& name, bool check_prefix = true) {
     rest        = name.substr(end);
     to_demangle = name_copy;
   }
-  int status;
+  int status = 0;
   auto demangled =
       raii_wrap(abi::__cxa_demangle(to_demangle.get().c_str() + offset, nullptr, nullptr, &status),
                 [](char* str) { std::free(str); });
-  if (demangled.get()) {
+  if (demangled.get() != nullptr) {
     std::string str = demangled.get();
     if (!rest.empty()) {
       str += rest;
     }
     return str;
-  } else {
-    return name;
   }
+  return name;
 }
 template <Allocated N>
 constexpr auto vector_to_location = [](std::vector<N> v) {
@@ -1040,7 +1011,7 @@ constexpr auto vector_to_location = [](std::vector<N> v) {
                                           return s.location();
                                         }
                                       }),
-                                      std::plus<std::optional<location>>()) |
+                                      std::plus<>()) |
          TO_VEC;
 };
 
@@ -1068,7 +1039,7 @@ enum class modifier_t : uint8_t {
 
 template <typename Args>
 std::string mangle_function(std::string id, Args args, char delim) {
-  auto format_args = args | std::views::join_with('_') | std::ranges::to<std::string>();
+  auto format_args = args | std::views::join_with(delim) | std::ranges::to<std::string>();
   return std::format("{}{}", id, !format_args.empty() ? std::format("_{}", format_args) : "");
 }
 

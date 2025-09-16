@@ -1,6 +1,5 @@
 #include "asm.hpp"
 #include "ast.hpp"
-#include "common.hpp"
 #include "types.hpp"
 #include <gtest/gtest.h>
 #include <magic_enum/magic_enum.hpp>
@@ -10,7 +9,7 @@ using namespace cmm;
 using namespace ast;
 using namespace assembly;
 
-class ParametersTest : public ::testing::Test {
+class registers_test : public ::testing::Test {
 
 protected:
   void SetUp() override {
@@ -26,18 +25,20 @@ protected:
   std::unique_ptr<decl::variable> var;
 };
 
-TEST_F(ParametersTest, basic) {
-  auto* reg = regs->get(assembly::register_t::ACCUMULATOR);
-  EXPECT_TRUE(reg->is_writtable());
-  reg->hold(var.get());
-  EXPECT_FALSE(reg->is_writtable());
-  reg->release();
-  EXPECT_TRUE(reg->is_writtable());
+class parameters_test : public registers_test {};
+
+TEST_F(parameters_test, basic) {
+  auto* reg = regs->get(registers::ACCUMULATOR);
+  EXPECT_FALSE(!reg->empty());
+  reg->hold_symbol(var.get());
+  EXPECT_TRUE(reg->empty());
+  reg->reset();
+  EXPECT_FALSE(reg->empty());
 }
 
-#define IS_WRITTABLE(REG) regs->get(assembly::register_t::REG)->is_writtable()
+#define IS_WRITTABLE(REG) !regs->get(registers::REG)->empty()
 
-TEST_F(ParametersTest, initial_state) {
+TEST_F(parameters_test, initial_state) {
   // All registers should be initially available
   EXPECT_TRUE(IS_WRITTABLE(SYSCALL_1));
   EXPECT_TRUE(IS_WRITTABLE(SYSCALL_2));
@@ -48,10 +49,13 @@ TEST_F(ParametersTest, initial_state) {
 }
 #define REGISTER(NUMBER) registers::to_realname(registers::m_parameters[NUMBER])
 
-#define REG_EQ(REG, TYPE) EXPECT_EQ(REG->string(), regs->get(assembly::register_t::TYPE)->string())
-#define NEXT_AND_FILL()   transaction.next()->hold(var.get())
+#define REG_EQ(REG, TYPE)                                         \
+  EXPECT_EQ(REG, regs->get(registers::TYPE));                     \
+  EXPECT_EQ(REG->string(), regs->get(registers::TYPE)->string());
 
-TEST_F(ParametersTest, order_correctness) {
+#define NEXT_AND_FILL() transaction.next()->hold_symbol(var.get())
+
+TEST_F(parameters_test, order_correctness) {
   auto transaction = regs->parameters();
 
   // All registers should be initially available
@@ -63,26 +67,26 @@ TEST_F(ParametersTest, order_correctness) {
   REG_EQ(NEXT_AND_FILL(), SCRATCH_3);
 }
 
-TEST_F(ParametersTest, SingleTransactionBasicAllocation) {
+TEST_F(parameters_test, SingleTransactionBasicAllocation) {
   auto transaction = regs->parameters();
 
   reg* reg1        = transaction.next();
   REG_EQ(reg1, SYSCALL_1);
-  EXPECT_TRUE(reg1->is_writtable());
-  reg1->hold(var.get());
-  EXPECT_FALSE(reg1->is_writtable());
+  EXPECT_FALSE(reg1->empty());
+  reg1->hold_symbol(var.get());
+  EXPECT_TRUE(reg1->empty());
 
   reg* reg2 = transaction.next();
   REG_EQ(reg2, SYSCALL_2);
-  EXPECT_TRUE(reg2->is_writtable());
+  EXPECT_FALSE(reg2->empty());
 }
 
 #define RETRIEVE_AND_FILL(PARAMS, INT, STRING)     \
   auto CONCAT(param, INT) = PARAMS.next();         \
   EXPECT_EQ(STRING, CONCAT(param, INT)->format()); \
-  CONCAT(param, INT)->hold(var.get())
+  CONCAT(param, INT)->hold_symbol(var.get())
 
-// TEST_F(ParametersTest, registers) {
+// TEST_F(parameters_test, registers) {
 //
 //   EXPECT_EQ("r11", regs->get(registers::registers_t::AUX)->format());
 //
@@ -105,18 +109,18 @@ TEST_F(ParametersTest, SingleTransactionBasicAllocation) {
 //   RETRIEVE_AND_FILL(params, 8, REGISTER(3));
 // }
 
-TEST_F(ParametersTest, SingleTransactionExhaustAllRegisters) {
+TEST_F(parameters_test, SingleTransactionExhaustAllRegisters) {
   auto transaction = regs->parameters();
 
   // Allocate all registers
-  std::vector<assembly::register_t> expected_order = {assembly::register_t::SYSCALL_1,
-                                                      assembly::register_t::SYSCALL_2,
-                                                      assembly::register_t::SCRATCH_1,
-                                                      assembly::register_t::SCRATCH_4,
-                                                      assembly::register_t::SCRATCH_2,
-                                                      assembly::register_t::SCRATCH_3};
+  std::vector<registers::register_t> expected_order = {registers::SYSCALL_1,
+                                                       registers::SYSCALL_2,
+                                                       registers::SCRATCH_1,
+                                                       registers::SCRATCH_4,
+                                                       registers::SCRATCH_2,
+                                                       registers::SCRATCH_3};
 
-  for (assembly::register_t r : expected_order) {
+  for (registers::register_t r : expected_order) {
     auto* reg = NEXT_AND_FILL();
     EXPECT_EQ(reg->string(), regs->get(r)->string());
   }
@@ -124,7 +128,7 @@ TEST_F(ParametersTest, SingleTransactionExhaustAllRegisters) {
   EXPECT_ANY_THROW(transaction.next());
 }
 
-TEST_F(ParametersTest, TransactionManualReset) {
+TEST_F(parameters_test, TransactionManualReset) {
   auto transaction = regs->parameters();
 
   NEXT_AND_FILL(); // SYSCALL_1
@@ -135,7 +139,7 @@ TEST_F(ParametersTest, TransactionManualReset) {
   EXPECT_EQ(regs->available_parameters(), 6);
 }
 
-TEST_F(ParametersTest, TransactionDestructorReset) {
+TEST_F(parameters_test, TransactionDestructorReset) {
 
   EXPECT_EQ(regs->available_parameters(), 6);
 
@@ -148,18 +152,18 @@ TEST_F(ParametersTest, TransactionDestructorReset) {
   } // Transaction destructor should reset registers
 
   EXPECT_EQ(regs->available_parameters(), 6);
-  EXPECT_TRUE(regs->get(assembly::register_t::SYSCALL_1)->is_writtable());
-  EXPECT_TRUE(regs->get(assembly::register_t::SYSCALL_2)->is_writtable());
-  EXPECT_TRUE(regs->get(assembly::register_t::SCRATCH_1)->is_writtable());
+  EXPECT_FALSE(regs->get(registers::SYSCALL_1)->empty());
+  EXPECT_FALSE(regs->get(registers::SYSCALL_2)->empty());
+  EXPECT_FALSE(regs->get(registers::SCRATCH_1)->empty());
 }
 
-TEST_F(ParametersTest, InactiveTransactionThrowsException) {
+TEST_F(parameters_test, InactiveTransactionThrowsException) {
   auto transaction = regs->parameters();
   transaction.reset();
   EXPECT_NO_THROW(transaction.reset()); // Multiple resets should be safe
 }
 
-TEST_F(ParametersTest, TwoSimultaneousTransactions) {
+TEST_F(parameters_test, TwoSimultaneousTransactions) {
   auto transaction  = regs->parameters();
   auto transaction2 = regs->parameters();
 
@@ -169,39 +173,39 @@ TEST_F(ParametersTest, TwoSimultaneousTransactions) {
   REG_EQ(NEXT_AND_FILL(), SCRATCH_1);
 
   // Transaction2 should get the next available registers
-  REG_EQ(transaction2.next()->hold(var.get()), SCRATCH_4);
-  REG_EQ(transaction2.next()->hold(var.get()), SCRATCH_2);
-  REG_EQ(transaction2.next()->hold(var.get()), SCRATCH_3);
+  REG_EQ(transaction2.next()->hold_symbol(var.get()), SCRATCH_2);
+  REG_EQ(transaction2.next()->hold_symbol(var.get()), SCRATCH_3);
+  REG_EQ(transaction2.next()->hold_symbol(var.get()), SCRATCH_4);
 
   EXPECT_EQ(regs->available_parameters(), 0);
 }
 
-TEST_F(ParametersTest, MultipleTransactionInterleaved) {
+TEST_F(parameters_test, MultipleTransactionInterleaved) {
   auto transaction1 = regs->parameters();
   auto transaction2 = regs->parameters();
   auto transaction3 = regs->parameters();
 
   // Interleaved allocation
-  REG_EQ(transaction1.next()->hold(var.get()), SYSCALL_1); // T1: SYSCALL_1
-  REG_EQ(transaction2.next()->hold(var.get()), SYSCALL_2); // T2: SYSCALL_2
-  REG_EQ(transaction3.next()->hold(var.get()), SCRATCH_1); // T3: SCRATCH_1
-  REG_EQ(transaction1.next()->hold(var.get()), SCRATCH_4); // T1: SCRATCH_4
-  REG_EQ(transaction2.next()->hold(var.get()), SCRATCH_2); // T2: SCRATCH_2
-  REG_EQ(transaction3.next()->hold(var.get()), SCRATCH_3); // T3: SCRATCH_3
+  REG_EQ(transaction1.next()->hold_symbol(var.get()), SYSCALL_1); // T1: SYSCALL_1
+  REG_EQ(transaction2.next()->hold_symbol(var.get()), SYSCALL_2); // T2: SYSCALL_2
+  REG_EQ(transaction3.next()->hold_symbol(var.get()), SCRATCH_1); // T3: SCRATCH_1
+  REG_EQ(transaction1.next()->hold_symbol(var.get()), SCRATCH_4); // T1: SCRATCH_4
+  REG_EQ(transaction2.next()->hold_symbol(var.get()), SCRATCH_2); // T2: SCRATCH_2
+  REG_EQ(transaction3.next()->hold_symbol(var.get()), SCRATCH_3); // T3: SCRATCH_3
 
   // Verify final state
   EXPECT_EQ(regs->available_parameters(), 0);
 }
 
-TEST_F(ParametersTest, TransactionResetAffectsOthers) {
+TEST_F(parameters_test, TransactionResetAffectsOthers) {
   auto transaction1 = regs->parameters();
   auto transaction2 = regs->parameters();
 
   // Both transactions allocate registers
-  transaction1.next()->hold(var.get()); // SYSCALL_1
-  transaction1.next()->hold(var.get()); // SYSCALL_2
-  transaction2.next()->hold(var.get()); // SCRATCH_1
-  transaction2.next()->hold(var.get()); // SCRATCH_4
+  transaction1.next()->hold_symbol(var.get()); // SYSCALL_1
+  transaction1.next()->hold_symbol(var.get()); // SYSCALL_2
+  transaction2.next()->hold_symbol(var.get()); // SCRATCH_1
+  transaction2.next()->hold_symbol(var.get()); // SCRATCH_4
 
   EXPECT_EQ(regs->available_parameters(), 2);
 
@@ -210,11 +214,11 @@ TEST_F(ParametersTest, TransactionResetAffectsOthers) {
   EXPECT_EQ(regs->available_parameters(), 4);
 
   // Transaction2 should still work and can now access freed registers
-  REG_EQ(transaction2.next()->hold(var.get()), SYSCALL_1); // Now available again
-  REG_EQ(transaction2.next()->hold(var.get()), SYSCALL_2); // Now available again
+  REG_EQ(transaction2.next()->hold_symbol(var.get()), SYSCALL_1); // Now available again
+  REG_EQ(transaction2.next()->hold_symbol(var.get()), SYSCALL_2); // Now available again
 }
 
-TEST_F(ParametersTest, ManyTransactionsSequentially) {
+TEST_F(parameters_test, ManyTransactionsSequentially) {
   constexpr int NUM_TRANSACTIONS = 10;
 
   for (int i = 0; i < NUM_TRANSACTIONS; ++i) {
@@ -235,14 +239,22 @@ TEST_F(ParametersTest, ManyTransactionsSequentially) {
   EXPECT_EQ(regs->available_parameters(), 6);
 }
 
-TEST_F(ParametersTest, find_variable) {
+TEST_F(registers_test, find_variable) {
   const auto& opt = regs->find_var(var->ident);
   EXPECT_FALSE(opt);
+  EXPECT_TRUE(IS_WRITTABLE(SCRATCH_3));
 
-  auto* scratch3 = regs->get(assembly::register_t::SCRATCH_3);
-  scratch3->hold(var.get());
+  auto* scratch3 = regs->get(registers::SCRATCH_3);
+  scratch3->hold_symbol(var.get());
+  EXPECT_FALSE(IS_WRITTABLE(SCRATCH_3));
 
   const auto& opt2 = regs->find_var(var->ident);
   EXPECT_TRUE(opt2);
   EXPECT_EQ(opt2, scratch3);
+  EXPECT_FALSE(IS_WRITTABLE(SCRATCH_3));
+
+  opt2.value()->reset();
+  const auto& opt3 = regs->find_var(var->ident);
+  EXPECT_FALSE(opt3);
+  EXPECT_TRUE(IS_WRITTABLE(SCRATCH_3));
 }

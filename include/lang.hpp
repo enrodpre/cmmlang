@@ -21,7 +21,7 @@
 namespace cmm {
 
 namespace assembly {
-struct operand;
+struct element;
 }
 
 namespace ast {
@@ -69,8 +69,8 @@ private:
   mutable std::optional<cmm::parameters> m_parameters;
 };
 
-template <typename T>
-concept Operand = (std::is_same_v<assembly::operand*, T> || std::is_same_v<arg_t, T>);
+// template <typename T>
+// concept Operand = (std::is_same_v<assembly::element*, T> || std::is_same_v<arg_t, T>);
 
 struct instruction {
   instruction_t ins;
@@ -93,8 +93,8 @@ struct builtin_callable : public callable {
 
   builtin_callable(operator_t op, decltype(ret) c, decltype(params) params, decltype(ins) e)
       : ret(c),
-        params(params),
-        ins(e) {}
+        params(std::move(params)),
+        ins(std::move(e)) {}
   builtin_callable(std::string str, decltype(ret) c, decltype(params) params, decltype(ins) e)
       : ret(c),
         params(params),
@@ -115,16 +115,16 @@ struct conversor : displayable {
             condition_type t_condition,
             types::modifier t_type_modifier,
             value_category_conversor_type t_value_mod)
-      : m_desc(d),
-        m_condition(t_condition),
-        m_type_modifier(t_type_modifier),
-        m_value_category_modifier(t_value_mod) {}
+      : m_desc(std::move(d)),
+        m_condition(std::move(t_condition)),
+        m_type_modifier(std::move(t_type_modifier)),
+        m_value_category_modifier(std::move(t_value_mod)) {}
 
   [[nodiscard]] bool is_convertible(value_category_t t_cat, types::type_id t_type) const {
     return m_condition(t_cat, t_type);
   };
-  type_id convert_type(type_id t_type) const { return m_type_modifier(t_type); };
-  value_category_t convert_value_category(value_category_t t_cat) const {
+  [[nodiscard]] type_id convert_type(type_id t_type) const { return m_type_modifier(t_type); };
+  [[nodiscard]] value_category_t convert_value_category(value_category_t t_cat) const {
     return m_value_category_modifier(t_cat);
   }
   [[nodiscard]] std::string string() const override { return m_desc; }

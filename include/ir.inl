@@ -14,7 +14,17 @@ namespace cmm::ir {
 
 static_assert(std::formattable<const instruction_t&, char>);
 
-template <assembly::Operand... Args>
+template <typename T, typename... Args>
+  requires(std::is_base_of_v<assembly::element, T>)
+T* compilation_unit::get_operand(Args&&... t_args) {
+  if constexpr (std::is_same_v<T, assembly::reg>) {
+    return regs.get(std::forward<Args>(t_args)...);
+  } else {
+    return memory::arena::instance().emplace<T>(std::forward<Args>(t_args)...);
+  }
+}
+
+template <typename... Args>
 void compilation_unit::instruction(const instruction_t& ins, Args&&... args) {
 
   if constexpr ((sizeof...(Args) == 0)) {
@@ -29,7 +39,7 @@ void compilation_unit::instruction(const instruction_t& ins, Args&&... args) {
       REGISTER_WARN("{} cannot address memory", data);
       static_assert(std::formattable<cmm::instruction_t, char>);
       if (!op->empty()) {
-        auto* aux = regs.get(assembly::register_t::AUX);
+        auto* aux = regs.get(assembly::registers::AUX);
         asmgen.write_instruction(instruction_t::mov, aux->value(), op->value());
         asmgen.write_instruction(ins, aux->value());
         asmgen.write_instruction(instruction_t::mov, op->value(), aux->value());

@@ -1,18 +1,37 @@
 #!/usr/bin/env zsh
 
+function print_error() {
+  echo -e "\033[0;31m$1 -> $2\033[0m"
+}
+function print_ok() {
+  echo -e "\033[0;32m$1\033[0m"
+}
+
 example=${1-current.cmm}
 
 echo "set args $example" >gdb/file.gdb
 
 CmmLang $example
 
+result=$?
+
+if [[ $result -ne 1]]; then
+  if [[ $result -eq 5 ]]; then
+    print_error "COMPILATION ERROR" $result
+  elif [[ $result -eq 6 ]]; then
+    print_error "ASSEMBLING ERROR" $result
+    cat res.asm
+  fi
+  exit $result
+fi
+
 ./res
 result=$?
 
 if [[ $result -eq 255 ]]; then
-  echo -e "\033[0;32mOK\033[0m"
+  print_ok OK
 else
-  echo -e "\033[0;31mNOT OK -> $result\033[0m"
+  print_error "NOT OK" $result
   cat res.asm
   exit 1
 fi

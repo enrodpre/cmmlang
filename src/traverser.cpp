@@ -37,9 +37,9 @@ void ast_traverser::generate_program(translation_unit& p) {
   }
 }
 
-operand* ast_traverser::generate_expr(expr::expression& expr, operand* reg_, intent_t t_intent) {
+reg* ast_traverser::generate_expr(expr::expression& expr, reg* reg_, intent_t t_intent) {
   if (reg_ == nullptr) {
-    reg_ = m_context.regs.get(register_t::ACCUMULATOR);
+    reg_ = m_context.regs.get(registers::ACCUMULATOR);
   }
 
   auto visitor = expression_visitor{this, reg_, t_intent};
@@ -119,11 +119,12 @@ void ast_traverser::generate_variable_decl(decl::variable* vardecl) {
     THROW(ALREADY_DECLARED_SYMBOL, vardecl->ident);
   }
 
-  operand* reg_ = nullptr;
+  reg* reg_ = nullptr;
   if (auto* defined = vardecl->init) {
     reg_ = generate_expr(*defined);
   } else {
-    reg_ = m_context.move_immediate(m_context.regs.get(register_t::ACCUMULATOR), "0");
+    reg_ = m_context.regs.get(registers::ACCUMULATOR);
+    m_context.move_immediate(reg_, "0");
   }
 
   if constexpr (IsGlobal) {
@@ -144,21 +145,21 @@ void global_visitor::visit(decl::function& func) {
     THROW(ALREADY_DECLARED_SYMBOL, func.ident);
   }
   gen->ast->declare_function(&func);
-  if (func.body) {
+  if (func.body != nullptr) {
     gen->ast->define_function(&func);
   }
 }
 
-expression_visitor::expression_visitor(ast_traverser* t, operand* o, intent_t t_intent)
+expression_visitor::expression_visitor(ast_traverser* t, reg* o, intent_t t_intent)
     : gen(t),
       in(o),
       out(o),
       intent(t_intent) {}
 
-#define gen_op(IN) value_or(generate<operand*>(in))
+#define gen_op(IN) value_or(generate<element*>(in))
 
 void expression_visitor::visit(expr::call& expr_call) {
-  out = gen->m_context.call_function(expr_call.ident, expr_call.args).gen_op(in);
+  out = gen->m_context.call_function(expr_call.ident, expr_call.args).value_or(in);
 }
 
 void expression_visitor::visit(expr::binary_operator& binop) {
@@ -178,8 +179,8 @@ void expression_visitor::visit(ast ::expr ::literal& c) {
     case ast::expr::literal_t::STRING:
     case ast::expr::literal_t::CHAR:
       {
-        const auto& pair = gen->m_context.reserve_constant(c.value());
-        out              = gen->m_context.move(in, pair);
+        auto* addr = gen->m_context.reserve_constant(c.value());
+        out        = gen->m_context.move(in, addr);
       }
       break;
     case ast::expr::literal_t::FALSE:
@@ -232,6 +233,11 @@ void statement_visitor::visit(ast::decl::block& scope) {
 void statement_visitor::visit(expr::expression& expr) { gen->generate_expr(expr); }
 
 void statement_visitor::visit(decl::variable& vardecl) {
+  auto& decl_scope = get_scope(&vardecl);
+  if (decl_scope.is_declared(vardecl.ident)) {
+    THROW(ALREADY_DECLARED_SYMBOL, vardecl.ident);
+  }
+  decl_scope.declare_variable(&vardecl);
   gen->generate_variable_decl<false>(&vardecl);
 }
 
@@ -241,7 +247,7 @@ void statement_visitor::visit(decl::label& label_) {
   }
 
   const auto* fn = find_parent<ast::decl::function::definition>(label_);
-  if (!fn) {
+  if (fn == nullptr) {
     THROW(LABEL_IN_GLOBAL, label_.ident);
   }
   if (fn->labels.contains(label_.ident)) {
@@ -268,7 +274,7 @@ void statement_visitor::visit(iteration::for_& for_) {
 
   gen->m_context.asmgen.write_label(condition_label);
   // Checking condition
-  if (for_.condition) {
+  if (for_.condition != nullptr) {
     for_.condition->current_conversor = any_to_bool;
     gen->generate_condition(*for_.condition, for_.labels().second);
   }
@@ -334,7 +340,7 @@ void statement_visitor::visit(jump::continue_& continue_) {
 
 void statement_visitor::visit(jump::goto_& goto_) {
   gen->m_context.jump(goto_.term.value());
-  if (!gen->ast->is_declared<decl::label>(goto_.term)) {
+  if (!gen->ast->is_declared(goto_.term)) {
     gen->m_context.current_phase      = Phase::PRUNING_LABEL;
     gen->m_context.last.pruning_label = &goto_.term;
   }
@@ -351,12 +357,13 @@ void statement_visitor::visit(jump::return_& ret) {
     THROW(RETURN_IN_GLOBAL, ret);
   }
 
-  operand* op = nullptr;
+  reg* op = nullptr;
   if (ret.expr != nullptr) {
     const ast::decl::function* fn = find_parent<ast::decl::function>(ret);
     op = gen->generate_expr(*translation_unit::bind_expression(ret.expr, fn->specs.type));
   } else {
-    op = gen->m_context.zero(gen->m_context.regs.get(register_t::ACCUMULATOR));
+    op = gen->m_context.get_operand<assembly::reg>(registers::ACCUMULATOR);
+    gen->m_context.zero(op);
   }
 
   if (!gen->ast->in_main()) {

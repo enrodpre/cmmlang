@@ -34,7 +34,7 @@ TEST_F(modifiers_test, add_layer) {
   EXPECT_EQ(cv_qualification_t::NONE, bool_rvalue->layers.top().cv_qualifiers);
   EXPECT_EQ(cv_qualification_t::NONE, bool_rvalue->cvqual());
   EXPECT_EQ(layer_t::rvalue_ref_t, bool_rvalue->categorize());
-  EXPECT_EQ(core_t::bool_t, bool_rvalue->core.kind);
+  EXPECT_EQ(core_t::bool_t, bool_rvalue->type.kind);
 }
 
 TEST_F(modifiers_test, remove_layer) {

@@ -3,15 +3,12 @@
 #include "asm.hpp"
 
 #include <array>
+#include <cstdint>
 #include <format>
 #include <magic_enum/magic_enum.hpp>
-#include <optional>
-#include <stdint.h>
+#include <magic_enum/magic_enum_utility.hpp>
 #include <string>
-#include <type_traits>
 #include <utility>
-
-#include "memory.hpp"
 
 namespace cmm::assembly {
 
@@ -67,40 +64,16 @@ constexpr std::string registers::to_realname(register_t r) {
 
 [[nodiscard]] constexpr reg* registers::parameter_at(const int i_) const {
   auto* reg_ = get(m_parameters.at(i_));
-  if (!reg_->is_writtable()) {
+  if (!reg_->empty()) {
     REGISTER_WARN("Overwriting not writtable register {}", reg_->string());
   }
-  reg_->release();
+  reg_->reset();
   return reg_;
 }
 
-namespace {
-constexpr reg* create_register(int i) {
-
-  auto idx         = magic_enum::enum_cast<register_t>(i);
-  std::string name = registers::to_realname(idx.value());
-  return operand_factory::create<reg>(name);
-}
-}; // namespace
-
 registers::registers()
-    : m_registers({create_register(0),
-                   create_register(1),
-                   create_register(2),
-                   create_register(3),
-                   create_register(4),
-                   create_register(5),
-                   create_register(6),
-                   create_register(7),
-                   create_register(8),
-                   create_register(9),
-                   create_register(10)}) {}
-
-template <typename V, typename... Args>
-  requires std::is_constructible_v<V, Args...>
-V* operand_factory::create(Args&&... args) {
-  return ::cmm::memory::arena::instance().emplace<V>(std::forward<Args>(args)...);
-}
+    : m_registers(magic_enum::enum_for_each<register_t>(
+          [](register_t t_val) { return std::make_unique<reg>(to_realname(t_val)); })) {}
 
 namespace {
 template <typename... Args>

@@ -10,7 +10,7 @@
       "generator": "Ninja",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+        "CMAKE_CXX_COMPILER": "/usr/bin/g++",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_CXX_STANDARD": "26",
         "CMAKE_CXX_STANDARD_REQUIRED": "ON",
@@ -22,10 +22,11 @@
         "LOG_LEVEL": "TRACE",
         "BUILD_TESTING": "ON",
         "BUILD_INTEGRATION": "ON",
-        "ENABLE_TEST_COVERAGE": "OFF"
+        "ENABLE_TEST_COVERAGE": "OFF",
+        "CMAKE_CXX_SCAN_FOR_MODULES": "OFF"
       },
       "environment": {
-        "WARNING_LEVEL": "SOME"
+        "WARNING_LEVEL": "NONE"
       }
     },
     {

@@ -28,7 +28,7 @@ int main(int argc, char* argv[]) {
   // std::atexit(print_allocations);
   std::string INPUT_ARG               = "input";
   std::string DEFAULT_OUTPUT_FILENAME = "res";
-  initialize_logging();
+  logging::initialize_logging();
 
   cxxopts::Options options("CmmLang", "Compiler for cmm language");
   options.add_options()("h,help", "Show help")(

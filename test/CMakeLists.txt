@@ -13,6 +13,7 @@ file(GLOB_RECURSE TEST_SOURCES "test_*.cpp")
 foreach(TESTFILE ${TEST_SOURCES})
   get_filename_component(NAME ${TESTFILE} NAME_WLE)
   add_executable(${NAME} ${TESTFILE})
+  target_precompile_headers(${NAME} REUSE_FROM ${LIBNAME})
   target_compile_definitions(${NAME} PRIVATE -DGTEST_PRINT_ENABLED=1)
   target_link_libraries(${NAME} PRIVATE CmmLib GTest::gtest pthread)
   target_compile_options(${NAME} PRIVATE

@@ -12,143 +12,57 @@
 
 namespace cmm::assembly {
 
-std::string operand::string() const { return value(); }
+std::string element::string() const { return value(); }
 
-[[nodiscard]] std::optional<operand::symbol_container> operand::content() const { return m_symbol; }
-
-[[nodiscard]] types::type_id operand::content_type() const {
-  return content().value().content->specs.type.value();
-};
-
-[[nodiscard]] operand::content_t operand::variable() const { return m_symbol.value().content; }
-
-operand::symbol_container::symbol_container(content_t cont)
-    : content(cont),
-      m_disposable(false) {}
-
-operand* operand::hold(content_t obj) {
-  m_symbol.emplace(obj);
+operand* operand::hold_value() {
+  m_content  = VALUE;
+  m_variable = std::nullopt;
   return this;
 }
 
-void operand::release() { m_symbol.reset(); }
-
-bool operand::is_writtable() const {
-  return !m_symbol.has_value() || m_symbol.value().is_disposable();
+operand* operand::hold_symbol(const ast::decl::variable* t_var) {
+  m_content  = ADDRESS;
+  m_variable = t_var;
+  return this;
 }
-
-[[nodiscard]] bool operand::empty() const { return !m_symbol.has_value(); }
 
 reg::reg(std::string name)
     : m_name(std::move(name)) {}
 
 namespace {
-template <typename T>
-constexpr std::string get_var(immediate::stored_t stored) {
-  return std::to_string(*std::get_if<T>(&stored));
-}
-
-std::string format_offset(int64_t offset) {
+std::string format_offset(uint64_t offset) {
   return std::format(" {}{}", offset > 0 ? "+ " : "", offset * DATASIZE);
 }
 
-std::string format_addr(const std::string& v, int64_t offset) {
+std::string format_addr(const std::string& v, uint64_t offset) {
   return std::format("[{}{}]", v, offset != 0 ? format_offset(offset) : "");
 };
 
-int64_t calculate_offset(int64_t original_size, int64_t current_size) {
+uint64_t calculate_offset(uint64_t original_size, uint64_t current_size) {
   return (-current_size) - (-original_size) + 1;
 }
 
 } // namespace
 
-[[nodiscard]] std::string reg::value() const {
-  if (content().has_value()) {
-    return std::format("[{}]", m_name);
-  }
-  return m_name;
-}
-
-immediate::immediate(stored_t value, immediate_t type)
-    : m_value(value),
-      m_immediate_type(type) {}
-
-[[nodiscard]] std::string immediate::value() const {
-  switch (m_immediate_type) {
-    case immediate_t::UNSIGNED_INTEGER:
-      return get_var<uint64_t>(m_value);
-    case immediate_t::FLOAT:
-      return get_var<float>(m_value);
-    case immediate_t::DOUBLE:
-      return get_var<double>(m_value);
-    case immediate_t::LONG_DOUBLE:
-      return get_var<long double>(m_value);
-    case immediate_t::SIGNED_INTEGER:
-    default:
-      return get_var<int64_t>(m_value);
-  }
-}
-
-reg_memory::reg_memory(std::string base, int64_t offset)
-    : reg(std::move(base)),
-      m_offset(offset) {}
-
-std::string reg_memory::value() const { return format_addr(m_name, m_offset); }
-
-stack_memory::stack_memory(int64_t offset, decltype(tu) t_tu)
-    : reg_memory("rsp", offset),
-      tu(t_tu) {}
-
 std::string stack_memory::value() const {
-  uint64_t current_casted =
-      static_cast<int64_t>(tu->active_frame()->active_scope()->variables.size());
+  auto current_casted =
+      symbol().value()->get_root()->active_frame()->active_scope()->variables.size();
   auto offset = calculate_offset(m_offset, current_casted);
-  return format_addr(m_name, offset);
-}
-
-[[nodiscard]] std::string immediate_memory::value() const {
-  return std::format("[{}]", immediate::value());
+  return format_addr(m_base, offset);
 }
 
 label::label(std::string name)
     : m_name(std::move(name)) {}
 
-[[nodiscard]] std::string label::value() const {
-  if (content().has_value()) {
-    return std::format("[{}]", m_name);
-  }
-  return m_name;
-}
+[[nodiscard]] std::string label_memory::value() const { return format_addr(m_base, m_offset); }
 
-[[nodiscard]] std::string label_memory::value() const { return std::format("[{}]", m_name); }
+[[nodiscard]] reg* registers::get(register_t name) const { return m_registers.at(name).get(); }
 
-[[nodiscard]] std::string label_literal::label_length() const {
-  return std::format("{}_len", value());
-}
-
-stack_memory* operand_factory::create_stack_memory(uint64_t i, ast::translation_unit* t_tu) {
-  return create<stack_memory>(i, t_tu);
-}
-
-label* operand_factory::create_label(const std::string& s) { return create<label>(s); }
-
-label_memory* operand_factory::create_label_memory(std::string&& s) {
-  return create<label_memory>(std::move(s));
-}
-
-label_literal* operand_factory::create_label_literal(std::string&& s) {
-  return create<label_literal>(std::move(s));
-}
-
-[[nodiscard]] reg* registers::get(register_t name) const {
-  return m_registers.at(magic_enum::enum_index(name).value());
-}
-
-std::optional<operand*> registers::find_var(const ast::identifier& id) {
+std::optional<reg*> registers::find_var(const ast::identifier& id) {
   auto range = m_registers | FILTER([id](const auto& r) {
-                 return r->content() && r->variable()->ident.value() == id.value();
+                 return !r->empty() && r->symbol().value()->ident.value() == id.value();
                }) |
-               TO_VEC;
+               std::views::transform([](const auto& t_reg) { return t_reg.get(); }) | TO_VEC;
 
   if (range.empty()) {
     return {};
@@ -159,8 +73,8 @@ std::optional<operand*> registers::find_var(const ast::identifier& id) {
 registers::parameters_transaction registers::parameters() { return {this}; }
 
 reg* registers::parameters_transaction::next() {
-  const auto* it = std::ranges::find_if(
-      m_parameters, [this](register_t r) { return params->get(r)->is_writtable(); });
+  const auto* it =
+      std::ranges::find_if(m_parameters, [this](register_t r) { return !params->get(r)->empty(); });
   if (it != m_parameters.end()) {
     auto* available = params->get(*it);
     m_regs.push_back(available);
@@ -171,13 +85,11 @@ reg* registers::parameters_transaction::next() {
 
 void registers::parameters_transaction::reset() {
   for (auto* r : m_regs) {
-    r->release();
+    r->reset();
   }
 }
 
-asmgen::asmgen() {
-  m_sections.procedures.emplace(std::make_pair("exit", "mov rax, 60\n  syscall"));
-}
+asmgen::asmgen() { m_sections.procedures.emplace("exit", "mov rax, 60\n  syscall"); }
 
 void asmgen::start() {}
 
@@ -256,7 +168,7 @@ void asmgen::write_comment(std::string_view comment) noexcept {
 void asmgen::include_snippet(std::string_view name) {
   for (const auto& pair : procedures_snippets) {
     if (pair.first == name) {
-      // m_sections.procedures.emplace_back(pair);
+      m_sections.procedures.emplace(pair);
     }
   }
 }

@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <exception>
-#include <format>
 #include <functional>
 #include <magic_enum/magic_enum.hpp>
 #include <optional>
@@ -36,18 +35,19 @@ using namespace decl;
   auto ident = m_tokens.next()
 
 parser::parser(tokens tokens)
-    : m_tokens(std::move(tokens)) {}
+    : m_tokens(std::move(tokens)),
+      m_pointer(m_arena.allocate<ast::translation_unit>()) {}
 
-ast::translation_unit parser::parser::parse() { return parse_program(); }
+ast::translation_unit* parser::parser::parse() { return parse_program(); }
 
-ast::translation_unit parser::parser::parse_program() {
+ast::translation_unit* parser::parser::parse_program() {
   siblings<declaration*> res;
   while (m_tokens.has_next()) {
     auto* decl = parse_declaration();
     res.push_back(decl);
   }
-  ast::translation_unit tu{res};
-  tu.initialize();
+  auto* tu = new (m_pointer) ast::translation_unit{res};
+  tu->initialize(tu);
   return tu;
 }
 
@@ -228,8 +228,8 @@ ast::expr::expression& parser::parse_lhs_expr() {
     operator_ t               = next.type == token_t::dec   ? operator_(next, operator_t::pre_dec)
                                 : next.type == token_t::inc ? operator_(next, operator_t::pre_inc)
                                                             : operator_(token);
-    expr::expression& operand = parse_lhs_expr();
-    return *create_node<expr::unary_operator>(operand, std::move(t));
+    expr::expression& element = parse_lhs_expr();
+    return *create_node<expr::unary_operator>(element, std::move(t));
   }
 
   THROW(UNEXPECTED_TOKEN, token);
@@ -327,8 +327,8 @@ constexpr types::core_t parse_enum_type(const token_data& token_type, bool unsig
 }
 
 types::type_id parse_type(const std::vector<token>& ts) {
-  types::cv_qualification_t const_;
-  types::cv_qualification_t volatile_;
+  types::cv_qualification_t const_{};
+  types::cv_qualification_t volatile_{};
   bool unsigned_ = false;
   std::optional<token_t> type_;
   for (const auto& t : ts) {
@@ -473,7 +473,7 @@ statement* parser::parser::parse_for() {
   if (m_tokens.peek().type != token_t::semicolon) {
     auto specs = parse_specifiers();
     want_ident;
-    start = parse_variable(std::move(specs), std::move(ident));
+    start = parse_variable(std::move(specs), ident);
   }
   want_semicolon();
 
@@ -523,7 +523,7 @@ void parser::parser::want_semicolon() {
 template <typename T, typename... Args>
 T* parser::create_node(Args&&... args) {
   T* obj = m_arena.emplace<T>(std::forward<Args>(args)...);
-  obj->initialize();
+  obj->initialize(m_pointer);
   return obj;
 }
 

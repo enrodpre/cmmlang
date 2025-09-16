@@ -327,6 +327,7 @@ struct core {
 
   core(core_t);
   bool operator==(const core& o) const noexcept { return kind == o.kind && name == o.name; }
+  std::string_view string() const { return name; }
 };
 
 struct layer {
@@ -367,7 +368,7 @@ struct info : displayable {
 
   info(const core&, cv_qualification_t, cmm::stack<layer>);
   // Base type
-  types::core core;
+  types::core type;
   cv_qualification_t cv_qualifiers;
 
   // Indirections
@@ -380,7 +381,7 @@ struct info : displayable {
   const cv_qualification_t& cvqual() const;
 
   bool operator==(const info& other) const noexcept {
-    return core == other.core && cv_qualifiers == other.cv_qualifiers && layers == other.layers;
+    return type == other.type && cv_qualifiers == other.cv_qualifiers && layers == other.layers;
   }
 };
 
