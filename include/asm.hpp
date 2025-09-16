@@ -80,18 +80,18 @@ protected:
   std::string m_name;
 };
 
-struct operand_ {
-  enum operand_t : uint8_t { REGISTER, LABEL, MEMORY, IMMEDIATE };
-
-  template <operand_t Op>
-  constexpr operand_()
-      : m_type(Op) {}
-
-private:
-  const operand_t m_type;
-  std::string m_identifier;
-  std::optional<const ast::decl::variable*> m_symbol;
-};
+// struct operand_ {
+//   enum operand_t : uint8_t { REGISTER, LABEL, MEMORY, IMMEDIATE };
+//
+//   template <operand_t Op>
+//   constexpr operand_()
+//       : m_type(Op) {}
+//
+// private:
+//   const operand_t m_type;
+//   std::string m_identifier;
+//   std::optional<const ast::decl::variable*> m_symbol;
+// };
 
 using offset_t = int64_t;
 struct operand : public element {
@@ -176,16 +176,15 @@ struct registers {
   NOT_COPYABLE_CLS(registers);
 
   constexpr static std::string to_realname(register_t);
-  [[nodiscard]] reg* get(register_t) const;
+  [[nodiscard]] reg* get(register_t);
+  [[nodiscard]] const reg* get(register_t) const;
 
   [[nodiscard]] size_t available_parameters() const {
-    return std::ranges::count_if(m_parameters, [this](register_t r) { return !get(r)->empty(); });
+    return std::ranges::count_if(m_parameters, [this](register_t r) { return get(r)->empty(); });
   }
 
   // reg* last_opfunction_result;
   std::optional<reg*> find_var(const ast::identifier&);
-
-  [[nodiscard]] constexpr reg* parameter_at(int i) const;
 
   struct parameters_transaction {
     parameters_transaction(registers* p)
@@ -199,7 +198,7 @@ struct registers {
 
   private:
     registers* params;
-    std::vector<reg*> m_regs;
+    std::vector<register_t> m_transaction_regs;
   };
 
   constexpr static const std::array m_parameters = {register_t::SYSCALL_1,

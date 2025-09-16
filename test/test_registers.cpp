@@ -25,29 +25,28 @@ protected:
   std::unique_ptr<decl::variable> var;
 };
 
-class parameters_test : public registers_test {};
+using parameters_test = registers_test;
+
+#define IS_EMPTY_REG(REG) regs->get(registers::REG)->empty()
 
 TEST_F(parameters_test, basic) {
   auto* reg = regs->get(registers::ACCUMULATOR);
-  EXPECT_FALSE(!reg->empty());
-  reg->hold_symbol(var.get());
   EXPECT_TRUE(reg->empty());
-  reg->reset();
+  reg->hold_symbol(var.get());
   EXPECT_FALSE(reg->empty());
+  reg->reset();
+  EXPECT_TRUE(reg->empty());
 }
-
-#define IS_WRITTABLE(REG) !regs->get(registers::REG)->empty()
 
 TEST_F(parameters_test, initial_state) {
   // All registers should be initially available
-  EXPECT_TRUE(IS_WRITTABLE(SYSCALL_1));
-  EXPECT_TRUE(IS_WRITTABLE(SYSCALL_2));
-  EXPECT_TRUE(IS_WRITTABLE(SCRATCH_1));
-  EXPECT_TRUE(IS_WRITTABLE(SCRATCH_4));
-  EXPECT_TRUE(IS_WRITTABLE(SCRATCH_2));
-  EXPECT_TRUE(IS_WRITTABLE(SCRATCH_3));
+  EXPECT_TRUE(IS_EMPTY_REG(SYSCALL_1));
+  EXPECT_TRUE(IS_EMPTY_REG(SYSCALL_2));
+  EXPECT_TRUE(IS_EMPTY_REG(SCRATCH_1));
+  EXPECT_TRUE(IS_EMPTY_REG(SCRATCH_4));
+  EXPECT_TRUE(IS_EMPTY_REG(SCRATCH_2));
+  EXPECT_TRUE(IS_EMPTY_REG(SCRATCH_3));
 }
-#define REGISTER(NUMBER) registers::to_realname(registers::m_parameters[NUMBER])
 
 #define REG_EQ(REG, TYPE)                                         \
   EXPECT_EQ(REG, regs->get(registers::TYPE));                     \
@@ -55,16 +54,28 @@ TEST_F(parameters_test, initial_state) {
 
 #define NEXT_AND_FILL() transaction.next()->hold_symbol(var.get())
 
+#define T_FILL_AND_NEXT(TRANS, VAR, REG)                         \
+  auto* VAR = TRANS.next();                                      \
+  EXPECT_EQ(VAR, regs->get(registers::REG));                     \
+  EXPECT_EQ(VAR->string(), regs->get(registers::REG)->string()); \
+  VAR->hold_symbol(var.get());
+
+#define FILL_AND_NEXT(VAR, REG)                                  \
+  auto* VAR = transaction.next();                                \
+  EXPECT_EQ(VAR, regs->get(registers::REG));                     \
+  EXPECT_EQ(VAR->string(), regs->get(registers::REG)->string()); \
+  VAR->hold_symbol(var.get());
+
 TEST_F(parameters_test, order_correctness) {
   auto transaction = regs->parameters();
 
   // All registers should be initially available
-  REG_EQ(NEXT_AND_FILL(), SYSCALL_1);
-  REG_EQ(NEXT_AND_FILL(), SYSCALL_2);
-  REG_EQ(NEXT_AND_FILL(), SCRATCH_1);
-  REG_EQ(NEXT_AND_FILL(), SCRATCH_4);
-  REG_EQ(NEXT_AND_FILL(), SCRATCH_2);
-  REG_EQ(NEXT_AND_FILL(), SCRATCH_3);
+  FILL_AND_NEXT(first, SYSCALL_1);
+  FILL_AND_NEXT(second, SYSCALL_2);
+  FILL_AND_NEXT(third, SCRATCH_1);
+  FILL_AND_NEXT(fourth, SCRATCH_4);
+  FILL_AND_NEXT(fifth, SCRATCH_2);
+  FILL_AND_NEXT(sixth, SCRATCH_3);
 }
 
 TEST_F(parameters_test, SingleTransactionBasicAllocation) {
@@ -72,42 +83,14 @@ TEST_F(parameters_test, SingleTransactionBasicAllocation) {
 
   reg* reg1        = transaction.next();
   REG_EQ(reg1, SYSCALL_1);
-  EXPECT_FALSE(reg1->empty());
-  reg1->hold_symbol(var.get());
   EXPECT_TRUE(reg1->empty());
+  reg1->hold_symbol(var.get());
+  EXPECT_FALSE(reg1->empty());
 
   reg* reg2 = transaction.next();
   REG_EQ(reg2, SYSCALL_2);
-  EXPECT_FALSE(reg2->empty());
+  EXPECT_TRUE(reg2->empty());
 }
-
-#define RETRIEVE_AND_FILL(PARAMS, INT, STRING)     \
-  auto CONCAT(param, INT) = PARAMS.next();         \
-  EXPECT_EQ(STRING, CONCAT(param, INT)->format()); \
-  CONCAT(param, INT)->hold_symbol(var.get())
-
-// TEST_F(parameters_test, registers) {
-//
-//   EXPECT_EQ("r11", regs->get(registers::registers_t::AUX)->format());
-//
-//   auto params = regs->parameters();
-//   RETRIEVE_AND_FILL(params, 0, REGISTER(0));
-//   RETRIEVE_AND_FILL(params, 1, REGISTER(1));
-//   auto params2 = regs->parameters();
-//   RETRIEVE_AND_FILL(params2, 2, REGISTER(2));
-//   params.reset();
-//   RETRIEVE_AND_FILL(params, 3, REGISTER(0));
-//   RETRIEVE_AND_FILL(params, 4, REGISTER(1));
-//   {
-//     auto params3 = regs->parameters();
-//     RETRIEVE_AND_FILL(params3, 5, REGISTER(3));
-//     auto params4 = regs->parameters();
-//     RETRIEVE_AND_FILL(params4, 6, REGISTER(4));
-//     params3.reset();
-//     RETRIEVE_AND_FILL(params3, 7, REGISTER(3));
-//   }
-//   RETRIEVE_AND_FILL(params, 8, REGISTER(3));
-// }
 
 TEST_F(parameters_test, SingleTransactionExhaustAllRegisters) {
   auto transaction = regs->parameters();
@@ -152,9 +135,9 @@ TEST_F(parameters_test, TransactionDestructorReset) {
   } // Transaction destructor should reset registers
 
   EXPECT_EQ(regs->available_parameters(), 6);
-  EXPECT_FALSE(regs->get(registers::SYSCALL_1)->empty());
-  EXPECT_FALSE(regs->get(registers::SYSCALL_2)->empty());
-  EXPECT_FALSE(regs->get(registers::SCRATCH_1)->empty());
+  EXPECT_TRUE(IS_EMPTY_REG(SYSCALL_1));
+  EXPECT_TRUE(IS_EMPTY_REG(SYSCALL_2));
+  EXPECT_TRUE(IS_EMPTY_REG(SCRATCH_1));
 }
 
 TEST_F(parameters_test, InactiveTransactionThrowsException) {
@@ -168,14 +151,14 @@ TEST_F(parameters_test, TwoSimultaneousTransactions) {
   auto transaction2 = regs->parameters();
 
   // Transaction1 allocates first 3 registers
-  REG_EQ(NEXT_AND_FILL(), SYSCALL_1);
-  REG_EQ(NEXT_AND_FILL(), SYSCALL_2);
-  REG_EQ(NEXT_AND_FILL(), SCRATCH_1);
+  FILL_AND_NEXT(first, SYSCALL_1);
+  FILL_AND_NEXT(second, SYSCALL_2);
+  FILL_AND_NEXT(third, SCRATCH_1);
 
   // Transaction2 should get the next available registers
-  REG_EQ(transaction2.next()->hold_symbol(var.get()), SCRATCH_2);
-  REG_EQ(transaction2.next()->hold_symbol(var.get()), SCRATCH_3);
-  REG_EQ(transaction2.next()->hold_symbol(var.get()), SCRATCH_4);
+  T_FILL_AND_NEXT(transaction2, fourth, SCRATCH_4);
+  T_FILL_AND_NEXT(transaction2, fifth, SCRATCH_2);
+  T_FILL_AND_NEXT(transaction2, sixth, SCRATCH_3);
 
   EXPECT_EQ(regs->available_parameters(), 0);
 }
@@ -186,12 +169,12 @@ TEST_F(parameters_test, MultipleTransactionInterleaved) {
   auto transaction3 = regs->parameters();
 
   // Interleaved allocation
-  REG_EQ(transaction1.next()->hold_symbol(var.get()), SYSCALL_1); // T1: SYSCALL_1
-  REG_EQ(transaction2.next()->hold_symbol(var.get()), SYSCALL_2); // T2: SYSCALL_2
-  REG_EQ(transaction3.next()->hold_symbol(var.get()), SCRATCH_1); // T3: SCRATCH_1
-  REG_EQ(transaction1.next()->hold_symbol(var.get()), SCRATCH_4); // T1: SCRATCH_4
-  REG_EQ(transaction2.next()->hold_symbol(var.get()), SCRATCH_2); // T2: SCRATCH_2
-  REG_EQ(transaction3.next()->hold_symbol(var.get()), SCRATCH_3); // T3: SCRATCH_3
+  T_FILL_AND_NEXT(transaction1, first, SYSCALL_1);
+  T_FILL_AND_NEXT(transaction2, second, SYSCALL_2);
+  T_FILL_AND_NEXT(transaction3, third, SCRATCH_1);
+  T_FILL_AND_NEXT(transaction1, forth, SCRATCH_4);
+  T_FILL_AND_NEXT(transaction2, fifth, SCRATCH_2);
+  T_FILL_AND_NEXT(transaction3, sixth, SCRATCH_3);
 
   // Verify final state
   EXPECT_EQ(regs->available_parameters(), 0);
@@ -214,8 +197,8 @@ TEST_F(parameters_test, TransactionResetAffectsOthers) {
   EXPECT_EQ(regs->available_parameters(), 4);
 
   // Transaction2 should still work and can now access freed registers
-  REG_EQ(transaction2.next()->hold_symbol(var.get()), SYSCALL_1); // Now available again
-  REG_EQ(transaction2.next()->hold_symbol(var.get()), SYSCALL_2); // Now available again
+  T_FILL_AND_NEXT(transaction2, first, SYSCALL_1);
+  T_FILL_AND_NEXT(transaction2, second, SYSCALL_2);
 }
 
 TEST_F(parameters_test, ManyTransactionsSequentially) {
@@ -242,19 +225,19 @@ TEST_F(parameters_test, ManyTransactionsSequentially) {
 TEST_F(registers_test, find_variable) {
   const auto& opt = regs->find_var(var->ident);
   EXPECT_FALSE(opt);
-  EXPECT_TRUE(IS_WRITTABLE(SCRATCH_3));
+  EXPECT_TRUE(IS_EMPTY_REG(SCRATCH_3));
 
   auto* scratch3 = regs->get(registers::SCRATCH_3);
   scratch3->hold_symbol(var.get());
-  EXPECT_FALSE(IS_WRITTABLE(SCRATCH_3));
+  EXPECT_FALSE(IS_EMPTY_REG(SCRATCH_3));
 
   const auto& opt2 = regs->find_var(var->ident);
   EXPECT_TRUE(opt2);
   EXPECT_EQ(opt2, scratch3);
-  EXPECT_FALSE(IS_WRITTABLE(SCRATCH_3));
+  EXPECT_FALSE(IS_EMPTY_REG(SCRATCH_3));
 
   opt2.value()->reset();
   const auto& opt3 = regs->find_var(var->ident);
   EXPECT_FALSE(opt3);
-  EXPECT_TRUE(IS_WRITTABLE(SCRATCH_3));
+  EXPECT_TRUE(IS_EMPTY_REG(SCRATCH_3));
 }

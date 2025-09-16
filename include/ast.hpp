@@ -72,7 +72,9 @@ struct node : public revisited::Visitable<node>, displayable {
   virtual std::optional<cmm::location> location() const { return m_location; };
   operator node*() { return static_cast<node*>(this); }
   std::string string() const override { return demangle(typeid(this).name()); }
-  virtual std::vector<node*> children() = 0;
+  void add_child(node* t_child) { m_children.push_back(t_child); }
+  std::vector<node*> children() { return m_children; }
+  const std::vector<node*>& children() const { return m_children; }
   translation_unit* get_root();
   const translation_unit* get_root() const;
   void initialize(ast::translation_unit* t_tu) {
@@ -89,6 +91,7 @@ private:
   mutable node* m_parent   = nullptr;
   translation_unit* m_root = nullptr;
   std::optional<cmm::location> m_location;
+  std::vector<node*> m_children;
 };
 
 template <typename T>
@@ -106,7 +109,6 @@ struct literal;
 #define to_node(OBJ) static_cast<node*>(OBJ)
 template <typename T>
 struct term : derived_visitable<term<T>, node> {
-  std::vector<node*> children() final { return {}; }
 
   term() = default;
   COPYABLE_CLS(term);

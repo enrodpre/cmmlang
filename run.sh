@@ -3,6 +3,7 @@
 function print_error() {
   echo -e "\033[0;31m$1 -> $2\033[0m"
 }
+
 function print_ok() {
   echo -e "\033[0;32m$1\033[0m"
 }
@@ -15,10 +16,10 @@ CmmLang $example
 
 result=$?
 
-if [[ $result -ne 1]]; then
-  if [[ $result -eq 5 ]]; then
+if [ "$result" = 1 ]; then
+  if [ $result = 5 ]; then
     print_error "COMPILATION ERROR" $result
-  elif [[ $result -eq 6 ]]; then
+  elif [ $result = 6 ]; then
     print_error "ASSEMBLING ERROR" $result
     cat res.asm
   fi
@@ -28,7 +29,7 @@ fi
 ./res
 result=$?
 
-if [[ $result -eq 255 ]]; then
+if [ $result = 255 ]; then
   print_ok OK
 else
   print_error "NOT OK" $result

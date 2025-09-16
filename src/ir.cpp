@@ -53,6 +53,7 @@ operand* compilation_unit::move(operand* to, operand* from) {
     asmgen.write_instruction(instruction_t::mov, to->value(), from->value());
   }
 
+  to->hold_value();
   return to;
 }
 void compilation_unit::move_rsp(int64_t t_offset) {
@@ -70,6 +71,7 @@ reg* compilation_unit::return_reg(reg* r) {
 
 assembly::reg* compilation_unit::move_immediate(assembly::reg* r, std::string_view lit) {
   asmgen.write_instruction(instruction_t::mov, r->value(), lit);
+  r->hold_value();
   return r;
 }
 
@@ -114,12 +116,12 @@ void compilation_unit::cmp(std::string_view a, std::string_view b) {
 void compilation_unit::ret() { asmgen.write_instruction(instruction_t::ret); }
 
 void compilation_unit::exit(reg* op) {
-  move(regs.parameter_at(0), op);
+  move(regs.parameters().next(), op);
   jump("exit");
 }
 
 void compilation_unit::exit_successfully() {
-  auto* arg = move_immediate(regs.parameter_at(0), "0");
+  auto* arg = move_immediate(regs.parameters().next(), "0");
   this->exit(arg);
 }
 
@@ -189,10 +191,10 @@ constexpr reg* set_operand(compilation_unit& v, arg_t side, reg* l, reg* r) {
     case arg_t::ACC:
       return v.regs.get(registers::ACCUMULATOR);
     case arg_t::AUX1:
-      return v.regs.parameter_at(0);
+      return v.regs.parameters().next();
     case arg_t::AUX2:
     default:
-      return v.regs.parameter_at(1);
+      return v.regs.parameters().next();
   }
 }
 } // namespace

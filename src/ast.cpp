@@ -511,10 +511,7 @@ bool translation_unit::is_declarable(const ast::identifier& id) const noexcept {
 
 bool translation_unit::is_declared(const ast::identifier& id) const noexcept {
   // Only check current scope
-  bool variable_declared =
-      (!is_global_scope() && !m_stackframe.empty() && active_frame()->is_declared(id)) ||
-      variables.contains(id);
-  return variable_declared || functions.contains(id);
+  return variables.contains(id) || functions.contains(id);
 }
 
 std::vector<const ast::decl::function::definition*> translation_unit::stackframe() {

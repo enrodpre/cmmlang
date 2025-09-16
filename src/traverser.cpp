@@ -86,7 +86,7 @@ void ast_traverser::end_scope() {
   size_t ditched = ast->active_frame()->destroy_scope();
 
   if (ditched > 0) {
-    m_context.move_rsp(ditched);
+    m_context.move_rsp(static_cast<offset_t>(ditched));
   }
 }
 
@@ -113,31 +113,21 @@ void ast_traverser::generate_continue_break(const Jump& node) {
 template void ast_traverser::generate_continue_break<jump::continue_>(const jump::continue_&);
 template void ast_traverser::generate_continue_break<jump::break_>(const jump::break_&);
 
-template <bool IsGlobal>
-void ast_traverser::generate_variable_decl(decl::variable* vardecl) {
-  if (ast->is_declarable(vardecl->ident)) {
-    THROW(ALREADY_DECLARED_SYMBOL, vardecl->ident);
+void global_visitor::visit(decl::variable& vardecl) {
+  translation_unit* tu = vardecl.get_root();
+  if (tu->is_declared(vardecl.ident)) {
+    THROW(ALREADY_DECLARED_SYMBOL, vardecl.ident);
   }
 
-  reg* reg_ = nullptr;
-  if (auto* defined = vardecl->init) {
-    reg_ = generate_expr(*defined);
+  reg* r = nullptr;
+  if (auto* defined = vardecl.init) {
+    r = gen->generate_expr(*defined);
   } else {
-    reg_ = m_context.regs.get(registers::ACCUMULATOR);
-    m_context.move_immediate(reg_, "0");
+    r = gen->m_context.move_immediate(gen->m_context.get_operand<reg>(registers::ACCUMULATOR), "0");
   }
-
-  if constexpr (IsGlobal) {
-    auto* addr = ast->declare_variable(vardecl);
-    m_context.move(addr, reg_);
-  } else {
-    auto b = m_context.asmgen.begin_comment_block("init variable {}", vardecl->ident.value());
-    ast->declare_variable(vardecl);
-    m_context.push(reg_);
-  }
+  auto* addr = tu->declare_variable(&vardecl);
+  tu->cunit->move(addr, r);
 }
-
-void global_visitor::visit(decl::variable& vardecl) { gen->generate_variable_decl<true>(&vardecl); }
 
 void global_visitor::visit(decl::function& func) {
   REGISTER_INFO("Generating function {}", func.ident.value());
@@ -180,7 +170,7 @@ void expression_visitor::visit(ast ::expr ::literal& c) {
     case ast::expr::literal_t::CHAR:
       {
         auto* addr = gen->m_context.reserve_constant(c.value());
-        out        = gen->m_context.move(in, addr);
+        gen->m_context.move(out, addr);
       }
       break;
     case ast::expr::literal_t::FALSE:
@@ -209,7 +199,7 @@ void expression_visitor::visit(expr::identifier& ident) {
   if (magic_enum::enum_flags_test(ident.value_category(), value_category_t::LVALUE)) {
     out = gen->m_context.lea(out, addr);
   } else {
-    out = gen->m_context.move(out, addr);
+    gen->m_context.move(out, addr);
   }
 }
 
@@ -238,7 +228,6 @@ void statement_visitor::visit(decl::variable& vardecl) {
     THROW(ALREADY_DECLARED_SYMBOL, vardecl.ident);
   }
   decl_scope.declare_variable(&vardecl);
-  gen->generate_variable_decl<false>(&vardecl);
 }
 
 void statement_visitor::visit(decl::label& label_) {

@@ -2,7 +2,6 @@
 
 #include "asm.hpp"
 
-#include <array>
 #include <cstdint>
 #include <format>
 #include <magic_enum/magic_enum.hpp>
@@ -60,15 +59,6 @@ constexpr std::string registers::to_realname(register_t r) {
     default:
       return "r10";
   }
-}
-
-[[nodiscard]] constexpr reg* registers::parameter_at(const int i_) const {
-  auto* reg_ = get(m_parameters.at(i_));
-  if (!reg_->empty()) {
-    REGISTER_WARN("Overwriting not writtable register {}", reg_->string());
-  }
-  reg_->reset();
-  return reg_;
 }
 
 registers::registers()

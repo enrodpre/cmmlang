@@ -5,16 +5,6 @@
 using namespace cmm;
 // using namespace cmm::ast;
 
-ast::translation_unit* cmm::ast::find_root(const node* t_node) {
-  parent_retriever_visitor<translation_unit*> visitor{};
-  t_node->accept(visitor);
-  auto res = visitor.get_result();
-  if (!res.first) {
-    throw error(std::format("Could not find the translation_unit of {}", typeid(t_node).name()));
-  }
-  return res.second;
-}
-
 ast::scope& ast::get_scope(node* t_node) { return *find_parent<ast::scope>(t_node); }
 
 void ast::ast_visitor::visit(ast::literal& c) { TRACE_VISITOR(c); }

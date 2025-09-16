@@ -4,6 +4,7 @@
 #include "common.hpp"
 #include "expr.h"
 
+#include <cstddef>
 #include <functional>
 #include <revisited/visitor.h>
 #include <type_traits>
@@ -14,12 +15,6 @@ namespace cmm::ast {
 enum class VisitorDirection : uint8_t {
   ParentToChild, // Top-down traversal
   ChildToParent, // Bottom-up traversal
-  Horizontal     // Sibling traversal
-};
-
-enum class VisitorMode : uint8_t {
-  TraverseAll,    // Visit every node encountered
-  ConditionalOnly // Only visit nodes matching condition
 };
 
 template <VisitorDirection Dir, typename Ret = bool>
@@ -80,16 +75,6 @@ protected:
       return t_node->get_parent();
     } else if constexpr (Dir == VisitorDirection::ParentToChild) {
       return nullptr; // Simplified for this example
-    } else if constexpr (Dir == VisitorDirection::Horizontal) {
-      auto parent = t_node->get_parent();
-      if (parent == nullptr) {
-        return nullptr;
-      }
-      auto siblings = parent->children();
-      if (!siblings.empty()) {
-        return siblings.front();
-      }
-      return nullptr;
     }
     return nullptr;
   }
@@ -184,6 +169,46 @@ static_assert(std::is_const_v<std::remove_pointer_t<const translation_unit*>>);
 
 ast::scope& get_scope(node*);
 
+struct stringifying_visitor : public generic_visitor<VisitorDirection::ParentToChild, std::string> {
+  using base_type        = generic_visitor<VisitorDirection::ParentToChild, std::string>;
+  using node_type        = typename base_type::node_type;
+
+  stringifying_visitor() = default;
+
+  // Retrieve the full indented string representation
+  std::string result() const { return m_output.str(); }
+
+protected:
+  bool visit_node(node_type* n) override {
+    print_node(n);
+    traverse_children(n);
+    return false; // keep traversing
+  }
+
+  bool visit_node_const(const node_type* n) const override {
+    const_cast<stringifying_visitor*>(this)->print_node(n);
+    const_cast<stringifying_visitor*>(this)->traverse_children(n);
+    return false; // keep traversing
+  }
+
+private:
+  void print_node(const node_type* n) {
+    m_output << std::string(static_cast<size_t>(m_depth * 2), ' ') << n->string() << "\n";
+  }
+
+  void traverse_children(const node_type* n) {
+    ++m_depth;
+    for (auto* child : n->children()) {
+      if (child != nullptr) {
+        child->accept(*this);
+      }
+    }
+    --m_depth;
+  }
+
+  mutable std::ostringstream m_output;
+  mutable int m_depth = 0;
+};
 template <VisitorDirection Dir>
 class operator_visitor : public generic_visitor<Dir, bool> {
   using node_type           = generic_visitor<Dir, bool>::node_type;

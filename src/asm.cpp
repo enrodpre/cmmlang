@@ -56,8 +56,10 @@ label::label(std::string name)
 
 [[nodiscard]] std::string label_memory::value() const { return format_addr(m_base, m_offset); }
 
-[[nodiscard]] reg* registers::get(register_t name) const { return m_registers.at(name).get(); }
-
+[[nodiscard]] reg* registers::get(register_t name) { return m_registers.at(name).get(); }
+[[nodiscard]] const reg* registers::get(register_t name) const {
+  return m_registers.at(name).get();
+}
 std::optional<reg*> registers::find_var(const ast::identifier& id) {
   auto range = m_registers | FILTER([id](const auto& r) {
                  return !r->empty() && r->symbol().value()->ident.value() == id.value();
@@ -74,18 +76,18 @@ registers::parameters_transaction registers::parameters() { return {this}; }
 
 reg* registers::parameters_transaction::next() {
   const auto* it =
-      std::ranges::find_if(m_parameters, [this](register_t r) { return !params->get(r)->empty(); });
+      std::ranges::find_if(m_parameters, [this](register_t r) { return params->get(r)->empty(); });
   if (it != m_parameters.end()) {
-    auto* available = params->get(*it);
-    m_regs.push_back(available);
-    return available;
+    auto reg_t = *it;
+    m_transaction_regs.push_back(reg_t);
+    return params->get(reg_t);
   }
   throw cmm::error("No more registers available");
 }
 
 void registers::parameters_transaction::reset() {
-  for (auto* r : m_regs) {
-    r->reset();
+  for (register_t r : m_transaction_regs) {
+    params->get(r)->reset();
   }
 }
 

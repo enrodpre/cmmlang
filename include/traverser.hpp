@@ -55,8 +55,6 @@ private:
   translation_unit* ast;
 
   // Helpers
-  template <bool IsGlobal>
-  void generate_variable_decl(decl::variable*);
   template <typename Jump>
   void generate_continue_break(const Jump&);
   void generate_condition(expr::expression&, const std::string&);
