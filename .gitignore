@@ -5,7 +5,7 @@
 .mypy_cache
 .pytest_cache
 .ropeproject
-build
+build/**
 CmmLang
 compile_comands.json
 current.cmm
