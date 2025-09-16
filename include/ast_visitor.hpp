@@ -26,72 +26,88 @@ template <VisitorDirection Dir, typename Ret = bool>
 // requires(std::is_default_constructible_v<Ret>)
 class generic_visitor : public revisited::RecursiveVisitor<node&, const node&> {
 protected:
-  using node_type  = node;
-  using value_type = std::add_pointer_t<Ret>;
+  using node_type = node;
+  template <typename T, bool IsConst>
+  using conditional_ptr_t =
+      std::conditional_t<IsConst, std::add_pointer_t<std::add_const_t<T>>, std::add_pointer_t<T>>;
 
 public:
-  bool visit(node_type& node) override { return traverse(&node, false); }
+  using mutable_value_type = std::add_pointer_t<Ret>;
+  using const_value_type   = std::add_pointer_t<std::add_const_t<Ret>>;
 
-  bool visit(const node_type& node) override {
-    return traverse(const_cast<node_type*>(&node), false);
-  }
+  bool visit(node_type& node) override { return traverse(&node, false, std::false_type{}); }
+  bool visit(const node_type& node) override { return traverse(&node, false, std::true_type{}); }
 
-  std::pair<bool, value_type> get_result() const { return m_result; }
+  auto get_result() const { return m_result; }
 
 protected:
-  void set_result(value_type t_ret) { m_result = std::make_pair(true, t_ret); }
-
-private:
-  bool traverse(node_type* t_root, bool successful) {
-    // m_count[std::type_index(typeid(*t_root))]++;
-
-    if (visit_node(t_root)) {
-      return true;
-    }
-    if (auto next = get_next(t_root)) {
-      return traverse(next, successful);
-    }
-    return true;
+  void set_result(mutable_value_type t_ret) { m_result = std::make_pair(true, t_ret); }
+  void set_result(const_value_type t_ret) const {
+    m_result = std::make_pair(true, const_cast<mutable_value_type>(t_ret));
   }
 
-  virtual bool visit_node(node_type*) = 0;
+  // Unified traverse that handles both const and non-const
+  template <typename NodePtr, typename IsConstTag>
+  bool traverse(NodePtr t_root, bool successful, IsConstTag is_const_tag) const {
+    m_count[std::type_index(typeid(*t_root))]++;
 
-  node_type* get_next(node_type* t_node) {
+    if (visit_node_dispatch(t_root, is_const_tag)) {
+      return true;
+    }
+
+    if (auto next = get_next(t_root)) {
+      return traverse(next, successful, is_const_tag);
+    }
+
+    return true;
+  }
+  // Dispatch to the correct visit_node based on constness
+  bool visit_node_dispatch(node_type* t_node, std::false_type) const {
+    return const_cast<generic_visitor*>(this)->visit_node(t_node);
+  }
+
+  bool visit_node_dispatch(const node_type* t_node, std::true_type) const {
+    return visit_node_const(t_node);
+  }
+
+  virtual bool visit_node(node_type*)                   = 0;
+  virtual bool visit_node_const(const node_type*) const = 0;
+
+  // Template get_next that preserves constness
+  template <typename NodePtr>
+  NodePtr get_next(NodePtr t_node) const {
     if constexpr (Dir == VisitorDirection::ChildToParent) {
       return t_node->get_parent();
     } else if constexpr (Dir == VisitorDirection::ParentToChild) {
-      // for (auto* child : t_node->children()) {
-      //   if (child && traverse(child))
-      //     return true;
-      // }
-      return nullptr;
-
+      return nullptr; // Simplified for this example
     } else if constexpr (Dir == VisitorDirection::Horizontal) {
-      auto* parent = t_node->get_parent();
+      auto parent = t_node->get_parent();
       if (parent == nullptr) {
         return nullptr;
       }
-
-      for (auto* sibling : parent->children()) {
-        return sibling;
+      auto siblings = parent->children();
+      if (!siblings.empty()) {
+        return siblings.front();
       }
       return nullptr;
     }
-  };
+    return nullptr;
+  }
 
-protected:
-  // Condition tracking for complex queries
   mutable std::unordered_map<std::type_index, int> m_count;
-  std::pair<bool, value_type> m_result;
+  mutable std::pair<bool, mutable_value_type> m_result;
 };
 
 template <VisitorDirection Dir, typename Result>
 class retriever_visitor : public generic_visitor<Dir, Result> {
-  using node_type      = generic_visitor<Dir, Result>::node_type;
-  using value_type     = std::add_pointer_t<std::add_const_t<Result>>;
+  using base_type      = generic_visitor<Dir, Result>;
+  using node_type      = typename base_type::node_type;
   using condition_type = std::function<bool(const node_type*)>;
 
 public:
+  using mutable_value_type = typename base_type::mutable_value_type;
+  using const_value_type   = typename base_type::const_value_type;
+
   retriever_visitor(condition_type t_condition)
       : m_condition(t_condition) {}
 
@@ -99,7 +115,21 @@ protected:
   bool visit_node(node_type* t_node) override {
     bool result = m_condition(t_node);
     if (result) {
-      generic_visitor<Dir, Result>::set_result(dynamic_cast<value_type>(t_node));
+      // Try to dynamic_cast to the target type (non-const)
+      if (auto casted = dynamic_cast<mutable_value_type>(t_node)) {
+        base_type::set_result(casted);
+      }
+    }
+    return result;
+  }
+
+  bool visit_node_const(const node_type* t_node) const override {
+    bool result = m_condition(t_node);
+    if (result) {
+      // Try to dynamic_cast to the target type (const)
+      if (auto casted = dynamic_cast<const_value_type>(t_node)) {
+        base_type::set_result(casted);
+      }
     }
     return result;
   }
@@ -108,22 +138,21 @@ protected:
 };
 
 template <typename T>
-constexpr auto is = [](const node& t_node) {
+constexpr auto is = [](const node* t_node) {
   return dynamic_cast<std::add_pointer_t<std::add_const_t<T>>>(t_node) != nullptr;
 };
 
 template <typename Ret>
 struct parent_retriever_visitor : public retriever_visitor<VisitorDirection::ChildToParent, Ret> {
   parent_retriever_visitor()
-      : retriever_visitor<VisitorDirection::ChildToParent, Ret>(
-            is<typename retriever_visitor<VisitorDirection::ChildToParent, Ret>::value_type>) {}
+      : retriever_visitor<VisitorDirection::ChildToParent, Ret>(is<Ret>) {}
 };
 
 template <typename Ret>
-std::add_pointer_t<std::add_const_t<Ret>> find_parent(
-    const node* t_node,
+std::add_pointer_t<Ret> find_parent(
+    node* t_node,
     const std::function<void()>& on_failure = []() {
-      throw error(std::format("Couldnt find parent of type {}", typeid(Ret).name()));
+      throw error(std::format("Couldn't find parent of type {}", typeid(Ret).name()));
     }) {
   parent_retriever_visitor<Ret> visitor{};
   t_node->accept(visitor);
@@ -131,7 +160,24 @@ std::add_pointer_t<std::add_const_t<Ret>> find_parent(
   if (!res.first) {
     on_failure();
   }
+  // Return non-const pointer when input was non-const
   return res.second;
+}
+
+template <typename Ret>
+std::add_pointer_t<std::add_const_t<Ret>> find_parent(
+    const node* t_node,
+    const std::function<void()>& on_failure = []() {
+      throw error(std::format("Couldn't find parent of type {}", typeid(Ret).name()));
+    }) {
+  parent_retriever_visitor<Ret> visitor{};
+  t_node->accept(visitor);
+  auto res = visitor.get_result();
+  if (!res.first) {
+    on_failure();
+  }
+  // Ensure const correctness - if input was const, return const
+  return static_cast<std::add_pointer_t<std::add_const_t<Ret>>>(res.second);
 }
 
 static_assert(std::is_const_v<std::remove_pointer_t<const translation_unit*>>);

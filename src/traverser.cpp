@@ -93,7 +93,7 @@ void ast_traverser::end_scope() {
 template <typename Jump>
 void ast_traverser::generate_continue_break(const Jump& node) {
 
-  const auto* it = find_parent<ast::iteration::iteration>(&node, [node]() {
+  auto* it    = find_parent<ast::iteration::iteration>(&node, [node]() {
     if constexpr (std::is_same_v<jump::continue_, Jump>) {
       THROW(INVALID_CONTINUE, node);
     } else if constexpr (std::is_same_v<jump::break_, Jump>) {
@@ -101,7 +101,7 @@ void ast_traverser::generate_continue_break(const Jump& node) {
     }
   });
 
-  auto labels    = it->labels();
+  auto labels = it->labels();
   if constexpr (std::is_same_v<jump::continue_, Jump>) {
     m_context.jump(labels.first);
   } else if constexpr (std::is_same_v<jump::break_, Jump>) {
