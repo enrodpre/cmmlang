@@ -25,7 +25,6 @@ using namespace cmm;
 // }
 
 int main(int argc, char* argv[]) {
-  // std::atexit(print_allocations);
   std::string INPUT_ARG               = "input";
   std::string DEFAULT_OUTPUT_FILENAME = "res";
   logging::initialize_logging();

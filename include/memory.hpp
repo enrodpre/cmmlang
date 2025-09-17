@@ -19,9 +19,9 @@ struct arena;
 class bad_alloc : std::bad_alloc {
 public:
   bad_alloc(std::string t_message)
-      : message(t_message) {}
+      : message(std::move(t_message)) {}
 
-  const char* what() const noexcept override { return message.c_str(); }
+  [[nodiscard]] const char* what() const noexcept override { return message.c_str(); }
 
 private:
   std::string message;
@@ -41,8 +41,8 @@ public:
   void deallocate(T* p, std::size_t n) noexcept {}
 
   template <typename U>
-  bool operator==(const allocator<U>& rhs) const noexcept {
-    return typeid(T) == typeid(T);
+  bool operator==(const allocator<U>&) const noexcept {
+    return typeid(T) == typeid(U);
   }
 
   template <typename U>
@@ -58,8 +58,8 @@ private:
 };
 
 struct arena : default_singleton<arena> {
-  arena() = default;
-  arena(size_t, std::byte*, std::byte*);
+  friend default_singleton<arena>;
+
   ~arena() { delete[] m_buffer; }
 
   [[nodiscard]] size_t used() const { return static_cast<size_t>(m_offset - m_buffer); }
@@ -78,6 +78,10 @@ struct arena : default_singleton<arena> {
           std::format("No remaining space. Tried to allocate {} bytes when only {} are available",
                       element_size,
                       remaining_space));
+    }
+
+    if (remaining_space * 0.8 > ALLOCATOR_SIZE) {
+      REGISTER_WARN("Allocator is 80% full");
     }
 
     auto* start_ptr             = static_cast<void*>(m_offset);
@@ -125,6 +129,10 @@ struct arena : default_singleton<arena> {
   };
 
   std::vector<register_> registers;
+
+protected:
+  arena() = default;
+  arena(size_t, std::byte*, std::byte*);
 
 private:
   static constexpr size_t ALLOCATOR_SIZE = static_cast<size_t>(1024 * 1024 * 8);

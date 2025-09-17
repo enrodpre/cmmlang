@@ -40,7 +40,7 @@ rank::rank(const token& l, decltype(number) e, const token& r)
       number(e),
       close(r) {}
 
-std::string rank::string() const { return std::format("[{}]", number->string()); }
+// std::string rank::string() const { return std::format("[{}]", number->string()); }
 
 decl::rank::rank(const token& l, const token& r)
     : rank(r, nullptr, l) {}
@@ -57,10 +57,6 @@ variable::variable(specifiers&& spec, decltype(rank) r, identifier id, decltype(
 
 variable::variable(types::type_id t, decltype(ident) id, decltype(init) init)
     : variable(specifiers(t), nullptr, std::move(id), init) {}
-
-std::string variable::string() const {
-  return std::format("{} {}{} = {}", specs, *rank, ident, *init);
-}
 
 std::vector<node*> variable::children() { return concat_nodes(&specs, rank, init); }
 
@@ -88,7 +84,7 @@ std::vector<node*> decl::function::children() {
   return {to_node(&ident), to_node(&specs), to_node(&params), to_node(body)};
 }
 
-std::string decl::function::repr() const { return std::format("{} {}", specs, ident); }
+// std::string decl::function::repr() const { return std::format("{} {}", specs, ident); }
 std::string decl::function::string() const { return std::format("{}", ident); }
 
 assembly::element* decl::conversion_function::operator()(assembly::element*) const noexcept {
@@ -183,13 +179,6 @@ void decl::function::definition::clear() noexcept {
     destroy_scope();
   }
   local_scopes.clear();
-}
-
-[[nodiscard]] bool decl::function::definition::is_declared(
-    const ast::identifier& id) const noexcept {
-  return variables.contains(id) || std::ranges::any_of(local_scopes, [id](const scope* s) {
-           return s->variables.contains(id);
-         });
 }
 
 std::vector<function_store::value_type> function_store::get_by_name(const std::string& name) const {
@@ -438,10 +427,10 @@ const variable_store::value_type& translation_unit::get_variable(const ast::iden
 
 variable_store::address_type translation_unit::declare_variable(ast::decl::variable* t_var) {
   assert(m_stackframe.empty());
-  auto* addr = cunit->get_operand<assembly::label_memory>(t_var->string());
+  auto* addr = cunit->get_operand<assembly::label_memory>(t_var->ident);
   variables.insert(t_var, addr);
   addr->hold_symbol(t_var);
-  cunit->reserve_static_var(t_var->string());
+  cunit->reserve_static_var(t_var->ident.string());
   return addr;
 }
 
@@ -459,6 +448,7 @@ void translation_unit::define_function(ast::decl::function* t_func) {
   if (!functions.contains(t_func->ident)) {
     THROW(UNDECLARED_SYMBOL, t_func->ident);
   }
+
   const auto* declared_func = functions.at(t_func->ident);
   if (declared_func->body == nullptr) {
     THROW(ALREADY_DEFINED_FUNCTION, t_func->ident);
@@ -523,23 +513,25 @@ std::vector<const ast::decl::function::definition*> translation_unit::stackframe
   return res;
 }
 
-template <typename T, typename Id>
+template <typename Id>
 std::vector<const callable*> translation_unit::get_candidates(Id t_id) const {
-  if constexpr (std::is_same_v<T, builtin_callable>) {
+  if constexpr (std::is_same_v<Id, ast::operator_>) {
     return translation_unit::operators.at(t_id.value()) |
            std ::views ::transform(
                [](const auto& elem) { return dynamic_cast<const callable*>(&elem); }) |
            std ::ranges ::to<std ::vector>();
 
-  } else if constexpr (std::is_same_v<T, decl::function>) {
+  } else if constexpr (std::is_same_v<Id, ast::identifier>) {
     return CAST_RANGE(functions.get_by_name(t_id), const callable);
   }
 }
-template <typename T, typename Id>
-const T* translation_unit::get_callable(Id id, const expr::arguments& argument_expressions) const {
+
+template <typename Id>
+const callable* translation_unit::get_callable(Id id,
+                                               const expr::arguments& argument_expressions) const {
   auto argument_types = argument_expressions | MAP_RANGE(expr::expression*, elem->type());
 
-  std::vector<const callable*> overloads = get_candidates<T, Id>(id);
+  std::vector<const callable*> overloads = get_candidates<Id>(id);
   auto possible_exact_match =
       overloads | std::views::filter([argument_types](const callable* fn) -> bool {
         return std::ranges::equal(
@@ -550,7 +542,7 @@ const T* translation_unit::get_callable(Id id, const expr::arguments& argument_e
       TO_VEC;
 
   if (possible_exact_match.size() == 1) {
-    return dynamic_cast<const T*>(possible_exact_match.front());
+    return dynamic_cast<const callable*>(possible_exact_match.front());
   }
 
   // Overload resolution
@@ -559,7 +551,7 @@ const T* translation_unit::get_callable(Id id, const expr::arguments& argument_e
     THROW(UNDECLARED_SYMBOL, id);
   }
 
-  return dynamic_cast<const T*>(resolved);
+  return dynamic_cast<const callable*>(resolved);
 }
 
 const callable* translation_unit::resolve_overloads(std::vector<const callable*> candidates,
@@ -669,10 +661,10 @@ bool translation_unit::is_bindable_to(value_category_t t_value, types::type_id t
                              [t_type](const auto& t_rule) { return t_rule.first(t_type); });
 }
 
-template const ast::decl::function* translation_unit::get_callable(
+template const callable* translation_unit::get_callable(
     ast::identifier id,
     const expr::arguments& argument_expressions) const;
-template const builtin_callable* translation_unit::get_callable(
+template const callable* translation_unit::get_callable(
     ast::operator_ id,
     const expr::arguments& argument_expressions) const;
 

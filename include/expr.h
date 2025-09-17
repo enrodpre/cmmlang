@@ -90,9 +90,9 @@ struct unary_operator : derived_visitable<unary_operator, expression> {
   ast::operator_ operator_;
   unary_operator(expression& expression, ast::operator_&& op);
   std ::vector<node*> children() override { return std ::vector<node*>{&expr, &operator_}; }
-  bool is_constant_evaluable() const override { return true; };
   types::type_id type_impl() const override;
   value_category_t value_category_impl() const override;
+  bool is_constant_evaluable() const override { return false; }
 };
 
 struct binary_operator : derived_visitable<binary_operator, expression> {
@@ -102,7 +102,7 @@ struct binary_operator : derived_visitable<binary_operator, expression> {
   binary_operator(expression& left, ast::operator_&& op, expression& right);
 
   std ::vector<node*> children() override { return std ::vector<node*>{&left, &operator_, &right}; }
-  bool is_constant_evaluable() const override { return true; };
+  bool is_constant_evaluable() const override;
   types::type_id type_impl() const override;
   value_category_t value_category_impl() const override;
 };

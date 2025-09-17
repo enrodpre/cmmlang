@@ -1,9 +1,2 @@
-int main() {
-  int t = 1;
-  std::cout << t;
-  {
-    int t = 3;
-    std::cout << t;
-  }
-  std::cout << t;
-}
+static unsigned long A = 1 + 2 + 3;
+int main() { return A; }

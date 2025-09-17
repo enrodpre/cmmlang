@@ -54,6 +54,8 @@ if (NOT TARGET spdlog)
   find_package(spdlog REQUIRED)
 endif()
 
+find_package(cpptrace REQUIRED)
+
 
 # Apply warning flags depending on selection
 if(WARNING_LEVEL STREQUAL "NONE")
@@ -78,38 +80,38 @@ endif()
 
 add_compile_options(-fdiagnostics-color=always -O0 -g -fno-inline -Wno-switch -fdiagnostics-show-option)
 add_library(${LIBNAME} STATIC ${sources})
-# include(cotire)
-# cotire(CmmLang)
-target_precompile_headers(${LIBNAME} PRIVATE
-# STL containers
-    <string>
-    <vector>
-    <array>
-    <unordered_map>
-    <unordered_set>
-    # General utilities
-    <string_view>
-    <tuple>
-    <optional>
-    <variant>
-    # Input/Output
-    <iostream>
-    <fstream>
-    <sstream>
-    # STL algorithms and utilities
-    <algorithm>
-    <functional>
-    <memory>
-    <utility>
-    # Date and time
-    <ranges>
-    <sstream>
-    <format>
-    <concepts>
-    <type_traits>
-    <initializer_list>
-)
-
+include(cotire)
+cotire(CmmLang)
+# target_precompile_headers(${LIBNAME} PRIVATE
+# # STL containers
+#     <string>
+#     <vector>
+#     <array>
+#     <unordered_map>
+#     <unordered_set>
+#     # General utilities
+#     <string_view>
+#     <tuple>
+#     <optional>
+#     <variant>
+#     # Input/Output
+#     <iostream>
+#     <fstream>
+#     <sstream>
+#     # STL algorithms and utilities
+#     <algorithm>
+#     <functional>
+#     <memory>
+#     <utility>
+#     # Date and time
+#     <ranges>
+#     <sstream>
+#     <format>
+#     <concepts>
+#     <type_traits>
+#     <initializer_list>
+# )
+#
 function(create_symlink file)
   file(CREATE_LINK
     ${CMAKE_CURRENT_SOURCE_DIR}/${file}
@@ -123,7 +125,7 @@ create_symlink(examples)
 # target_compile_definitions(CmmLib PUBLIC SPDLOG_ACTIVE_LEVEL=)
 target_link_libraries(
    ${LIBNAME} PUBLIC magic_enum::magic_enum
-                           Revisited spdlog::spdlog)
+                           Revisited spdlog::spdlog cpptrace::cpptrace)
 target_include_directories(
   ${LIBNAME}
   PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
@@ -132,7 +134,7 @@ target_compile_options(${LIBNAME} PRIVATE -fpch-preprocess)
 add_executable(${APPNAME} main.cpp)
 find_package(cxxopts REQUIRED)
 target_link_libraries(${APPNAME} PRIVATE ${LIBNAME} cxxopts::cxxopts)
-target_precompile_headers(${APPNAME} REUSE_FROM ${LIBNAME})
+# target_precompile_headers(${APPNAME} REUSE_FROM ${LIBNAME})
 
 if(BUILD_TESTING)
   enable_testing()

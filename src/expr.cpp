@@ -69,8 +69,8 @@ expr::call::call(decltype(ident)&& id, decltype(args) a = {})
       args(std::move(a)) {}
 
 type_id expr::call::type_impl() const {
-  const auto* func = get_root()->get_callable<decl::function>(ident, args);
-  return func->specs.type.value();
+  const auto* func = get_root()->get_callable(ident, args);
+  return func->return_type();
 }
 
 value_category_t expr::call::value_category_impl() const { return get_value_category(type_impl()); }
@@ -80,11 +80,17 @@ expr::unary_operator::unary_operator(expression& expression, ast::operator_&& op
       operator_(std::move(op)) {}
 
 type_id expr::unary_operator::type_impl() const {
-  const auto* func = get_root()->get_callable<builtin_callable>(operator_, {&expr.get()});
-  return func->ret;
+  const auto* func = get_root()->get_callable(operator_, {&expr.get()});
+  return func->return_type();
 }
 value_category_t expr::unary_operator::value_category_impl() const {
   return get_value_category(type_impl());
+}
+bool expr::binary_operator::is_constant_evaluable() const {
+  return left->is_constant_evaluable() && right->is_constant_evaluable() &&
+         get_root()
+             ->get_callable(operator_, expr::arguments{&left.get(), &right.get()})
+             ->is_user_defined();
 }
 expr::binary_operator::binary_operator(expression& l, ast::operator_&& op, expression& r)
     : left(l),
@@ -92,9 +98,8 @@ expr::binary_operator::binary_operator(expression& l, ast::operator_&& op, expre
       right(r) {}
 
 type_id expr::binary_operator::type_impl() const {
-  const auto* func =
-      get_root()->get_callable<builtin_callable>(operator_, {&left.get(), &right.get()});
-  return func->ret;
+  const auto* func = get_root()->get_callable(operator_, {&left.get(), &right.get()});
+  return func->return_type();
 }
 
 value_category_t expr::binary_operator::value_category_impl() const {

@@ -243,9 +243,9 @@
 #define TRANSFORM(FUNC)       std::views::transform(FUNC)
 #define FILTER(FUNC)          std::views::filter(FUNC)
 #define MAP_RANGE(TYPE, FUNC) TRANSFORM([](TYPE elem) { return FUNC; })
-#define CAST_RANGE(RANGE, TYPE)                                                           \
-  RANGE | TRANSFORM([](const auto* elem) { return dynamic_cast<TYPE*>(elem); }) | TO_VEC;
-
+#define CAST_RANGE(RANGE, TYPE)                                                          \
+  RANGE | TRANSFORM([](const auto* elem) { return dynamic_cast<TYPE*>(elem); }) | TO_VEC
+#define DEMANGLE(TYPE) cpptrace::demangle(typeid(TYPE).name())
 #define CREATE_ENUM_EXTENSION_BODY(TYPE, ...)                                     \
   using value_type   = CONCAT(TYPE, _t);                                          \
   using element_type = CONCAT(TYPE, _ext);                                        \

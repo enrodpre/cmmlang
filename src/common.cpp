@@ -3,8 +3,6 @@
 #include <magic_enum/magic_enum.hpp>
 #include <string>
 
-#include "common.inl"
-
 namespace cmm {
 
 self_allocated::self_allocated(cmm::location&& loc)
@@ -60,9 +58,12 @@ auto cast_to_ins(operator_sign sign, comparison_t c, std::string_view str, std::
   if (sign == operator_sign::UNSIGNED && (c == comparison_t::U_LT || c == comparison_t::U_GT)) {
     str = str.substr(2);
   }
-  return magic_enum::enum_cast<instruction_t>(std::format("{}{}", prefix, str),
-                                              magic_enum::case_insensitive)
-      .value();
+  auto name = std::format("{}{}", prefix, str);
+  auto ins  = magic_enum::enum_cast<instruction_t>(name, magic_enum::case_insensitive);
+  if (!ins) {
+    throw error("{} is not an element of {}", name, magic_enum::enum_type_name<instruction_t>());
+  }
+  return ins.value();
 }
 } // namespace
 instruction_t comparison_data::jump() const { return cast_to_ins(sign, m_value, name(), "j"); }

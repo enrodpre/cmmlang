@@ -1,1 +1,1 @@
-set args examples/vardecl.cmm
+set args examples/binop.cmm

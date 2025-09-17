@@ -3,6 +3,7 @@
 #include "ast.hpp"
 #include "common.hpp"
 #include "expr.h"
+#include "macros.hpp"
 
 #include <cstddef>
 #include <functional>
@@ -33,7 +34,8 @@ public:
   bool visit(node_type& node) override { return traverse(&node, false, std::false_type{}); }
   bool visit(const node_type& node) override { return traverse(&node, false, std::true_type{}); }
 
-  auto get_result() const { return m_result; }
+  auto& get_result() { return m_result; }
+  const auto& get_result() const { return m_result; }
 
 protected:
   void set_result(mutable_value_type t_ret) { m_result = std::make_pair(true, t_ret); }
@@ -137,7 +139,9 @@ template <typename Ret>
 std::add_pointer_t<Ret> find_parent(
     node* t_node,
     const std::function<void()>& on_failure = []() {
-      throw error(std::format("Couldn't find parent of type {}", typeid(Ret).name()));
+      cpptrace::stacktrace::current().print();
+      throw error(
+          std::format("Couldn't find parent {} of {}", DEMANGLE(decltype(t_node)), DEMANGLE(Ret)));
     }) {
   parent_retriever_visitor<Ret> visitor{};
   t_node->accept(visitor);
@@ -153,7 +157,8 @@ template <typename Ret>
 std::add_pointer_t<std::add_const_t<Ret>> find_parent(
     const node* t_node,
     const std::function<void()>& on_failure = []() {
-      throw error(std::format("Couldn't find parent of type {}", typeid(Ret).name()));
+      throw error(std::format(
+          "Couldn't find parent of {} of {}", DEMANGLE(decltype(t_node)), DEMANGLE(Ret)));
     }) {
   parent_retriever_visitor<Ret> visitor{};
   t_node->accept(visitor);
@@ -169,36 +174,26 @@ static_assert(std::is_const_v<std::remove_pointer_t<const translation_unit*>>);
 
 ast::scope& get_scope(node*);
 
-struct stringifying_visitor : public generic_visitor<VisitorDirection::ParentToChild, std::string> {
-  using base_type        = generic_visitor<VisitorDirection::ParentToChild, std::string>;
-  using node_type        = typename base_type::node_type;
+struct ast_printer : public revisited::RecursiveVisitor<const node&> {
+  ast_printer() = default;
 
-  stringifying_visitor() = default;
-
-  // Retrieve the full indented string representation
-  std::string result() const { return m_output.str(); }
+  std::string get_result() const { return m_result.str(); }
 
 protected:
-  bool visit_node(node_type* n) override {
+  bool visit(const node& n) final {
     print_node(n);
     traverse_children(n);
     return false; // keep traversing
   }
 
-  bool visit_node_const(const node_type* n) const override {
-    const_cast<stringifying_visitor*>(this)->print_node(n);
-    const_cast<stringifying_visitor*>(this)->traverse_children(n);
-    return false; // keep traversing
-  }
-
 private:
-  void print_node(const node_type* n) {
-    m_output << std::string(static_cast<size_t>(m_depth * 2), ' ') << n->string() << "\n";
+  void print_node(const node& n) {
+    m_result << std::string(static_cast<size_t>(m_depth * 2), ' ') << n.string() << "\n";
   }
 
-  void traverse_children(const node_type* n) {
+  void traverse_children(const node& n) {
     ++m_depth;
-    for (auto* child : n->children()) {
+    for (const auto* child : n.children()) {
       if (child != nullptr) {
         child->accept(*this);
       }
@@ -206,8 +201,8 @@ private:
     --m_depth;
   }
 
-  mutable std::ostringstream m_output;
   mutable int m_depth = 0;
+  mutable std::stringstream m_result;
 };
 template <VisitorDirection Dir>
 class operator_visitor : public generic_visitor<Dir, bool> {
@@ -241,7 +236,12 @@ protected:
 
 template <typename Node>
   requires(std::is_base_of_v<node, Node>)
-void print_node(const Node&);
+inline void print_node(const Node& t_node) {
+  ast::ast_printer printer;
+  t_node.accept(printer);
+
+  fmt::print("{}", printer.get_result());
+}
 
 class ConditionBuilder {
 public:
@@ -288,8 +288,10 @@ public:
   }
 };
 
-#define TRACE_VISITOR(OBJ)                                                                     \
-  REGISTER_TRACE("{} visited {}", demangle(typeid(this).name()), demangle(typeid(OBJ).name()))
+#define TRACE_VISITOR(OBJ)                                \
+  REGISTER_TRACE("{} visited {}",                         \
+                 cpptrace::demangle(typeid(this).name()), \
+                 cpptrace::demangle(typeid(OBJ).name()))
 
 #define TERM_TYPES                                                                \
   ast::literal, ast::identifier, ast::keyword, ast::operator_, ast::storage_spec, \

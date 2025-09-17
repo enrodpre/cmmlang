@@ -57,7 +57,7 @@ public:
 
 private:
   tokens m_tokens;
-  memory::arena m_arena;
+  memory::arena& m_arena;
   std::vector<ast::declaration*> m_global;
   ast::translation_unit* m_pointer;
 

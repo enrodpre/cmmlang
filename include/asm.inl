@@ -63,25 +63,7 @@ constexpr std::string registers::to_realname(register_t r) {
 
 registers::registers()
     : m_registers(magic_enum::enum_for_each<register_t>(
-          [](register_t t_val) { return std::make_unique<reg>(to_realname(t_val)); })) {}
-
-namespace {
-template <typename... Args>
-  requires(sizeof...(Args) == 0)
-constexpr std::string format_ins(instruction_t ins, Args&&...) {
-  return std::format("{}", ins);
-}
-template <typename... Args>
-  requires(sizeof...(Args) == 1)
-constexpr std::string format_ins(instruction_t ins, Args&&... args) {
-  return std::format("{} {}", ins, std::forward<Args>(args)...);
-}
-template <typename... Args>
-  requires(sizeof...(Args) == 2)
-constexpr std::string format_ins(instruction_t ins, Args&&... args) {
-  return std::format("{} {}, {}", ins, std::forward<Args>(args)...);
-}
-} // namespace
+          [](register_t t_val) { return reg(to_realname(t_val)); })) {}
 
 template <typename... Args>
 void asmgen::write_instruction(const instruction_t& ins, Args&&... args) {

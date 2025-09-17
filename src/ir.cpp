@@ -22,7 +22,8 @@ using namespace cmm::assembly;
 using namespace cmm::ast;
 
 compilation_unit::compilation_unit(ast::translation_unit* t_ast, source_code* t_code)
-    : ast(t_ast),
+    : regs(assembly::registers::instance()),
+      ast(t_ast),
       code(t_code),
       runner(*this) {
   ast->cunit = this;
@@ -40,6 +41,7 @@ void compilation_unit::call(std::string_view func) {
 }
 
 operand* compilation_unit::move(operand* to, operand* from) {
+  to->hold_value();
   if (to == from) {
     return to;
   }
@@ -53,7 +55,6 @@ operand* compilation_unit::move(operand* to, operand* from) {
     asmgen.write_instruction(instruction_t::mov, to->value(), from->value());
   }
 
-  to->hold_value();
   return to;
 }
 void compilation_unit::move_rsp(int64_t t_offset) {
@@ -92,7 +93,7 @@ void compilation_unit::reserve_memory(std::string_view name,
 }
 
 void compilation_unit::reserve_static_var(std::string_view name) {
-  reserve_memory(name, "resb", "8");
+  reserve_memory(name, "resb", "1");
 }
 
 assembly::label_memory* compilation_unit::reserve_constant(std::string_view value) {
@@ -161,7 +162,7 @@ std::optional<assembly::reg*> compilation_unit::call_function(const identifier& 
     return {};
   }
 
-  const auto* fn = ast->get_callable<decl::function>(id, args);
+  const auto* fn = dynamic_cast<const decl::function*>(ast->get_callable(id, args));
   if (nullptr == fn) {
     THROW(UNDECLARED_SYMBOL, id);
   }
@@ -203,7 +204,7 @@ reg* compilation_unit::call_builtin_operator(const operator_& op,
                                              const ast::expr::arguments& args) {
   REGISTER_INFO("Calling builtin operator {}", op);
   reg* res          = nullptr;
-  const auto* impls = ast->get_callable<builtin_callable>(op, args);
+  const auto* impls = dynamic_cast<const builtin_callable*>(ast->get_callable(op, args));
   auto params       = regs.parameters();
   auto ops          = std::views::zip_transform(
                  [this, &params](const parameter& t_param, expr::expression* t_expr) {
@@ -214,15 +215,14 @@ reg* compilation_unit::call_builtin_operator(const operator_& op,
                  args.data()) |
              std ::ranges ::to<std ::vector>();
 
-  reg* l = nullptr;
+  reg* l = ops.at(0);
   reg* r = nullptr;
+  if (ops.size() > 1) {
+    r = ops.at(1);
+  }
   for (const auto& exec_unit : impls->ins) {
     instruction_t ins = exec_unit.ins;
     instruction_data data(ins);
-    l = ops.at(0);
-    if (ops.size() > 1) {
-      r = ops.at(1);
-    }
     if (data.n_params == 0) {
       instruction(ins);
     } else if (data.n_params == 1) {
@@ -253,32 +253,18 @@ reg* compilation_unit::call_builtin_operator(const operator_& op,
   return res;
 }
 
-namespace {
-intent_t mode_to_intent(binding_mode_t t_mode) {
-  using enum intent_t;
-  using enum binding_mode_t;
-  switch (t_mode) {
-    case DIRECT:
-      return LOAD_VARIABLE_ADDRESS;
-    case COPY:
-      return LOAD_VARIABLE_VALUE;
-  }
-  return MOVE_CONTENT;
-}
-} // namespace
 void compilation_unit::load_arguments(const parameters& parameters, const expr::arguments& args) {
   auto param_regs = regs.parameters();
   for (const auto& [param, arg] : std::views::zip(parameters, args)) {
-    types::type_id param_type = param.type;
-    binding_mode_t mode = ast::translation_unit::bind_value(arg->value_category(), param_type);
+    types::type_id param_type     = param.type;
 
     ast::expr::expression* n_expr = param.init == nullptr ? arg : param.init;
     if (n_expr == nullptr) {
       THROW(BAD_FUNCTION_CALL, arg);
     }
 
-    intent_t intent = mode_to_intent(mode);
-    runner.generate_expr(*n_expr, param_regs.next(), intent);
+    runner.generate_expr(*ast::translation_unit::bind_expression(n_expr, param_type),
+                         param_regs.next());
   }
 }
 

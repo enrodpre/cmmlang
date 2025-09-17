@@ -17,10 +17,6 @@
 #include "common.hpp" // for std::string_view, formattable, DATASIZE, string_buffer
 #include "macros.hpp" // for BUILD_ENUMERATION_DATA_CLASS, CTOR_ASSIGN_DATA_4
 
-namespace cmm {
-enum class instruction_t : uint8_t;
-} // namespace cmm
-
 namespace cmm::assembly {
 
 namespace bits {
@@ -80,19 +76,6 @@ protected:
   std::string m_name;
 };
 
-// struct operand_ {
-//   enum operand_t : uint8_t { REGISTER, LABEL, MEMORY, IMMEDIATE };
-//
-//   template <operand_t Op>
-//   constexpr operand_()
-//       : m_type(Op) {}
-//
-// private:
-//   const operand_t m_type;
-//   std::string m_identifier;
-//   std::optional<const ast::decl::variable*> m_symbol;
-// };
-
 using offset_t = int64_t;
 struct operand : public element {
   enum content_t : u_int8_t { EMPTY = 0, VALUE, ADDRESS };
@@ -104,7 +87,7 @@ struct operand : public element {
     assert(m_content == ADDRESS);
     return std::format("[{}]", value());
   }
-  [[nodiscard]] bool empty() const { return m_content == EMPTY; }
+  [[nodiscard]] bool empty() const { return m_content == EMPTY || !m_variable.has_value(); }
   void reset() {
     m_content = EMPTY;
     m_variable.reset();
@@ -154,7 +137,9 @@ struct label_memory : public memory {
   [[nodiscard]] std::string value() const override;
 };
 
-struct registers {
+struct registers : default_singleton<registers> {
+  friend default_singleton<registers>;
+
   enum register_t : uint8_t {
     RSP,
     RBP,
@@ -170,20 +155,21 @@ struct registers {
   };
 
   using value_type = std::unique_ptr<reg>;
-  using store_type = std::array<value_type, 11>;
-
-  inline registers();
-  NOT_COPYABLE_CLS(registers);
+  using store_type = std::array<reg, 11>;
 
   constexpr static std::string to_realname(register_t);
   [[nodiscard]] reg* get(register_t);
   [[nodiscard]] const reg* get(register_t) const;
+  void reset() {
+    for (auto& reg : m_registers) {
+      reg.reset();
+    }
+  }
 
   [[nodiscard]] size_t available_parameters() const {
     return std::ranges::count_if(m_parameters, [this](register_t r) { return get(r)->empty(); });
   }
 
-  // reg* last_opfunction_result;
   std::optional<reg*> find_var(const ast::identifier&);
 
   struct parameters_transaction {
@@ -209,6 +195,9 @@ struct registers {
                                                     register_t::SCRATCH_3};
 
   registers::parameters_transaction parameters();
+
+protected:
+  inline registers();
 
 private:
   store_type m_registers;

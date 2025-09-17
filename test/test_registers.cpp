@@ -13,15 +13,15 @@ class registers_test : public ::testing::Test {
 
 protected:
   void SetUp() override {
-    regs = std::make_unique<assembly::registers>();
+    regs = &registers::instance();
     var  = std::make_unique<decl::variable>(BOOL_T, identifier("a"), nullptr);
   }
   void TearDown() override {
-    regs.reset();
+    regs->reset();
     var.reset();
   }
 
-  std::unique_ptr<registers> regs;
+  registers* regs;
   std::unique_ptr<decl::variable> var;
 };
 
@@ -222,6 +222,13 @@ TEST_F(parameters_test, ManyTransactionsSequentially) {
   EXPECT_EQ(regs->available_parameters(), 6);
 }
 
+TEST_F(registers_test, sanity_check) {
+  auto* reg = regs->get(registers::ACCUMULATOR);
+  EXPECT_EQ(reg, reg);
+  REG_EQ(reg, ACCUMULATOR);
+  EXPECT_EQ(reg, reg->hold_value());
+  REG_EQ(reg->hold_value(), ACCUMULATOR);
+}
 TEST_F(registers_test, find_variable) {
   const auto& opt = regs->find_var(var->ident);
   EXPECT_FALSE(opt);

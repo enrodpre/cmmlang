@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdint>
 #include <string>
 #include <sys/types.h>
 
@@ -26,12 +25,6 @@ using namespace ast;
 
 struct compilation_unit;
 
-enum class intent_t : uint8_t {
-  MOVE_CONTENT,
-  LOAD_VARIABLE_VALUE,
-  LOAD_VARIABLE_ADDRESS,
-};
-
 struct expression_visitor;
 struct statement_visitor;
 struct global_visitor;
@@ -46,9 +39,7 @@ public:
   void generate_program(translation_unit&);
   void generate_statements(decl::block&);
   void generate_statement(ast::statement*);
-  assembly::reg* generate_expr(ast::expr::expression&,
-                               assembly::reg* = nullptr,
-                               intent_t       = intent_t::LOAD_VARIABLE_ADDRESS);
+  assembly::reg* generate_expr(ast::expr::expression&, assembly::reg* = nullptr);
 
 private:
   compilation_unit& m_context;
@@ -58,8 +49,6 @@ private:
   template <typename Jump>
   void generate_continue_break(const Jump&);
   void generate_condition(expr::expression&, const std::string&);
-  void begin_scope(decl::block&);
-  void end_scope();
 
   friend statement_visitor;
   friend expression_visitor;
@@ -77,8 +66,7 @@ struct expression_visitor : public visitor<EXPRESSION_TYPES> {
   ast_traverser* gen;
   assembly::reg* in;
   assembly::reg* out;
-  intent_t intent;
-  expression_visitor(ast_traverser*, assembly::reg*, intent_t);
+  expression_visitor(ast_traverser*, assembly::reg*);
 
   void visit(ast::expr::call&) override;
   void visit(ast::expr::binary_operator&) override;

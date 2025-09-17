@@ -36,6 +36,7 @@ using namespace decl;
 
 parser::parser(tokens tokens)
     : m_tokens(std::move(tokens)),
+      m_arena(memory::arena::instance()),
       m_pointer(m_arena.allocate<ast::translation_unit>()) {}
 
 ast::translation_unit* parser::parser::parse() { return parse_program(); }
@@ -47,7 +48,7 @@ ast::translation_unit* parser::parser::parse_program() {
     res.push_back(decl);
   }
   auto* tu = new (m_pointer) ast::translation_unit{res};
-  tu->initialize(tu);
+  tu->initialize(nullptr);
   return tu;
 }
 
@@ -224,11 +225,11 @@ ast::expr::expression& parser::parse_lhs_expr() {
   }
 
   if (token_data(token.type).is_unary_operator()) {
-    auto next                 = m_tokens.next();
-    operator_ t               = next.type == token_t::dec   ? operator_(next, operator_t::pre_dec)
-                                : next.type == token_t::inc ? operator_(next, operator_t::pre_inc)
-                                                            : operator_(token);
-    expr::expression& element = parse_lhs_expr();
+    auto next   = m_tokens.next();
+    operator_ t = next.type == token_t::dec   ? operator_(next, operator_t::pre_dec)
+                  : next.type == token_t::inc ? operator_(next, operator_t::pre_inc)
+                                              : operator_(token);
+    reference<expr::expression> element = parse_lhs_expr();
     return *create_node<expr::unary_operator>(element, std::move(t));
   }
 

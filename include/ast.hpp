@@ -71,19 +71,23 @@ struct node : public revisited::Visitable<node>, displayable {
   virtual void set_parent(node* parent_) const { m_parent = parent_; }
   virtual std::optional<cmm::location> location() const { return m_location; };
   operator node*() { return static_cast<node*>(this); }
-  std::string string() const override { return demangle(typeid(this).name()); }
-  void add_child(node* t_child) { m_children.push_back(t_child); }
-  std::vector<node*> children() { return m_children; }
-  const std::vector<node*>& children() const { return m_children; }
+  std::string repr() const override { return cpptrace::demangle(typeid(*this).name()); }
+  std::string string() const override { return repr(); }
+  void add_child(node* t_node) {
+    if (t_node != nullptr) {
+      t_node->set_parent(this);
+      m_location = m_location + t_node->location();
+      m_children.push_back(t_node);
+    }
+  }
+  virtual std::vector<node*> children() = 0;
+  std::vector<const node*> children() const { return m_children; }
   translation_unit* get_root();
   const translation_unit* get_root() const;
   void initialize(ast::translation_unit* t_tu) {
     m_root = t_tu;
     for (node* child : children()) {
-      if (child != nullptr) {
-        child->set_parent(this);
-        m_location = m_location + child->location();
-      }
+      add_child(child);
     }
   }
 
@@ -91,7 +95,7 @@ private:
   mutable node* m_parent   = nullptr;
   translation_unit* m_root = nullptr;
   std::optional<cmm::location> m_location;
-  std::vector<node*> m_children;
+  std::vector<const node*> m_children;
 };
 
 template <typename T>
@@ -109,6 +113,7 @@ struct literal;
 #define to_node(OBJ) static_cast<node*>(OBJ)
 template <typename T>
 struct term : derived_visitable<term<T>, node> {
+  std::vector<node*> children() final { return {}; }
 
   term() = default;
   COPYABLE_CLS(term);
@@ -192,7 +197,7 @@ struct statement : derived_visitable<statement, node> {
 struct empty_statement_t : derived_visitable<empty_statement_t, statement> {
   empty_statement_t() = default;
 
-  std::string string() const override { return "empty_statement"; }
+  // std::string string() const override { return "empty_statement"; }
 };
 
 using mangled_key = std::string;
@@ -262,7 +267,6 @@ struct siblings : public derived_visitable<siblings<T>, node> {
 
   operator container_type() { return m_data; }
   operator const container_type&() const { return m_data; }
-  [[nodiscard]] std::string string() const override { return demangle(typeid(this).name()); }
   std::vector<node*> children() override {
     if constexpr (std::is_pointer_v<std::remove_cvref_t<T>>) {
       return std::vector<node*>{
@@ -315,7 +319,7 @@ struct block : derived_visitable<block, scope> {
 
   statements stmts;
   children_impl(stmts | TRANSFORM([](const auto& s) { return dynamic_cast<node*>(s); }) | TO_VEC);
-  std::string string() const override { return "Block"; }
+  // std::string string() const override { return "Block"; }
 };
 
 struct specifiers : derived_visitable<specifiers, node> {
@@ -331,7 +335,7 @@ struct specifiers : derived_visitable<specifiers, node> {
   std::vector<node*> children() override {
     return {to_node(&type), dynamic_cast<node*>(&linkage), dynamic_cast<node*>(&storage)};
   };
-  std::string string() const override { return std::format("{} {} {}", type, linkage, storage); }
+  // std::string string() const override { return std::format("{} {} {}", type, linkage, storage); }
 };
 
 struct rank : derived_visitable<rank, node> {
@@ -342,13 +346,13 @@ struct rank : derived_visitable<rank, node> {
   rank(const token&, const token&);
   rank(const token&, decltype(number), const token&);
   std ::vector<node*> children() override;
-  std::string string() const override;
+  // std::string string() const override;
 };
 
 struct label : derived_visitable<label, declaration> {
   label(const token&);
   std::vector<node*> children() override { return {&ident}; }
-  std::string string() const override { return std::format("label {}", ident); }
+  // std::string string() const override { return std::format("label {}", ident); }
 };
 
 struct variable : derived_visitable<variable, declaration> {
@@ -359,9 +363,9 @@ struct variable : derived_visitable<variable, declaration> {
   variable(specifiers&&, decltype(rank), identifier, decltype(init));
   variable(types::type_id, decltype(ident), decltype(init));
 
-  std::string repr() const override { return std::format("variable_{}", string()); }
+  // std::string repr() const override { return std::format("VarDecl", string()); }
   std::vector<node*> children() override;
-  std::string string() const override;
+  // std::string string() const override;
 };
 
 struct function : derived_visitable<function, declaration>, public callable {
@@ -379,11 +383,12 @@ struct function : derived_visitable<function, declaration>, public callable {
   //       params(p),
   //       body(b) {}
 
+  bool is_user_defined() const override { return true; }
   ast::identifier identifier() const override { return ident; }
   cmm::parameters parameters_impl() const override;
   type_id return_type() const override { return specs.type.value(); }
   std::vector<node*> children() override;
-  std::string repr() const override;
+  // std::string repr() const override;
   std::string string() const override;
 };
 
@@ -404,7 +409,6 @@ struct function::definition : derived_visitable<definition, block> {
 
   block* active_scope() { return local_scopes.top(); }
   const block* active_scope() const { return local_scopes.top(); }
-  bool is_declared(const ast::identifier& ident) const noexcept override;
   void create_scope(block&) noexcept;
   [[nodiscard]] const variable_store::value_type& get_variable(
       const ast::identifier&) const override;
@@ -460,7 +464,6 @@ public:
 };
 struct function_store : hashmap<std::string, const decl::function*> {
   function_store() = default;
-  using hashmap::hashmap;
   using key_type   = hashmap::key_type;
   using value_type = hashmap::value_type;
   std::vector<value_type> get_by_name(const std::string&) const;
@@ -575,8 +578,8 @@ struct translation_unit : derived_visitable<translation_unit, scope> {
   variable_store::address_type declare_variable(ast::decl::variable*) override;
   void declare_function(ast::decl::function*);
   void define_function(ast::decl::function*);
-  template <typename T, typename Id = T::identifier_t>
-  const T* get_callable(Id id, const expr::arguments&) const;
+  template <typename Id>
+  const callable* get_callable(Id id, const expr::arguments&) const;
 
   [[nodiscard]] bool is_global_scope() const noexcept;
   bool in_main() const noexcept;
@@ -602,7 +605,7 @@ struct translation_unit : derived_visitable<translation_unit, scope> {
 
 private:
   void load_arguments(const parameters&, const expr::arguments&);
-  template <typename T, typename Id>
+  template <typename Id>
   std::vector<const callable*> get_candidates(Id) const;
   static const callable* resolve_overloads(std::vector<const callable*>, const expr::arguments&);
   [[nodiscard]] static bool match_arguments(const std::vector<types::type_id>&,

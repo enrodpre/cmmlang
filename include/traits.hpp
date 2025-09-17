@@ -1,6 +1,11 @@
 #pragma once
 
 // Helper macros for variadic argument handling
+#include <memory>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <variant>
 #define FIRST(a, ...)     a
 #define SECOND(a, b, ...) b
 #define EMPTY()
@@ -381,8 +386,8 @@ concept implicitly_convertible_to = std::convertible_to<From, To> && requires {
 template <typename T>
 concept stringish =
     // Direct string types
-    std::same_as<std::remove_cvref_t<T>, std::string> ||
     std::same_as<std::remove_cvref_t<T>, std::string_view> ||
+    std::same_as<std::remove_cvref_t<T>, std::string> ||
     std::same_as<std::remove_cvref_t<T>, const char*> ||
     std::same_as<std::remove_cvref_t<T>, char*> ||
 

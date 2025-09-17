@@ -53,7 +53,7 @@ public:
   std::optional<instruction_t> next_jump;
   Phase current_phase = Phase::STOPPED;
 
-  assembly::registers regs;
+  assembly::registers& regs;
   cmm::assembly::asmgen asmgen;
   translation_unit* ast;
   source_code* code;

@@ -9,7 +9,6 @@
 #include <magic_enum/magic_enum_switch.hpp>
 #include <string>
 #include <sys/types.h>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -53,6 +52,7 @@ using parameters     = memory::vector<parameter>;
 
 struct callable {
   virtual ~callable()                               = default;
+  virtual bool is_user_defined() const              = 0;
   virtual ast::identifier identifier() const        = 0;
   [[nodiscard]] virtual type_id return_type() const = 0;
   [[nodiscard]] cmm::parameters parameters() const {
@@ -92,14 +92,17 @@ struct builtin_callable : public callable {
   std::vector<instruction> ins;
 
   builtin_callable(operator_t op, decltype(ret) c, decltype(params) params, decltype(ins) e)
-      : ret(c),
+      : name(std::format("operator{}", op)),
+        ret(c),
         params(std::move(params)),
         ins(std::move(e)) {}
   builtin_callable(std::string str, decltype(ret) c, decltype(params) params, decltype(ins) e)
-      : ret(c),
-        params(params),
-        ins(e) {}
+      : name(std::move(str)),
+        ret(c),
+        params(std::move(params)),
+        ins(std::move(e)) {}
 
+  bool is_user_defined() const override { return false; }
   ast::identifier identifier() const override;
   type_id return_type() const override { return ret; }
   [[nodiscard]] cmm::parameters parameters_impl() const override;

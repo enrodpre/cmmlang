@@ -45,9 +45,8 @@ uint64_t calculate_offset(uint64_t original_size, uint64_t current_size) {
 } // namespace
 
 std::string stack_memory::value() const {
-  auto current_casted =
-      symbol().value()->get_root()->active_frame()->active_scope()->variables.size();
-  auto offset = calculate_offset(m_offset, current_casted);
+  auto current_casted = symbol().value()->get_root()->active_frame()->local_stack.size();
+  auto offset         = calculate_offset(m_offset, current_casted);
   return format_addr(m_base, offset);
 }
 
@@ -56,20 +55,18 @@ label::label(std::string name)
 
 [[nodiscard]] std::string label_memory::value() const { return format_addr(m_base, m_offset); }
 
-[[nodiscard]] reg* registers::get(register_t name) { return m_registers.at(name).get(); }
-[[nodiscard]] const reg* registers::get(register_t name) const {
-  return m_registers.at(name).get();
-}
-std::optional<reg*> registers::find_var(const ast::identifier& id) {
-  auto range = m_registers | FILTER([id](const auto& r) {
-                 return !r->empty() && r->symbol().value()->ident.value() == id.value();
-               }) |
-               std::views::transform([](const auto& t_reg) { return t_reg.get(); }) | TO_VEC;
+[[nodiscard]] reg* registers::get(register_t name) { return &m_registers.at(name); }
+[[nodiscard]] const reg* registers::get(register_t name) const { return &m_registers.at(name); }
 
-  if (range.empty()) {
-    return {};
+std::optional<reg*> registers::find_var(const ast::identifier& id) {
+  auto* res = std::ranges::find_if(m_registers, [id](const auto& t_reg) {
+    return !t_reg.empty() && t_reg.symbol().has_value() &&
+           t_reg.symbol().value()->ident.value() == id.value();
+  });
+  if (res != m_registers.end()) {
+    return &*res;
   }
-  return range.front();
+  return {};
 }
 
 registers::parameters_transaction registers::parameters() { return {this}; }
@@ -80,7 +77,9 @@ reg* registers::parameters_transaction::next() {
   if (it != m_parameters.end()) {
     auto reg_t = *it;
     m_transaction_regs.push_back(reg_t);
-    return params->get(reg_t);
+    auto* r = params->get(reg_t);
+    r->hold_value();
+    return r;
   }
   throw cmm::error("No more registers available");
 }
@@ -97,7 +96,7 @@ void asmgen::start() {}
 
 std::string asmgen::end() {
 
-  string_buffer res;
+  std::stringstream res;
   if (!m_sections.bss.empty()) {
     res << "section .bss\n";
     for (const auto& line : m_sections.bss) {
@@ -112,7 +111,7 @@ std::string asmgen::end() {
       res << std::format("  {} db \'{}\', 10", name, value) << "\n";
       res << std::format("  {}_len equ $ - {}", name, name) << "\n";
     }
-    res.newline();
+    res << '\n';
   }
 
   res << "section .text\n  global _start\n\n";
@@ -121,7 +120,7 @@ std::string asmgen::end() {
     res << std::format("{}:\n{}\n", fn.first, fn.second);
   }
 
-  return res.dump();
+  return res.str();
 }
 
 void asmgen::add_data(std::string_view name, std::string_view value) {
@@ -142,18 +141,6 @@ void asmgen::load_new_procedure(std::string_view t_new_name) {
   m_current_procedure =
       std::make_unique<std::pair<std::string, std::string>>(std::string(t_new_name), std::string());
 }
-
-// void asmgen::create_delay() { m_current_procedure->create(); }
-//
-// [[nodiscard]] std::string asmgen::dump_delayed() { return m_current_procedure->dump(); }
-//
-// void asmgen::stop_delay() {
-//   m_current_procedure->save();
-//   m_current_procedure->create();
-// }
-//
-// void asmgen::load_delayed() { m_current_procedure->load(); }
-//
 void asmgen::write_label(std::string_view label) {
   m_current_procedure->second.append(std::format("{}:\n", label));
 }

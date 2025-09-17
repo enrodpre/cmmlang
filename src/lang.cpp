@@ -39,9 +39,6 @@ const conversor cmm::lvalue_to_rvalue =
                 switch (magic_enum::enum_fuse(t_cat, mode).value()) {
                   case enum_fuse(LVALUE, COPY).value():
                     return true;
-                  case enum_fuse(LVALUE, DIRECT).value():
-                  case enum_fuse(PRVALUE, TEMPORARY).value():
-                  case enum_fuse(PRVALUE, DIRECT).value():
                   default:
                     return false;
                 }
@@ -49,7 +46,7 @@ const conversor cmm::lvalue_to_rvalue =
               types::type_identity,
               [](value_category_t t_cat) {
                 if (t_cat == value_category_t::LVALUE) {
-                  return value_category_t::RVALUE;
+                  return value_category_t::PRVALUE;
                 }
                 return t_cat;
               }};

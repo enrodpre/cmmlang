@@ -122,7 +122,10 @@ int compiler::compile(path t_path, std::string t_out) {
   REGISTER_INFO("Compiling {}", context.get_input());
 
   preprocess(context);
-  compile(context);
+  auto compiler_res = compile(context);
+  if (compiler_res != 0) {
+    return compiler_res;
+  }
   auto compiled = context.get_compiled();
   auto out      = context.get_output();
   auto asm_file = out;

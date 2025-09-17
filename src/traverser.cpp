@@ -31,18 +31,19 @@ global_visitor::global_visitor(ast_traverser* gen_)
 void ast_traverser::generate_program(translation_unit& p) {
   ast = &p;
   global_visitor visitor{this};
+  print_node(p);
   // REGISTER_INFO("Program:\n{}", p.repr(0));
   for (auto* decl : p.stmts) {
     decl->accept(visitor);
   }
 }
 
-reg* ast_traverser::generate_expr(expr::expression& expr, reg* reg_, intent_t t_intent) {
+reg* ast_traverser::generate_expr(expr::expression& expr, reg* reg_) {
   if (reg_ == nullptr) {
     reg_ = m_context.regs.get(registers::ACCUMULATOR);
   }
 
-  auto visitor = expression_visitor{this, reg_, t_intent};
+  auto visitor = expression_visitor{this, reg_};
   expr.accept(visitor);
   return visitor.out;
 }
@@ -80,16 +81,6 @@ void ast_traverser::generate_condition(expr::expression& cond, const std::string
   m_context.jump(inverted_jump, label);
 }
 
-void ast_traverser::begin_scope(decl::block& stmts) { ast->active_frame()->create_scope(stmts); }
-
-void ast_traverser::end_scope() {
-  size_t ditched = ast->active_frame()->destroy_scope();
-
-  if (ditched > 0) {
-    m_context.move_rsp(static_cast<offset_t>(ditched));
-  }
-}
-
 template <typename Jump>
 void ast_traverser::generate_continue_break(const Jump& node) {
 
@@ -119,14 +110,15 @@ void global_visitor::visit(decl::variable& vardecl) {
     THROW(ALREADY_DECLARED_SYMBOL, vardecl.ident);
   }
 
-  reg* r = nullptr;
-  if (auto* defined = vardecl.init) {
-    r = gen->generate_expr(*defined);
-  } else {
-    r = gen->m_context.move_immediate(gen->m_context.get_operand<reg>(registers::ACCUMULATOR), "0");
-  }
-  auto* addr = tu->declare_variable(&vardecl);
-  tu->cunit->move(addr, r);
+  // reg* r = nullptr;
+  // if (auto* defined = vardecl.init) {
+  //   r = gen->generate_expr(*defined);
+  // } else {
+  //   r = gen->m_context.move_immediate(gen->m_context.get_operand<reg>(registers::ACCUMULATOR),
+  //   "0");
+  // }
+  tu->declare_variable(&vardecl);
+  // tu->cunit->move(addr, r);
 }
 
 void global_visitor::visit(decl::function& func) {
@@ -140,11 +132,10 @@ void global_visitor::visit(decl::function& func) {
   }
 }
 
-expression_visitor::expression_visitor(ast_traverser* t, reg* o, intent_t t_intent)
+expression_visitor::expression_visitor(ast_traverser* t, reg* o)
     : gen(t),
       in(o),
-      out(o),
-      intent(t_intent) {}
+      out(o) {}
 
 #define gen_op(IN) value_or(generate<element*>(in))
 
@@ -164,7 +155,7 @@ void expression_visitor::visit(expr::unary_operator& unary) {
   gen->m_context.last.operator_.emplace(op);
 }
 
-void expression_visitor::visit(ast ::expr ::literal& c) {
+void expression_visitor::visit(ast::expr::literal& c) {
   switch (c.category) {
     case ast::expr::literal_t::STRING:
     case ast::expr::literal_t::CHAR:
@@ -211,13 +202,17 @@ statement_visitor::statement_visitor(ast_traverser* gen_)
 
 void statement_visitor::visit(ast::decl::block& scope) {
   // Create scope
-  gen->begin_scope(scope);
+  gen->ast->active_frame()->create_scope(scope);
 
   // Handle every element within scope
   gen->generate_statements(scope);
 
   // Discard scope's elements
-  gen->end_scope();
+  size_t ditched = gen->ast->active_frame()->destroy_scope();
+
+  if (ditched > 0) {
+    gen->m_context.move_rsp(static_cast<offset_t>(ditched));
+  }
 }
 
 void statement_visitor::visit(expr::expression& expr) { gen->generate_expr(expr); }
@@ -235,7 +230,7 @@ void statement_visitor::visit(decl::label& label_) {
     THROW(ALREADY_DECLARED_SYMBOL, label_);
   }
 
-  const auto* fn = find_parent<ast::decl::function::definition>(label_);
+  auto* fn = find_parent<ast::decl::function::definition>(label_);
   if (fn == nullptr) {
     THROW(LABEL_IN_GLOBAL, label_.ident);
   }
@@ -348,8 +343,8 @@ void statement_visitor::visit(jump::return_& ret) {
 
   reg* op = nullptr;
   if (ret.expr != nullptr) {
-    const ast::decl::function* fn = find_parent<ast::decl::function>(ret);
-    op = gen->generate_expr(*translation_unit::bind_expression(ret.expr, fn->specs.type));
+    auto* fn = find_parent<ast::decl::function>(ret);
+    op       = gen->generate_expr(*translation_unit::bind_expression(ret.expr, fn->specs.type));
   } else {
     op = gen->m_context.get_operand<assembly::reg>(registers::ACCUMULATOR);
     gen->m_context.zero(op);
