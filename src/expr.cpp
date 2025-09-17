@@ -1,7 +1,6 @@
-#include "expr.h"
+#include "ast/expr.hpp"
 
-#include "ast.hpp"
-#include "ast_visitor.hpp"
+#include "ast/tree.hpp"
 #include "common.hpp"
 #include "ir.hpp"
 #include "lang.hpp"
@@ -9,16 +8,6 @@
 #include <utility>
 
 namespace cmm::ast::expr {
-
-namespace {
-template <typename T>
-using ret_t = retriever_visitor<VisitorDirection::ChildToParent, T*>;
-template <typename T>
-ret_t<T> get_retriever() {
-  return retriever_visitor<VisitorDirection::ChildToParent, T*>{
-      [](const node* t_node) { return dynamic_cast<const T*>(t_node) != nullptr; }};
-}
-} // namespace
 
 types::type_id expr::expression::type() const {
   return current_conversor.has_value() ? current_conversor->convert_type(type_impl()) : type_impl();
@@ -66,41 +55,39 @@ type_id expr::literal::type_impl() const {
 }
 expr::call::call(decltype(ident)&& id, decltype(args) a = {})
     : ident(std::move(id)),
-      args(std::move(a)) {}
+      args(std::move(a)),
+      m_callable([this]() -> const callable* { return get_root()->get_callable(ident, args); }) {}
 
-type_id expr::call::type_impl() const {
-  const auto* func = get_root()->get_callable(ident, args);
-  return func->return_type();
-}
+type_id expr::call::type_impl() const { return m_callable.get()->return_type(); }
 
 value_category_t expr::call::value_category_impl() const { return get_value_category(type_impl()); }
 
 expr::unary_operator::unary_operator(expression& expression, ast::operator_&& op)
     : expr(expression),
-      operator_(std::move(op)) {}
+      operator_(std::move(op)),
+      m_callable([this]() -> const callable* {
+        return get_root()->get_callable(operator_, expr::arguments{&expr.get()});
+      }) {}
 
-type_id expr::unary_operator::type_impl() const {
-  const auto* func = get_root()->get_callable(operator_, {&expr.get()});
-  return func->return_type();
-}
+type_id expr::unary_operator::type_impl() const { return m_callable.get()->return_type(); }
 value_category_t expr::unary_operator::value_category_impl() const {
   return get_value_category(type_impl());
 }
+
 bool expr::binary_operator::is_constant_evaluable() const {
   return left->is_constant_evaluable() && right->is_constant_evaluable() &&
-         get_root()
-             ->get_callable(operator_, expr::arguments{&left.get(), &right.get()})
-             ->is_user_defined();
+         m_callable.get()->is_user_defined();
 }
+
 expr::binary_operator::binary_operator(expression& l, ast::operator_&& op, expression& r)
     : left(l),
       operator_(std::move(op)),
-      right(r) {}
+      right(r),
+      m_callable([this]() -> const callable* {
+        return get_root()->get_callable(operator_, expr::arguments{&left.get(), &right.get()});
+      }) {}
 
-type_id expr::binary_operator::type_impl() const {
-  const auto* func = get_root()->get_callable(operator_, {&left.get(), &right.get()});
-  return func->return_type();
-}
+type_id expr::binary_operator::type_impl() const { return m_callable.get()->return_type(); }
 
 value_category_t expr::binary_operator::value_category_impl() const {
   return get_value_category(type_impl());

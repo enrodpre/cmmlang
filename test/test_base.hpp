@@ -1,6 +1,6 @@
 #pragma once
 
-#include "expr.h"
+#include "ast/expr.hpp"
 #include <gtest/gtest.h>
 #include <ostream>
 

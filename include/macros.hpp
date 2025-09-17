@@ -243,6 +243,7 @@
 #define TRANSFORM(FUNC)       std::views::transform(FUNC)
 #define FILTER(FUNC)          std::views::filter(FUNC)
 #define MAP_RANGE(TYPE, FUNC) TRANSFORM([](TYPE elem) { return FUNC; })
+#define MAP_TYPES             std::views::transform([](const auto& elem) { return elem->type(); })
 #define CAST_RANGE(RANGE, TYPE)                                                          \
   RANGE | TRANSFORM([](const auto* elem) { return dynamic_cast<TYPE*>(elem); }) | TO_VEC
 #define DEMANGLE(TYPE) cpptrace::demangle(typeid(TYPE).name())
@@ -332,8 +333,5 @@ private:              \
 
 #define FOR_EACH_2_N(macro, N, ...) CONCAT(FOR_EACH_2_, N)(macro, __VA_ARGS__)
 #define FOR_EACH_2(macro, ...)      FOR_EACH_2_(macro, GET_ARG_COUNT(__VA_ARGS__), __VA_ARGS__)
-
-#define IS_TYPE(T1, T2) std::same_v<T1, T2>
-#define ARE_TYPES(...)  FOR_EACH_2(IS_TYPE, __VA_ARGS__)
 
 #define using_category() USING_ENUMS(group_t, core_t, layer_t);

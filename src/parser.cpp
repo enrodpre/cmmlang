@@ -10,9 +10,9 @@
 #include <type_traits>
 #include <utility>
 
-#include "ast.hpp"
+#include "ast/tree.hpp"
 #include "common.hpp"
-#include "expr.h"
+#include "ast/expr.hpp"
 #include "lang.hpp"
 #include "token.hpp"
 #include "types.hpp"

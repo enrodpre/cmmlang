@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ast.hpp"
+#include "ast/tree.hpp"
 
 namespace cmm::ast {
 inline const magic_enum::containers::

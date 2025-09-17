@@ -14,7 +14,6 @@
 
 #include "common.hpp"
 #include "macros.hpp"
-#include "memory.hpp"
 #include "types.hpp"
 
 namespace cmm {
@@ -48,13 +47,14 @@ struct parameter {
 };
 
 using bound_argument = std::pair<parameter, binding_mode_t>;
-using parameters     = memory::vector<parameter>;
+using parameters     = std::vector<parameter>;
 
 struct callable {
   virtual ~callable()                               = default;
   virtual bool is_user_defined() const              = 0;
   virtual ast::identifier identifier() const        = 0;
   [[nodiscard]] virtual type_id return_type() const = 0;
+  virtual bool is_defined() const                   = 0;
   [[nodiscard]] cmm::parameters parameters() const {
     if (!m_parameters) {
       m_parameters = parameters_impl();
@@ -88,7 +88,7 @@ struct operator_;
 struct builtin_callable : public callable {
   std::string name;
   types::type_id ret;
-  memory::vector<parameter> params;
+  std::vector<parameter> params;
   std::vector<instruction> ins;
 
   builtin_callable(operator_t op, decltype(ret) c, decltype(params) params, decltype(ins) e)
@@ -103,6 +103,7 @@ struct builtin_callable : public callable {
         ins(std::move(e)) {}
 
   bool is_user_defined() const override { return false; }
+  bool is_defined() const override { return true; }
   ast::identifier identifier() const override;
   type_id return_type() const override { return ret; }
   [[nodiscard]] cmm::parameters parameters_impl() const override;

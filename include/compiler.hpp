@@ -7,7 +7,7 @@
 #include <tuple>
 #include <vector>
 
-#include "ast.hpp"
+#include "ast/tree.hpp"
 #include "common.hpp"
 #include "macros.hpp"
 

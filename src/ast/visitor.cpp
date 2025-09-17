@@ -1,6 +1,6 @@
-#include "ast_visitor.hpp"
-#include "ast.hpp"
-#include "expr.h"
+#include "ast/visitor.hpp"
+#include "ast/tree.hpp"
+#include "ast/expr.hpp"
 
 using namespace cmm;
 // using namespace cmm::ast;

@@ -8,10 +8,10 @@
 #include <type_traits>
 
 #include "asm.hpp"
-#include "ast.hpp"
-#include "ast_visitor.hpp"
+#include "ast/expr.hpp"
+#include "ast/tree.hpp"
+#include "ast/visitor.hpp"
 #include "common.hpp"
-#include "expr.h"
 #include "ir.hpp"
 #include "lang.hpp"
 #include "traverser.hpp"
@@ -195,9 +195,6 @@ void expression_visitor::visit(expr::identifier& ident) {
 }
 
 statement_visitor::statement_visitor(ast_traverser* gen_)
-    // : expression_visitor(gen_,
-    //                      gen_->m_context.regs.get(registers::ACCUMULATOR),
-    //                      intent_t::LOAD_VARIABLE_VALUE),
     : gen(gen_) {}
 
 void statement_visitor::visit(ast::decl::block& scope) {

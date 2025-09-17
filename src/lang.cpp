@@ -1,6 +1,6 @@
 #include "lang.hpp"
 
-#include "ast.hpp"
+#include "ast/tree.hpp"
 #include "common.hpp"
 #include "types.hpp"
 
@@ -13,7 +13,7 @@ cmm::ast::identifier builtin_callable::identifier() const {
   return {mangle_function(name,
                           params | std ::views ::transform([](const parameter& t_param) {
                             return t_param.type->string();
-                          }),
+                          }) | TO_VEC,
                           '_')};
 }
 

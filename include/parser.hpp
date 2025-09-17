@@ -4,7 +4,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "ast.hpp"
+#include "ast/tree.hpp"
 #include "macros.hpp"
 #include "memory.hpp"
 #include "token.hpp"

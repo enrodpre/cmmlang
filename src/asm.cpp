@@ -7,23 +7,21 @@
 #include <utility>
 
 #include "asm.inl"
-#include "ast.hpp"
+#include "ast/tree.hpp"
 #include "ir.hpp"
 
 namespace cmm::assembly {
 
 std::string element::string() const { return value(); }
 
-operand* operand::hold_value() {
+void operand::hold_value() {
   m_content  = VALUE;
   m_variable = std::nullopt;
-  return this;
 }
 
-operand* operand::hold_symbol(const ast::decl::variable* t_var) {
+void operand::hold_symbol(const ast::decl::variable* t_var) {
   m_content  = ADDRESS;
   m_variable = t_var;
-  return this;
 }
 
 reg::reg(std::string name)
@@ -69,7 +67,11 @@ std::optional<reg*> registers::find_var(const ast::identifier& id) {
   return {};
 }
 
-registers::parameters_transaction registers::parameters() { return {this}; }
+[[nodiscard]] size_t registers::available_parameters() const {
+  return std::ranges::count_if(m_parameters, [this](register_t r) { return get(r)->empty(); });
+}
+
+registers::parameters_transaction registers::transaction() { return {this}; }
 
 reg* registers::parameters_transaction::next() {
   const auto* it =

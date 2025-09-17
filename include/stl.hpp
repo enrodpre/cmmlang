@@ -1,7 +1,10 @@
 #pragma once
 
+#include <concepts>
+#include <functional>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 namespace cmm {
@@ -125,6 +128,45 @@ private:
   container_type m_store;
 };
 
+template <class T>
+class lazy {
+public:
+  lazy(std::function<T()> t_func)
+      : m_func(t_func) {}
+
+  T& get() {
+    if (!m_cached) {
+      m_cached = m_func();
+    }
+    return m_cached.value();
+  }
+  const T& get() const {
+    if (!m_cached) {
+      m_cached = m_func();
+    }
+    return m_cached.value();
+  }
+  operator T&() { return get(); }
+  operator const T&() const { return &get(); }
+  T* operator->() {
+    if constexpr (std::is_pointer_v<std::remove_cvref_t<T>>) {
+      return get();
+    } else {
+      return &get();
+    }
+  }
+  const T* operator->() const {
+    if constexpr (std::is_pointer_v<std::remove_cvref_t<T>>) {
+      return get();
+    } else {
+      return &get();
+    }
+  }
+
+private:
+  std::function<T()> m_func;
+  mutable std::optional<T> m_cached;
+};
 } // namespace cmm
 
 #include "stl.inl"

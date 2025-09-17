@@ -1,13 +1,14 @@
-#include "ast.hpp"
+#include "ast/tree.hpp"
 #include "asm.hpp"
+#include "ast/expr.hpp"
 #include "common.hpp"
-#include "expr.h"
 #include "ir.hpp"
 #include "lang.hpp"
 #include "types.hpp"
 #include <fmt/base.h>
 #include <fmt/ranges.h>
 #include <magic_enum/magic_enum_flags.hpp>
+#include <ranges>
 
 namespace cmm::ast {
 
@@ -68,7 +69,7 @@ function::function(decltype(specs)&& s,
                                         mangle_function(std::string(ident_.value),
                                                         args | TRANSFORM([](const variable& v) {
                                                           return v.specs.type.value()->string();
-                                                        }),
+                                                        }) | TO_VEC,
                                                         '_')}),
       specs(std::move(s)),
       params(std::move(args)),
@@ -78,7 +79,7 @@ cmm::parameters decl::function::parameters_impl() const {
   return params | std::views::transform([](const variable& t_var) -> cmm::parameter {
            return {t_var.specs.type, t_var.init};
          }) |
-         std::ranges::to<memory::vector<cmm::parameter>>();
+         TO_VEC;
 }
 std::vector<node*> decl::function::children() {
   return {to_node(&ident), to_node(&specs), to_node(&params), to_node(body)};
@@ -455,7 +456,7 @@ void translation_unit::define_function(ast::decl::function* t_func) {
   }
 
   create_frame(t_func->body);
-  auto registers = cunit->regs.parameters();
+  auto registers = cunit->regs.transaction();
   for (const variable& param : t_func->params) {
     active_frame()->declare_parameter(param, registers.next());
   }
@@ -529,7 +530,19 @@ std::vector<const callable*> translation_unit::get_candidates(Id t_id) const {
 template <typename Id>
 const callable* translation_unit::get_callable(Id id,
                                                const expr::arguments& argument_expressions) const {
-  auto argument_types = argument_expressions | MAP_RANGE(expr::expression*, elem->type());
+  // First try looking with mangling name as key
+  auto argument_types =
+      argument_expressions |
+      std ::views ::transform([](expr ::expression* elem) { return elem->type(); }) | TO_VEC;
+  auto mangled =
+      mangle_function(id.string(),
+                      argument_types | std::views::transform([](type_id elem) -> std::string {
+                        return elem->string();
+                      }) | TO_VEC,
+                      '\n');
+  if (functions.contains(mangled)) {
+    return functions.at(mangled);
+  }
 
   std::vector<const callable*> overloads = get_candidates<Id>(id);
   auto possible_exact_match =
@@ -542,16 +555,18 @@ const callable* translation_unit::get_callable(Id id,
       TO_VEC;
 
   if (possible_exact_match.size() == 1) {
-    return dynamic_cast<const callable*>(possible_exact_match.front());
+    return possible_exact_match.front();
   }
 
   // Overload resolution
+  REGISTER_TRACE("Starting resolution of {}({})", id, fmt::join(argument_expressions, ", "));
+
   const auto* resolved = resolve_overloads(overloads, argument_expressions);
   if (!resolved) {
     THROW(UNDECLARED_SYMBOL, id);
   }
 
-  return dynamic_cast<const callable*>(resolved);
+  return resolved;
 }
 
 const callable* translation_unit::resolve_overloads(std::vector<const callable*> candidates,
@@ -643,18 +658,10 @@ cmm::binding_mode_t translation_unit::bind_value(value_category_t cat, type_id t
 ast::expr::expression* translation_unit::bind_expression(ast::expr::expression* t_expr,
                                                          type_id t_param) {
   auto mode = translation_unit::bind_value(t_expr->value_category(), t_param);
-  using enum value_category_t;
-  using enum binding_mode_t;
-  switch (magic_enum::enum_fuse(t_expr->value_category(), mode).value()) {
-    case magic_enum::enum_fuse(LVALUE, COPY).value():
-      {
-        t_expr->current_conversor = lvalue_to_rvalue;
-        return t_expr;
-      }
-      break;
-    default:
-      return t_expr;
+  if (t_expr->value_category() == value_category_t::LVALUE && mode == binding_mode_t::COPY) {
+    t_expr->current_conversor = lvalue_to_rvalue;
   }
+  return t_expr;
 }
 bool translation_unit::is_bindable_to(value_category_t t_value, types::type_id t_type) {
   return std::ranges::any_of(binding_rules[t_value],

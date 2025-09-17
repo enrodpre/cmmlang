@@ -13,9 +13,9 @@
 #include <utility> // for pair, make_pair, forward
 #include <vector>  // for vector
 
-#include "ast.hpp"    // for identifier, variable
-#include "common.hpp" // for std::string_view, formattable, DATASIZE, string_buffer
-#include "macros.hpp" // for BUILD_ENUMERATION_DATA_CLASS, CTOR_ASSIGN_DATA_4
+#include "ast/tree.hpp" // for identifier, variable
+#include "common.hpp"   // for std::string_view, formattable, DATASIZE, string_buffer
+#include "macros.hpp"   // for BUILD_ENUMERATION_DATA_CLASS, CTOR_ASSIGN_DATA_4
 
 namespace cmm::assembly {
 
@@ -80,14 +80,14 @@ using offset_t = int64_t;
 struct operand : public element {
   enum content_t : u_int8_t { EMPTY = 0, VALUE, ADDRESS };
 
-  operand* hold_value();
-  operand* hold_symbol(const ast::decl::variable*);
+  void hold_value();
+  void hold_symbol(const ast::decl::variable*);
   [[nodiscard]] std::optional<const ast::decl::variable*> symbol() const { return m_variable; };
   [[nodiscard]] std::string deref() const {
     assert(m_content == ADDRESS);
     return std::format("[{}]", value());
   }
-  [[nodiscard]] bool empty() const { return m_content == EMPTY || !m_variable.has_value(); }
+  [[nodiscard]] bool empty() const { return m_content == EMPTY && !m_variable.has_value(); }
   void reset() {
     m_content = EMPTY;
     m_variable.reset();
@@ -166,10 +166,7 @@ struct registers : default_singleton<registers> {
     }
   }
 
-  [[nodiscard]] size_t available_parameters() const {
-    return std::ranges::count_if(m_parameters, [this](register_t r) { return get(r)->empty(); });
-  }
-
+  [[nodiscard]] size_t available_parameters() const;
   std::optional<reg*> find_var(const ast::identifier&);
 
   struct parameters_transaction {
@@ -178,6 +175,7 @@ struct registers : default_singleton<registers> {
 
     ~parameters_transaction() { reset(); }
     NOT_COPYABLE_CLS(parameters_transaction)
+    MOVABLE_CLS(parameters_transaction);
 
     reg* next();
     void reset();
@@ -194,7 +192,7 @@ struct registers : default_singleton<registers> {
                                                     register_t::SCRATCH_2,
                                                     register_t::SCRATCH_3};
 
-  registers::parameters_transaction parameters();
+  registers::parameters_transaction transaction();
 
 protected:
   inline registers();

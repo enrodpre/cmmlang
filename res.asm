@@ -3,10 +3,12 @@ section .text
 
 _start:
 main:
-  mov rdi, 254
-  mov rdi, 1
-  add rdi, rdi
+  call fn_sint
+  mov rdi, rax
   jmp exit
+
+fn_sint:
+  ret
 
 exit:
 mov rax, 60

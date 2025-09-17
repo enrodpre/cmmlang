@@ -1,5 +1,5 @@
 #include "asm.hpp"
-#include "ast.hpp"
+#include "ast/tree.hpp"
 #include "types.hpp"
 #include <gtest/gtest.h>
 #include <magic_enum/magic_enum.hpp>
@@ -67,7 +67,7 @@ TEST_F(parameters_test, initial_state) {
   VAR->hold_symbol(var.get());
 
 TEST_F(parameters_test, order_correctness) {
-  auto transaction = regs->parameters();
+  auto transaction = regs->transaction();
 
   // All registers should be initially available
   FILL_AND_NEXT(first, SYSCALL_1);
@@ -79,21 +79,22 @@ TEST_F(parameters_test, order_correctness) {
 }
 
 TEST_F(parameters_test, SingleTransactionBasicAllocation) {
-  auto transaction = regs->parameters();
+  auto transaction = regs->transaction();
 
   reg* reg1        = transaction.next();
   REG_EQ(reg1, SYSCALL_1);
-  EXPECT_TRUE(reg1->empty());
+  EXPECT_FALSE(reg1->empty());
   reg1->hold_symbol(var.get());
   EXPECT_FALSE(reg1->empty());
 
   reg* reg2 = transaction.next();
+  EXPECT_NE(reg1, reg2);
   REG_EQ(reg2, SYSCALL_2);
-  EXPECT_TRUE(reg2->empty());
+  EXPECT_FALSE(reg2->empty());
 }
 
 TEST_F(parameters_test, SingleTransactionExhaustAllRegisters) {
-  auto transaction = regs->parameters();
+  auto transaction = regs->transaction();
 
   // Allocate all registers
   std::vector<registers::register_t> expected_order = {registers::SYSCALL_1,
@@ -104,15 +105,16 @@ TEST_F(parameters_test, SingleTransactionExhaustAllRegisters) {
                                                        registers::SCRATCH_3};
 
   for (registers::register_t r : expected_order) {
-    auto* reg = NEXT_AND_FILL();
-    EXPECT_EQ(reg->string(), regs->get(r)->string());
+    auto* next = transaction.next();
+    next->hold_symbol(var.get());
+    EXPECT_EQ(next->string(), regs->get(r)->string());
   }
 
   EXPECT_ANY_THROW(transaction.next());
 }
 
 TEST_F(parameters_test, TransactionManualReset) {
-  auto transaction = regs->parameters();
+  auto transaction = regs->transaction();
 
   NEXT_AND_FILL(); // SYSCALL_1
   NEXT_AND_FILL(); // SYSCALL_2
@@ -127,7 +129,7 @@ TEST_F(parameters_test, TransactionDestructorReset) {
   EXPECT_EQ(regs->available_parameters(), 6);
 
   {
-    auto transaction = regs->parameters();
+    auto transaction = regs->transaction();
     NEXT_AND_FILL(); // SYSCALL_1
     NEXT_AND_FILL(); // SYSCALL_2
     NEXT_AND_FILL(); // SCRATCH_1
@@ -141,14 +143,14 @@ TEST_F(parameters_test, TransactionDestructorReset) {
 }
 
 TEST_F(parameters_test, InactiveTransactionThrowsException) {
-  auto transaction = regs->parameters();
+  auto transaction = regs->transaction();
   transaction.reset();
   EXPECT_NO_THROW(transaction.reset()); // Multiple resets should be safe
 }
 
 TEST_F(parameters_test, TwoSimultaneousTransactions) {
-  auto transaction  = regs->parameters();
-  auto transaction2 = regs->parameters();
+  auto transaction  = regs->transaction();
+  auto transaction2 = regs->transaction();
 
   // Transaction1 allocates first 3 registers
   FILL_AND_NEXT(first, SYSCALL_1);
@@ -164,9 +166,9 @@ TEST_F(parameters_test, TwoSimultaneousTransactions) {
 }
 
 TEST_F(parameters_test, MultipleTransactionInterleaved) {
-  auto transaction1 = regs->parameters();
-  auto transaction2 = regs->parameters();
-  auto transaction3 = regs->parameters();
+  auto transaction1 = regs->transaction();
+  auto transaction2 = regs->transaction();
+  auto transaction3 = regs->transaction();
 
   // Interleaved allocation
   T_FILL_AND_NEXT(transaction1, first, SYSCALL_1);
@@ -181,8 +183,8 @@ TEST_F(parameters_test, MultipleTransactionInterleaved) {
 }
 
 TEST_F(parameters_test, TransactionResetAffectsOthers) {
-  auto transaction1 = regs->parameters();
-  auto transaction2 = regs->parameters();
+  auto transaction1 = regs->transaction();
+  auto transaction2 = regs->transaction();
 
   // Both transactions allocate registers
   transaction1.next()->hold_symbol(var.get()); // SYSCALL_1
@@ -205,7 +207,7 @@ TEST_F(parameters_test, ManyTransactionsSequentially) {
   constexpr int NUM_TRANSACTIONS = 10;
 
   for (int i = 0; i < NUM_TRANSACTIONS; ++i) {
-    auto transaction = regs->parameters();
+    auto transaction = regs->transaction();
 
     // Each transaction should be able to allocate all registers
     for (int j = 0; j < 6; ++j) {
@@ -226,8 +228,6 @@ TEST_F(registers_test, sanity_check) {
   auto* reg = regs->get(registers::ACCUMULATOR);
   EXPECT_EQ(reg, reg);
   REG_EQ(reg, ACCUMULATOR);
-  EXPECT_EQ(reg, reg->hold_value());
-  REG_EQ(reg->hold_value(), ACCUMULATOR);
 }
 TEST_F(registers_test, find_variable) {
   const auto& opt = regs->find_var(var->ident);

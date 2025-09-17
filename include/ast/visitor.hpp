@@ -1,8 +1,8 @@
 #pragma once
 
-#include "ast.hpp"
+#include "ast/tree.hpp"
 #include "common.hpp"
-#include "expr.h"
+#include "ast/expr.hpp"
 #include "macros.hpp"
 
 #include <cstddef>

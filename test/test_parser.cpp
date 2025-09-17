@@ -1,6 +1,6 @@
 
-#include "ast.hpp"
-#include "expr.h"
+#include "ast/tree.hpp"
+#include "ast/expr.hpp"
 #include "parser.hpp"
 #include "test_base.hpp"
 #include "types.hpp"

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ast.hpp"
+#include "ast/tree.hpp"
 #include "common.hpp"
 #include "token.hpp"
 #include "types.hpp"
@@ -83,6 +83,9 @@ struct call : derived_visitable<call, expression> {
   bool is_constant_evaluable() const override { return false; };
   types::type_id type_impl() const override;
   value_category_t value_category_impl() const override;
+
+private:
+  lazy<const callable*> m_callable;
 };
 
 struct unary_operator : derived_visitable<unary_operator, expression> {
@@ -93,6 +96,9 @@ struct unary_operator : derived_visitable<unary_operator, expression> {
   types::type_id type_impl() const override;
   value_category_t value_category_impl() const override;
   bool is_constant_evaluable() const override { return false; }
+
+private:
+  lazy<const callable*> m_callable;
 };
 
 struct binary_operator : derived_visitable<binary_operator, expression> {
@@ -105,6 +111,9 @@ struct binary_operator : derived_visitable<binary_operator, expression> {
   bool is_constant_evaluable() const override;
   types::type_id type_impl() const override;
   value_category_t value_category_impl() const override;
+
+private:
+  lazy<const callable*> m_callable;
 };
 
 // using conversion_function = std::function<expression&(expression&)>;

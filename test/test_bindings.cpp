@@ -1,4 +1,4 @@
-#include "ast.hpp"
+#include "ast/tree.hpp"
 #include "lang.hpp"
 #include "types.hpp"
 #include <gtest/gtest.h>

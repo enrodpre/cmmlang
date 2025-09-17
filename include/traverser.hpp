@@ -4,8 +4,8 @@
 #include <sys/types.h>
 
 #include "asm.hpp"
-#include "ast.hpp"
-#include "ast_visitor.hpp"
+#include "ast/tree.hpp"
+#include "ast/visitor.hpp"
 #include "lang.hpp"
 #include "macros.hpp"
 

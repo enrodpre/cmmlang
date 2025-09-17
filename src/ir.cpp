@@ -5,9 +5,9 @@
 #include <vector>
 
 #include "asm.hpp"
-#include "ast.hpp"
+#include "ast/expr.hpp"
+#include "ast/tree.hpp"
 #include "common.hpp"
-#include "expr.h"
 #include "lang.hpp"
 #include "traverser.hpp"
 #include "types.hpp"
@@ -117,12 +117,12 @@ void compilation_unit::cmp(std::string_view a, std::string_view b) {
 void compilation_unit::ret() { asmgen.write_instruction(instruction_t::ret); }
 
 void compilation_unit::exit(reg* op) {
-  move(regs.parameters().next(), op);
+  move(regs.transaction().next(), op);
   jump("exit");
 }
 
 void compilation_unit::exit_successfully() {
-  auto* arg = move_immediate(regs.parameters().next(), "0");
+  auto* arg = move_immediate(regs.transaction().next(), "0");
   this->exit(arg);
 }
 
@@ -162,18 +162,21 @@ std::optional<assembly::reg*> compilation_unit::call_function(const identifier& 
     return {};
   }
 
-  const auto* fn = dynamic_cast<const decl::function*>(ast->get_callable(id, args));
+  const auto* fn = ast->get_callable(id, args);
+  if (fn->parameters().size() != args.size()) {
+    throw cmm::error("error calling func, wrong parameters");
+  }
   if (nullptr == fn) {
     THROW(UNDECLARED_SYMBOL, id);
   }
-  if (fn->body == nullptr) {
+  if (fn->is_defined()) {
     THROW(UNDEFINED_FUNCTION, id);
   }
 
   load_arguments(fn->parameters(), args);
-  call(fn->ident);
+  call(fn->identifier());
 
-  if (fn->specs.type.value() != MANAGER.make(types::core_t ::void_t, {})) {
+  if (fn->return_type() != MANAGER.make(types::core_t ::void_t, {})) {
     return regs.get(registers::ACCUMULATOR);
   }
 
@@ -192,10 +195,10 @@ constexpr reg* set_operand(compilation_unit& v, arg_t side, reg* l, reg* r) {
     case arg_t::ACC:
       return v.regs.get(registers::ACCUMULATOR);
     case arg_t::AUX1:
-      return v.regs.parameters().next();
+      return v.regs.transaction().next();
     case arg_t::AUX2:
     default:
-      return v.regs.parameters().next();
+      return v.regs.transaction().next();
   }
 }
 } // namespace
@@ -205,7 +208,7 @@ reg* compilation_unit::call_builtin_operator(const operator_& op,
   REGISTER_INFO("Calling builtin operator {}", op);
   reg* res          = nullptr;
   const auto* impls = dynamic_cast<const builtin_callable*>(ast->get_callable(op, args));
-  auto params       = regs.parameters();
+  auto params       = regs.transaction();
   auto ops          = std::views::zip_transform(
                  [this, &params](const parameter& t_param, expr::expression* t_expr) {
                    return runner.generate_expr(
@@ -254,7 +257,7 @@ reg* compilation_unit::call_builtin_operator(const operator_& op,
 }
 
 void compilation_unit::load_arguments(const parameters& parameters, const expr::arguments& args) {
-  auto param_regs = regs.parameters();
+  auto param_regs = regs.transaction();
   for (const auto& [param, arg] : std::views::zip(parameters, args)) {
     types::type_id param_type     = param.type;
 

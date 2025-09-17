@@ -8,7 +8,7 @@
 #include <type_traits>
 
 #include "asm.hpp"
-#include "ast.hpp"
+#include "ast/tree.hpp"
 #include "common.hpp"
 #include "compiler.hpp"
 #include "lang.hpp"

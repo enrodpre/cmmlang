@@ -81,37 +81,7 @@ endif()
 add_compile_options(-fdiagnostics-color=always -O0 -g -fno-inline -Wno-switch -fdiagnostics-show-option)
 add_library(${LIBNAME} STATIC ${sources})
 include(cotire)
-cotire(CmmLang)
-# target_precompile_headers(${LIBNAME} PRIVATE
-# # STL containers
-#     <string>
-#     <vector>
-#     <array>
-#     <unordered_map>
-#     <unordered_set>
-#     # General utilities
-#     <string_view>
-#     <tuple>
-#     <optional>
-#     <variant>
-#     # Input/Output
-#     <iostream>
-#     <fstream>
-#     <sstream>
-#     # STL algorithms and utilities
-#     <algorithm>
-#     <functional>
-#     <memory>
-#     <utility>
-#     # Date and time
-#     <ranges>
-#     <sstream>
-#     <format>
-#     <concepts>
-#     <type_traits>
-#     <initializer_list>
-# )
-#
+cotire(${LIBNAME})
 function(create_symlink file)
   file(CREATE_LINK
     ${CMAKE_CURRENT_SOURCE_DIR}/${file}

@@ -5,6 +5,7 @@
 #include "macros.hpp"
 #include "memory.hpp"
 #include "revisited/visitor.h"
+#include "stl.hpp"
 #include "token.hpp"
 #include "traits.hpp"
 #include "types.hpp"
@@ -377,15 +378,10 @@ struct function : derived_visitable<function, declaration>, public callable {
 
   function(decltype(specs)&&, const token&, decltype(params)&&, decltype(body));
 
-  // function(operator_& name, types::type_id ret, decltype(params)& p, decltype(body) b)
-  //     : derived_visitable(std::format("operator{}", name)),
-  //       specs(ret),
-  //       params(p),
-  //       body(b) {}
-
   bool is_user_defined() const override { return true; }
   ast::identifier identifier() const override { return ident; }
   cmm::parameters parameters_impl() const override;
+  bool is_defined() const override { return body == nullptr; }
   type_id return_type() const override { return specs.type.value(); }
   std::vector<node*> children() override;
   // std::string repr() const override;
@@ -553,7 +549,7 @@ struct return_ : derived_visitable<return_, statement> {
 
 struct translation_unit : derived_visitable<translation_unit, scope> {
   translation_unit(global_declarations decl);
-  // NOT_COPYABLE_CLS(translation_unit);
+  NOT_COPYABLE_CLS(translation_unit);
   children_impl(stmts | TRANSFORM([](const auto& s) { return dynamic_cast<node*>(s); }) | TO_VEC);
 
   [[nodiscard]] decl::function::definition* active_frame() noexcept { return m_stackframe.top(); }
@@ -617,4 +613,4 @@ using namespace_ = translation_unit;
 } // namespace ast
 } // namespace cmm
 
-#include "ast.inl"
+#include "ast/tree.inl"

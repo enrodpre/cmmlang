@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "ast.hpp"
+#include "ast/tree.hpp"
 #include "common.hpp"
 #include "fs.hpp"
 #include "ir.hpp"

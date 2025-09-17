@@ -686,10 +686,10 @@ enum class modifier_t : uint8_t {
   consteval_,
 };
 
-template <typename Args>
-std::string mangle_function(std::string id, Args args, char delim) {
-  auto format_args = args | std::views::join_with(delim) | std::ranges::to<std::string>();
-  return std::format("{}{}", id, !format_args.empty() ? std::format("_{}", format_args) : "");
+inline std::string mangle_function(std::string id, std::vector<std::string> args, char delim) {
+  std::vector<std::string> it{{id}};
+  it.append_range(args);
+  return it | std::views::join_with(delim) | std::ranges::to<std::string>();
 }
 
 } // namespace cmm
